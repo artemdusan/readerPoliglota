@@ -21,8 +21,10 @@ export default function TTSBar({
       const all = window.speechSynthesis.getVoices();
       setPlVoices(all.filter(v => v.lang.startsWith('pl')));
       if (foreignLang) {
-        const prefix = foreignLang.split('-')[0];
-        setForeignVoices(all.filter(v => v.lang.startsWith(prefix)));
+        const exact = all.filter(v => v.lang === foreignLang);
+        setForeignVoices(
+          exact.length > 0 ? exact : all.filter(v => v.lang.startsWith(foreignLang.split('-')[0]))
+        );
       }
     }
     load();

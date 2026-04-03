@@ -20,7 +20,7 @@ export function parsePolyglotHtml(raw) {
       html += escapeHtml(line.slice(last, m.index));
       const target   = escapeHtml(m[1].trim());
       const original = escapeHtml(m[2].trim());
-      html += `<span class="pw" title="${original}"><b class="pw-target">${target}</b><i class="pw-original">${original}</i></span>`;
+      html += `<span class="pw" data-word-idx="${count}"><b class="pw-target">${target}</b><i class="pw-original">${original}</i></span>`;
       last = m.index + m[0].length;
       count++;
     }

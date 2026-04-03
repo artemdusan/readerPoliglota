@@ -33,6 +33,7 @@ function buildMixedSegments(rawText, targetLang) {
   const segments = [];
   const paraStarts = [];
   const rx = /\[([^\]]+?)::([^\]]+?)\]/g;
+  let wordIdx = 0;
 
   for (const para of rawText.split(/\n\n+/)) {
     if (!para.trim()) continue;
@@ -57,7 +58,8 @@ function buildMixedSegments(rawText, targetLang) {
         segments.push({ text: polishWord, lang: 'pl-PL' });
       }
 
-      if (foreignWord) segments.push({ text: foreignWord, lang: targetLang });
+      if (foreignWord) segments.push({ text: foreignWord, lang: targetLang, wordIdx: wordIdx });
+      wordIdx++;
       last = m.index + m[0].length;
     }
     const after = para.slice(last).trim();

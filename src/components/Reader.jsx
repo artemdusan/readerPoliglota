@@ -65,6 +65,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const tts = useTTS();
   const [ttsActive, setTtsActive]     = useState(false);
   const ttsParaStartsRef              = useRef([]);
+  const ttsSegmentsRef                = useRef([]);
 
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -214,6 +215,23 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       activeParagraphRef.current = pi;
     }
   }, [ttsActive, tts.progress.idx]);
+
+  /* ── TTS word highlight (polyglot mode only) ── */
+  useEffect(() => {
+    const container = chScrollRef.current;
+    if (!container) return;
+
+    const prev = container.querySelector('.pw.tts-word-active');
+    if (prev) prev.classList.remove('tts-word-active');
+
+    if (!ttsActive || !polyMode) return;
+
+    const seg = ttsSegmentsRef.current[tts.progress.idx];
+    if (seg?.wordIdx !== undefined) {
+      const pw = container.querySelector(`[data-word-idx="${seg.wordIdx}"]`);
+      pw?.classList.add('tts-word-active');
+    }
+  }, [ttsActive, polyMode, tts.progress.idx]);
 
   /* ── Font size sync ── */
   useEffect(() => {
@@ -422,6 +440,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     }
     if (!result?.segments?.length) return;
     ttsParaStartsRef.current = result.paraStarts;
+    ttsSegmentsRef.current = result.segments;
     tts.loadAndPlay(result.segments);
     setTtsActive(true);
   }
@@ -628,7 +647,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 {/* Polyglot content */}
                 {polyMode && polyState === 'done' && (
                   <div
-                    className={`ch-body ch-anim${ttsActive ? ' tts-cursor' : ''}`}
+                    className={`ch-body ch-anim${ttsActive ? ' tts-cursor tts-poly' : ''}`}
                     dangerouslySetInnerHTML={{ __html: polyHtml }}
                     onClick={handleContentClick}
                   />

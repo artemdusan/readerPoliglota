@@ -448,6 +448,66 @@ html, body, #root {
 .pw.open .pw-original { display: block; }
 .pw.open .pw-target { background: rgba(192,144,80,.22); border-bottom-color: rgba(192,144,80,.5); }
 
+/* ── TTS polyglot mode: Polish text + border on translatable words ── */
+.ch-body.tts-poly .pw {
+  text-decoration: underline dotted rgba(192,144,80,.6);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+.ch-body.tts-poly .pw-target { display: none; }
+.ch-body.tts-poly .pw-original {
+  display: inline;
+  position: static;
+  transform: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  font-style: normal;
+  font-family: inherit;
+  color: inherit;
+  white-space: normal;
+  box-shadow: none;
+  line-height: inherit;
+  letter-spacing: inherit;
+}
+.ch-body.tts-poly .pw-original::after { display: none; }
+.ch-body.tts-poly .tts-active-para { background: rgba(192,144,80,.05) !important; }
+
+/* Hover: show Spanish tooltip above the Polish word */
+.ch-body.tts-poly .pw:hover .pw-target,
+/* Active word: show Spanish as tooltip above the Polish word (Polish stays visible) */
+.ch-body.tts-poly .pw.tts-word-active .pw-target {
+  display: block;
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1c1916;
+  border: 1px solid rgba(192,144,80,.65);
+  border-radius: 5px;
+  padding: 5px 12px;
+  font-size: .82em;
+  font-weight: normal;
+  color: var(--gold);
+  white-space: nowrap;
+  z-index: 30;
+  pointer-events: none;
+  box-shadow: 0 6px 20px rgba(0,0,0,.6);
+  line-height: 1.5;
+  font-family: 'DM Sans', sans-serif;
+}
+.ch-body.tts-poly .pw:hover .pw-target::after,
+.ch-body.tts-poly .pw.tts-word-active .pw-target::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(192,144,80,.65);
+}
+
 .ch-body.reveal-all .pw-original { display: block !important; }
 .ch-body.reveal-all .pw-target { background: rgba(192,144,80,.06) !important; border-bottom-color: transparent !important; }
 
@@ -705,23 +765,25 @@ html, body, #root {
   border-radius: 6px;
   padding: 6px;
   min-width: 180px;
+  max-width: 320px;
   max-height: 260px;
   overflow-y: auto;
   z-index: 50;
   box-shadow: 0 8px 32px rgba(0,0,0,.6);
-  display: flex; flex-direction: column; gap: 2px;
+  display: flex; flex-direction: column; gap: 1px;
 }
 .tts-voice-head {
   font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--txt-3); padding: 2px 8px 6px; border-bottom: 1px solid var(--border-soft);
+  color: var(--txt-2); padding: 2px 8px 6px; border-bottom: 1px solid var(--border-soft);
   margin-bottom: 2px;
 }
 .tts-voice-opt {
-  text-align: left; padding: 6px 8px;
+  text-align: left; padding: 4px 8px;
   background: none; border: none; border-radius: 3px;
-  color: var(--txt-2); font-size: 12px; font-family: 'DM Sans', sans-serif;
+  color: var(--txt-1); font-size: 12px; font-family: 'DM Sans', sans-serif;
   cursor: pointer; transition: background .1s, color .1s;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  width: 100%;
 }
 .tts-voice-opt:hover { background: var(--bg-hover); color: var(--txt-1); }
 .tts-voice-opt.active { color: var(--gold); }
