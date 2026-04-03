@@ -1,0 +1,119 @@
+import Dexie from 'dexie';
+
+export const db = new Dexie('VocabAppDB');
+
+db.version(1).stores({
+  // books: metadata + TOC; cover is base64 data URL stored here
+  books: 'id, title, createdAt, deletedAt',
+  // chapters: parsed HTML/text content per chapter
+  chapters: 'id, bookId, chapterIndex, [bookId+chapterIndex]',
+  // polyglotCache: LLM output cached per chapter + target language
+  polyglotCache: 'id, chapterId, targetLang, [chapterId+targetLang]',
+  // readingPositions: one record per book, bookId is primary key
+  readingPositions: 'bookId',
+  // settings: key-value store for app settings
+  settings: 'key',
+});
+
+export async function getSetting(key, defaultValue = null) {
+  const row = await db.settings.get(key);
+  return row !== undefined ? row.value : defaultValue;
+}
+
+export async function setSetting(key, value) {
+  await db.settings.put({ key, value });
+}
+
+export async function getAllSettings() {
+  const rows = await db.settings.toArray();
+  return Object.fromEntries(rows.map(r => [r.key, r.value]));
+}
+
+export async function saveBook(bookData, chaptersData) {
+  const { v4: uuid } = await import('uuid');
+  const bookId = uuid();
+  const now = Date.now();
+
+  const book = {
+    id: bookId,
+    title: bookData.title || 'Bez tytułu',
+    author: bookData.author || '',
+    cover: bookData.cover || null,
+    tocJson: JSON.stringify(bookData.toc || []),
+    chapterCount: chaptersData.length,
+    createdAt: now,
+    deletedAt: null,
+  };
+
+  const chapters = chaptersData.map((ch, idx) => ({
+    id: uuid(),
+    bookId,
+    chapterIndex: idx,
+    href: ch.href || '',
+    title: ch.title || '',
+    html: ch.html || '',
+    text: ch.text || '',
+  }));
+
+  await db.transaction('rw', db.books, db.chapters, async () => {
+    await db.books.add(book);
+    await db.chapters.bulkAdd(chapters);
+  });
+
+  return bookId;
+}
+
+export async function softDeleteBook(bookId) {
+  await db.books.update(bookId, { deletedAt: Date.now() });
+}
+
+export async function getActiveBooks() {
+  const all = await db.books.orderBy('createdAt').toArray();
+  return all.filter(b => !b.deletedAt);
+}
+
+export async function getBook(bookId) {
+  return db.books.get(bookId);
+}
+
+export async function getChapter(bookId, chapterIndex) {
+  return db.chapters.where('[bookId+chapterIndex]').equals([bookId, chapterIndex]).first();
+}
+
+export async function getPolyglotCache(chapterId, targetLang) {
+  return db.polyglotCache
+    .where('[chapterId+targetLang]')
+    .equals([chapterId, targetLang])
+    .first();
+}
+
+export async function savePolyglotCache(chapterId, targetLang, rawText) {
+  const { v4: uuid } = await import('uuid');
+  await db.polyglotCache.put({
+    id: uuid(),
+    chapterId,
+    targetLang,
+    rawText,
+    createdAt: Date.now(),
+  });
+}
+
+export async function getReadingPosition(bookId) {
+  return db.readingPositions.get(bookId);
+}
+
+export async function saveReadingPosition(bookId, chapterIndex, scrollTop = 0, polyMode = false) {
+  await db.readingPositions.put({ bookId, chapterIndex, scrollTop, polyMode, updatedAt: Date.now() });
+}
+
+/** Returns chapters sorted by index, each with hasPoly flag for given targetLang. */
+export async function getBookChaptersWithCacheStatus(bookId, targetLang) {
+  const chapters = await db.chapters
+    .where('bookId').equals(bookId)
+    .sortBy('chapterIndex');
+  return Promise.all(chapters.map(async ch => {
+    const cached = await db.polyglotCache
+      .where('[chapterId+targetLang]').equals([ch.id, targetLang]).first();
+    return { ...ch, hasPoly: !!cached };
+  }));
+}
