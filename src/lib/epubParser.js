@@ -232,28 +232,55 @@ async function extractChapters(zip, spine, manifest, toc) {
 
 const IMG_MIMES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp' };
 
-async function inlineImages(doc, zip, chapterDir) {
-  const imgs = [...doc.querySelectorAll('img[src]')];
-  await Promise.all(imgs.map(async img => {
-    const src = img.getAttribute('src') || '';
-    if (!src || src.startsWith('data:') || /^https?:\/\//.test(src)) return;
-    const base = chapterDir ? chapterDir + '/' : '';
-    const path = resolvePath(base, src);
-    const ext  = path.split('.').pop().toLowerCase();
-    const mime = IMG_MIMES[ext] || 'image/jpeg';
+/**
+ * Inline image references in raw HTML *before* DOM parsing so the browser
+ * never gets a chance to resolve relative paths to localhost.
+ * Handles both <img src="..."> and <image xlink:href="..."> (SVG in EPUBs).
+ */
+async function inlineImageSrcs(rawHtml, zip, chapterDir) {
+  const IMG_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp']);
+  // Match xlink:href="..." and src="..." with relative values
+  const rx = /\b(xlink:href|src)="([^"]+)"/g;
+
+  // Collect unique relative image paths
+  const toLoad = new Map(); // originalSrc → { path, mime }
+  let m;
+  while ((m = rx.exec(rawHtml)) !== null) {
+    const src = m[2];
+    if (src.startsWith('data:') || src.startsWith('#') || /^https?:\/\//.test(src)) continue;
+    const ext = src.split('.').pop().toLowerCase().split('?')[0];
+    if (!IMG_EXTS.has(ext)) continue;
+    if (toLoad.has(src)) continue;
+    const path = resolvePath(chapterDir ? chapterDir + '/' : '', src);
+    toLoad.set(src, { path, mime: IMG_MIMES[ext] || 'image/jpeg' });
+  }
+
+  if (toLoad.size === 0) return rawHtml;
+
+  // Load all images in parallel
+  const inlined = new Map(); // originalSrc → data URL
+  await Promise.all([...toLoad.entries()].map(async ([src, { path, mime }]) => {
     const data = await readBytes(zip, path);
     if (!data) return;
     const CHUNK = 8192; let bin = '';
     for (let i = 0; i < data.length; i += CHUNK) bin += String.fromCharCode(...data.subarray(i, i + CHUNK));
-    img.setAttribute('src', `data:${mime};base64,${btoa(bin)}`);
+    inlined.set(src, `data:${mime};base64,${btoa(bin)}`);
   }));
+
+  if (inlined.size === 0) return rawHtml;
+
+  // Replace in raw string — before DOMParser ever sees the relative paths
+  return rawHtml.replace(/\b(xlink:href|src)="([^"]+)"/g, (match, attr, src) => {
+    const dataUrl = inlined.get(src);
+    return dataUrl ? `${attr}="${dataUrl}"` : match;
+  });
 }
 
 async function parseChapterHtml(rawHtml, tocTitle, zip, chapterDir) {
-  const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+  const htmlWithImages = await inlineImageSrcs(rawHtml, zip, chapterDir);
+  const doc  = new DOMParser().parseFromString(htmlWithImages, 'text/html');
   const body = doc.body;
   for (const el of body.querySelectorAll('script,style,link,meta')) el.remove();
-  await inlineImages(doc, zip, chapterDir);
   const headingEl = body.querySelector('h1,h2,h3,h4');
   const title = headingEl?.textContent.trim() || tocTitle;
   const html  = body.innerHTML.trim();

@@ -335,10 +335,49 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   }
 
   /* ─────────────────────────────────────────
+     EPUB INTERNAL LINK RESOLVER
+  ───────────────────────────────────────── */
+
+  /** Resolve an epub href (possibly relative or absolute localhost) to a root-relative chapter path. */
+  function resolveEpubHref(linkHref) {
+    if (!linkHref) return null;
+    // Absolute localhost URL — extract path portion
+    if (/^https?:\/\/localhost/.test(linkHref)) {
+      try { linkHref = new URL(linkHref).pathname.slice(1); } catch { return null; }
+    } else if (/^https?:\/\//.test(linkHref) || linkHref.startsWith('mailto:')) {
+      return null; // true external link — don't intercept
+    }
+    const withoutAnchor = linkHref.split('#')[0];
+    if (!withoutAnchor) return null;
+    if (withoutAnchor.startsWith('/')) return withoutAnchor.slice(1);
+    // Relative — resolve against current chapter's directory
+    const dir = chapter?.href?.includes('/') ? chapter.href.slice(0, chapter.href.lastIndexOf('/') + 1) : '';
+    const parts = (dir + withoutAnchor).split('/');
+    const out = [];
+    for (const p of parts) {
+      if (p === '..') out.pop();
+      else if (p && p !== '.') out.push(p);
+    }
+    return out.join('/') || null;
+  }
+
+  /* ─────────────────────────────────────────
      CONTENT CLICK — tooltip + TTS jump
   ───────────────────────────────────────── */
 
   function handleContentClick(e) {
+    // Internal EPUB navigation links
+    const anchor = e.target.closest('a[href]');
+    if (anchor) {
+      const target = resolveEpubHref(anchor.getAttribute('href') || '');
+      if (target) {
+        e.preventDefault();
+        goToHref(target);
+      }
+      // external links: don't preventDefault, let browser open them
+      return;
+    }
+
     const pw = e.target.closest('.pw');
     if (pw) {
       openTooltip(pw);
