@@ -56,9 +56,11 @@ export async function syncBook(bookId) {
 }
 
 // Full sync — merge all remote progress files with local Dexie state
-export async function syncAll() {
+// Returns { synced: number, error: string|null }
+// onProgress(done, total) called after each file
+export async function syncAll(onProgress) {
   let token;
-  try { token = await getAccessToken(); } catch { return; }
+  try { token = await getAccessToken(); } catch { return { synced: 0, error: 'Brak autoryzacji' }; }
 
   _lastSyncAt = Date.now();
 
@@ -69,6 +71,13 @@ export async function syncAll() {
     ]);
 
     const localMap = Object.fromEntries(localPositions.map(p => [p.bookId, p]));
+    const localOnly = Object.values(localMap).filter(l => !remoteFiles.find(
+      rf => rf.name === `progress_${l.bookId}.json`
+    ));
+    const total = remoteFiles.length + localOnly.length;
+    let synced = 0;
+
+    onProgress?.(0, total);
 
     for (const rf of remoteFiles) {
       const bookId = rf.name.replace(/^progress_/, '').replace(/\.json$/, '');
@@ -82,14 +91,21 @@ export async function syncAll() {
       }
 
       delete localMap[bookId];
+      synced++;
+      onProgress?.(synced, total);
     }
 
     // Upload local positions that have no remote file yet
-    for (const local of Object.values(localMap)) {
+    for (const local of localOnly) {
       await upsertProgressFile(local.bookId, toRemoteData(local), token);
+      synced++;
+      onProgress?.(synced, total);
     }
+
+    return { synced, error: null };
   } catch (err) {
     console.warn('[Drive sync] syncAll failed:', err.message);
+    return { synced: 0, error: err.message };
   }
 }
 

@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { LANGUAGES, PROVIDERS } from '../hooks/useSettings';
 import { isSignedIn, onAuthChange, signIn, signOut } from '../sync/googleAuth';
+import { syncAll } from '../sync/syncManager';
 
 export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, onClose }) {
   const [apiKey, setApiKey]         = useState(settings.apiKey || '');
   const [showKey, setShowKey]       = useState(false);
   const [saved, setSaved]           = useState(false);
   const [driveConnected, setDriveConnected] = useState(isSignedIn());
+  const [syncStatus, setSyncStatus] = useState(null); // null | 'syncing' | { synced, error }
+  const [syncProgress, setSyncProgress] = useState(null); // null | { done, total }
   const driveEnabled = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   useEffect(() => {
@@ -33,7 +36,16 @@ export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, 
     setTimeout(() => setSaved(false), 2000);
   }
 
-function handleOverlayClick(e) {
+  async function handleManualSync() {
+    setSyncStatus('syncing');
+    setSyncProgress(null);
+    const result = await syncAll((done, total) => setSyncProgress({ done, total }));
+    setSyncStatus(result);
+    setSyncProgress(null);
+    setTimeout(() => setSyncStatus(null), 5000);
+  }
+
+  function handleOverlayClick(e) {
     if (e.target === e.currentTarget) onClose();
   }
 
@@ -148,7 +160,7 @@ function handleOverlayClick(e) {
           {driveEnabled && (
             <div className="form-group">
               <label className="form-label">Synchronizacja Google Drive</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13, color: driveConnected ? 'var(--gold)' : 'var(--txt-2)' }}>
                   {driveConnected ? '● Połączono z Drive' : '○ Niepołączono'}
                 </span>
@@ -156,7 +168,40 @@ function handleOverlayClick(e) {
                   ? <button className="btn-ghost" onClick={signOut}>Rozłącz</button>
                   : <button className="btn-ghost" onClick={signIn}>Połącz z Google Drive</button>
                 }
+                {driveConnected && (
+                  <button
+                    className="btn-ghost"
+                    onClick={handleManualSync}
+                    disabled={syncStatus === 'syncing'}
+                  >
+                    {syncStatus === 'syncing' ? '⟳ Synchronizuję…' : '↻ Synchronizuj teraz'}
+                  </button>
+                )}
               </div>
+              {syncStatus === 'syncing' && syncProgress && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ height: 4, borderRadius: 2, background: 'var(--bg-2, #333)', overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%',
+                      borderRadius: 2,
+                      background: 'var(--gold)',
+                      width: syncProgress.total > 0 ? `${(syncProgress.done / syncProgress.total) * 100}%` : '0%',
+                      transition: 'width 0.2s ease',
+                    }} />
+                  </div>
+                  <p style={{ fontSize: 11, color: 'var(--txt-2)', marginTop: 4 }}>
+                    {syncProgress.done} / {syncProgress.total}
+                  </p>
+                </div>
+              )}
+              {syncStatus && syncStatus !== 'syncing' && (
+                <p style={{ fontSize: 12, marginTop: 6, color: syncStatus.error ? 'var(--err, #e55)' : 'var(--txt-2)' }}>
+                  {syncStatus.error
+                    ? `Błąd: ${syncStatus.error}`
+                    : `✓ Zsynchronizowano ${syncStatus.synced} ${syncStatus.synced === 1 ? 'plik' : 'pliki/plików'}`
+                  }
+                </p>
+              )}
             </div>
           )}
 

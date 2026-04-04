@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { EpubParser } from '../lib/epubParser';
 import { getActiveBooks, saveBook, softDeleteBook, getReadingPosition } from '../db';
 import BatchGenModal from './BatchGenModal';
+import { version } from '../../package.json';
 
 export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const [books, setBooks]       = useState([]);
@@ -170,6 +171,10 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
           onClose={() => setBatchBook(null)}
         />
       )}
+
+      <footer style={{ textAlign: 'center', padding: '12px 0', fontSize: 11, color: 'var(--txt-3, #555)' }}>
+        v{version}
+      </footer>
     </div>
   );
 }
