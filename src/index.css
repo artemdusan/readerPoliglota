@@ -338,8 +338,9 @@ html, body, #root {
 .pb-right { display: flex; gap: 6px; margin-left: auto; }
 
 /* Chapter scroll — always page mode */
-.ch-scroll { flex: 1; overflow: hidden; padding: 0 48px; transition: opacity 0.1s ease; }
+.ch-scroll { flex: 1; overflow: hidden; transition: opacity 0.1s ease; }
 .ch-scroll.page-turning { opacity: 0.06; }
+.ch-columns { height: 100%; column-gap: 0; }
 .ch-inner { max-width: 668px; margin: 0 auto; padding: 48px 0 64px; }
 .ch-anim { animation: fadeup .28s ease both; }
 @keyframes fadeup { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -355,10 +356,10 @@ html, body, #root {
   font-family: 'EB Garamond', serif;
   font-size: var(--fs); line-height: 1.9; color: #cec4b2;
 }
-.ch-body p  { margin-bottom: .9em; }
+.ch-body p  { margin-bottom: .9em; break-inside: avoid; }
 .ch-body h1,.ch-body h2,.ch-body h3,.ch-body h4 {
   font-family: 'EB Garamond', serif; color: var(--txt-1);
-  margin: 2em 0 .7em; font-weight: 600; line-height: 1.3;
+  margin: 2em 0 .7em; font-weight: 600; line-height: 1.3; break-inside: avoid;
 }
 .ch-body h1 { font-size: 1.5em; } .ch-body h2 { font-size: 1.3em; } .ch-body h3 { font-size: 1.15em; }
 .ch-body em { font-style: italic; }
@@ -709,7 +710,7 @@ html, body, #root {
   .sb-tog { display: flex; }
   .sb-overlay.open { display: block; }
   .topbar    { padding: 0 14px; }
-  .ch-scroll { padding: 0 18px; }
+  .ch-inner  { padding-left: 18px; padding-right: 18px; }
   .bottombar { padding: 0 12px; }
   .poly-banner { padding: 0 14px; }
   .nav-btn span { display: none; }

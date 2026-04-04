@@ -196,39 +196,48 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
     requestAnimationFrame(() => {
       if (!container || !inner) return;
+      const pw = container.clientWidth;
       const ph = container.clientHeight;
-      if (!ph) return;
+      if (!pw || !ph) return;
 
-      const total = Math.max(1, Math.ceil(inner.scrollHeight / ph));
-      totalPagesRef.current = total;
-      setTotalPages(total);
+      // Set up CSS multi-column layout (one column per page)
+      inner.style.columnWidth = pw + 'px';
+      inner.style.height = ph + 'px';
 
-      // Restore position if pending (chapter just loaded)
-      const pos = pendingPositionRef.current;
-      pendingPositionRef.current = null;
+      // Need a second rAF so browser has reflowed the columns before measuring
+      requestAnimationFrame(() => {
+        if (!container || !inner) return;
+        const total = Math.max(1, Math.round(inner.scrollWidth / pw));
+        totalPagesRef.current = total;
+        setTotalPages(total);
 
-      if (pos) {
-        let targetPage = 0;
-        if (!polyMode && pos.sentenceIdx >= 0) {
-          const el = container.querySelector(`[data-sentence="${pos.sentenceIdx}"]`);
-          if (el && inner) {
-            const elTopFromInner = el.getBoundingClientRect().top - inner.getBoundingClientRect().top;
-            targetPage = Math.floor(elTopFromInner / ph);
+        // Restore position if pending (chapter just loaded)
+        const pos = pendingPositionRef.current;
+        pendingPositionRef.current = null;
+
+        if (pos) {
+          let targetPage = 0;
+          if (!polyMode && pos.sentenceIdx >= 0) {
+            const el = container.querySelector(`[data-sentence="${pos.sentenceIdx}"]`);
+            if (el && inner) {
+              const elLeftFromInner = el.getBoundingClientRect().left - inner.getBoundingClientRect().left;
+              targetPage = Math.floor(elLeftFromInner / pw);
+            }
+          } else if (pos.scrollTop > 0) {
+            targetPage = Math.round(pos.scrollTop / pw);
           }
-        } else if (pos.scrollTop > 0) {
-          targetPage = Math.round(pos.scrollTop / ph);
+          targetPage = Math.max(0, Math.min(targetPage, total - 1));
+          setCurrentPage(targetPage);
+          currentPageRef.current = targetPage;
+          inner.style.transition = '';
+          inner.style.transform = `translateX(-${targetPage * pw}px)`;
+        } else {
+          setCurrentPage(0);
+          currentPageRef.current = 0;
+          inner.style.transition = '';
+          inner.style.transform = '';
         }
-        targetPage = Math.max(0, Math.min(targetPage, total - 1));
-        setCurrentPage(targetPage);
-        currentPageRef.current = targetPage;
-        inner.style.transition = '';
-        inner.style.transform = `translateY(-${targetPage * ph}px)`;
-      } else {
-        setCurrentPage(0);
-        currentPageRef.current = 0;
-        inner.style.transition = '';
-        inner.style.transform = '';
-      }
+      });
     });
   }, [chapter?.id, polyMode, fs]);
 
@@ -237,8 +246,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     polyModeRef.current = polyMode;
     if (!bookId || !posRestoredRef.current) return;
     const sentenceIdx = getCurrentSentenceIdx();
-    const ph = chScrollRef.current?.clientHeight ?? 0;
-    const scrollTop = currentPageRef.current * ph;
+    const pw = chScrollRef.current?.clientWidth ?? 0;
+    const scrollTop = currentPageRef.current * pw;
     saveReadingPosition(bookId, chapterIdx, scrollTop, polyMode, sentenceIdx);
   }, [bookId, chapterIdx, polyMode]);
 
@@ -247,8 +256,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const sentenceIdx = getCurrentSentenceIdx();
-      const ph = chScrollRef.current?.clientHeight ?? 0;
-      const scrollTop = currentPageRef.current * ph;
+      const pw = chScrollRef.current?.clientWidth ?? 0;
+      const scrollTop = currentPageRef.current * pw;
       saveReadingPosition(bookId, chapterIdx, scrollTop, polyModeRef.current, sentenceIdx);
       scheduleBookSync(bookId);
     }, 800);
@@ -261,10 +270,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
     const containerRect = container.getBoundingClientRect();
     for (const el of container.querySelectorAll('[data-sentence]')) {
-      if (el.getBoundingClientRect().bottom >= containerRect.top) return parseInt(el.dataset.sentence, 10);
+      if (el.getBoundingClientRect().right >= containerRect.left) return parseInt(el.dataset.sentence, 10);
     }
     for (const el of container.querySelectorAll('[data-sentence-start]')) {
-      if (el.getBoundingClientRect().bottom >= containerRect.top) return parseInt(el.dataset.sentenceStart, 10);
+      if (el.getBoundingClientRect().right >= containerRect.left) return parseInt(el.dataset.sentenceStart, 10);
     }
     return -1;
   }
@@ -282,9 +291,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       container.classList.add('page-turning');
       setTimeout(() => {
         if (!chInnerRef.current || !chScrollRef.current) { flippingRef.current = false; return; }
-        const ph = chScrollRef.current.clientHeight;
+        const pw = chScrollRef.current.clientWidth;
         chInnerRef.current.style.transition = '';
-        chInnerRef.current.style.transform = `translateY(-${clampedPage * ph}px)`;
+        chInnerRef.current.style.transform = `translateX(-${clampedPage * pw}px)`;
         chScrollRef.current.classList.remove('page-turning');
         setCurrentPage(clampedPage);
         currentPageRef.current = clampedPage;
@@ -292,9 +301,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         persistPosition();
       }, 90);
     } else {
-      const ph = container.clientHeight;
+      const pw = container.clientWidth;
       inner.style.transition = '';
-      inner.style.transform = `translateY(-${clampedPage * ph}px)`;
+      inner.style.transform = `translateX(-${clampedPage * pw}px)`;
       setCurrentPage(clampedPage);
       currentPageRef.current = clampedPage;
     }
@@ -341,9 +350,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
       // Auto page flip for TTS
       if (inner) {
-        const elTopFromInner = el.getBoundingClientRect().top - inner.getBoundingClientRect().top;
-        const ph = container.clientHeight;
-        const page = Math.floor(elTopFromInner / ph);
+        const elLeftFromInner = el.getBoundingClientRect().left - inner.getBoundingClientRect().left;
+        const pw = container.clientWidth;
+        const page = Math.floor(elLeftFromInner / pw);
         if (page !== currentPageRef.current) goToPage(page, false);
       }
     } else {
@@ -359,9 +368,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       const el = container.querySelector(`[data-para="${pi}"]`);
       if (el && inner) {
         el.classList.add('tts-active-para');
-        const elTopFromInner = el.getBoundingClientRect().top - inner.getBoundingClientRect().top;
-        const ph = container.clientHeight;
-        const page = Math.floor(elTopFromInner / ph);
+        const elLeftFromInner = el.getBoundingClientRect().left - inner.getBoundingClientRect().left;
+        const pw = container.clientWidth;
+        const page = Math.floor(elLeftFromInner / pw);
         if (page !== currentPageRef.current) goToPage(page, false);
         activeParagraphRef.current = pi;
       }
@@ -731,7 +740,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
         {/* Chapter page area */}
         <div className="ch-scroll" ref={chScrollRef}>
-          <div className="ch-inner" ref={chInnerRef} key={animKeyRef.current}>
+          <div className="ch-columns" ref={chInnerRef} key={animKeyRef.current}>
+          <div className="ch-inner">
 
             {chapterLoading ? (
               <div className="poly-loading"><div className="spin-ring" /></div>
@@ -815,6 +825,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 )}
               </>
             )}
+          </div>
           </div>
         </div>
 
