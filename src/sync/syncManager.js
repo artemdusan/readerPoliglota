@@ -1,14 +1,18 @@
 import { db, saveReadingPosition, getBookWithChapters, restoreBook } from '../db';
 import { getAccessToken } from './googleAuth';
 import {
-  listAllProgressFiles, listAllBookFiles,
-  downloadFile, upsertProgressFile, findProgressFile,
-  upsertFile,
+  listAllProgressFiles, downloadFile,
+  upsertProgressFile, findProgressFile,
+  findFile, upsertFile,
 } from './driveApi';
 
 let _lastSyncAt = 0;
 let _bookSyncTimers = {};
 let _autoSyncInitialized = false;
+
+const MANIFEST_NAME = 'books_manifest.json';
+
+// --- Reading position helpers ---
 
 function toRemoteData(local) {
   return {
@@ -31,7 +35,21 @@ async function applyRemote(remote) {
   );
 }
 
-// Sync a single book — upload if local is newer, apply remote if remote is newer
+// --- Manifest helpers ---
+
+async function fetchManifest(token) {
+  const file = await findFile(MANIFEST_NAME, token);
+  if (!file) return [];
+  return downloadFile(file.id, token);
+}
+
+async function pushManifest(entries, token) {
+  await upsertFile(MANIFEST_NAME, entries, token);
+}
+
+// --- Public API ---
+
+// Sync a single book's reading position — call after saving local position
 export async function syncBook(bookId) {
   let token;
   try { token = await getAccessToken(); } catch { return; }
@@ -59,7 +77,7 @@ export async function syncBook(bookId) {
   }
 }
 
-// Upload a book (metadata + chapters) to Drive — call after adding a new book locally
+// Upload a book to Drive and add it to the manifest — call after adding a new book locally
 export async function uploadBook(bookId) {
   let token;
   try { token = await getAccessToken(); } catch { return; }
@@ -67,13 +85,26 @@ export async function uploadBook(bookId) {
   try {
     const bookData = await getBookWithChapters(bookId);
     if (!bookData) return;
+
+    // Upload full book file
     await upsertFile(`book_${bookId}.json`, bookData, token);
+
+    // Add to manifest
+    const manifest = await fetchManifest(token);
+    const alreadyInManifest = manifest.some(e => e.id === bookId);
+    if (!alreadyInManifest) {
+      manifest.push({ id: bookId, title: bookData.title, author: bookData.author, deletedAt: bookData.deletedAt ?? null });
+      await pushManifest(manifest, token);
+    }
   } catch (err) {
     console.warn('[Drive sync] uploadBook failed:', err.message);
   }
 }
 
-// Full sync — merge all remote progress files + download missing books
+// Full sync:
+//   1. Sync reading positions (both directions)
+//   2. Download manifest — apply deletedAt changes, download missing books
+//   3. Upload new local books + update manifest
 // onProgress(done, total) called after each item
 export async function syncAll(onProgress) {
   let token;
@@ -82,32 +113,41 @@ export async function syncAll(onProgress) {
   _lastSyncAt = Date.now();
 
   try {
-    const [remoteProgressFiles, remoteBookFiles, localPositions, localBooks] = await Promise.all([
+    const [remoteProgressFiles, remoteManifest, localPositions, allLocalBooks] = await Promise.all([
       listAllProgressFiles(token),
-      listAllBookFiles(token),
+      fetchManifest(token),
       db.readingPositions.toArray(),
-      db.books.toArray(),
+      db.books.toArray(), // includes soft-deleted
     ]);
 
     const localPosMap = Object.fromEntries(localPositions.map(p => [p.bookId, p]));
-    const localBookIds = new Set(localBooks.map(b => b.id));
+    const localBookMap = Object.fromEntries(allLocalBooks.map(b => [b.id, b]));
+    const remoteManifestMap = Object.fromEntries(remoteManifest.map(e => [e.id, e]));
 
-    // Find remote books missing locally
-    const missingBooks = remoteBookFiles.filter(rf => {
-      const bookId = rf.name.replace(/^book_/, '').replace(/\.json$/, '');
-      return !localBookIds.has(bookId);
+    // Local positions with no remote file
+    const localOnlyPositions = localPositions.filter(
+      l => !remoteProgressFiles.find(rf => rf.name === `progress_${l.bookId}.json`)
+    );
+    // Books missing locally (in manifest but not in local DB)
+    const booksToDownload = remoteManifest.filter(e => !localBookMap[e.id]);
+    // Local books missing from manifest
+    const booksToUpload = allLocalBooks.filter(b => !remoteManifestMap[b.id]);
+    // Books where deletedAt differs between local and manifest
+    const deletedAtChanges = allLocalBooks.filter(b => {
+      const remote = remoteManifestMap[b.id];
+      return remote && remote.deletedAt !== (b.deletedAt ?? null);
     });
 
-    // Find local positions with no remote file
-    const localOnlyPositions = localPositions.filter(l => !remoteProgressFiles.find(
-      rf => rf.name === `progress_${l.bookId}.json`
-    ));
+    const total =
+      remoteProgressFiles.length +
+      localOnlyPositions.length +
+      booksToDownload.length +
+      booksToUpload.length;
 
-    const total = remoteProgressFiles.length + localOnlyPositions.length + missingBooks.length;
     let synced = 0;
     onProgress?.(0, total);
 
-    // Sync reading positions
+    // Sync reading positions — remote → local
     for (const rf of remoteProgressFiles) {
       const bookId = rf.name.replace(/^progress_/, '').replace(/\.json$/, '');
       const remote = await downloadFile(rf.id, token);
@@ -119,25 +159,52 @@ export async function syncAll(onProgress) {
         await upsertProgressFile(bookId, toRemoteData(local), token);
       }
 
-      delete localPosMap[bookId];
       synced++;
       onProgress?.(synced, total);
     }
 
-    // Upload local positions that have no remote file yet
+    // Sync reading positions — local only → remote
     for (const local of localOnlyPositions) {
       await upsertProgressFile(local.bookId, toRemoteData(local), token);
       synced++;
       onProgress?.(synced, total);
     }
 
-    // Download books that exist remotely but not locally
-    for (const rf of missingBooks) {
-      const bookData = await downloadFile(rf.id, token);
-      await restoreBook(bookData);
+    // Apply deletedAt changes from manifest → local
+    for (const entry of remoteManifest) {
+      const local = localBookMap[entry.id];
+      if (!local) continue;
+      if (entry.deletedAt && !local.deletedAt) {
+        await db.books.update(entry.id, { deletedAt: entry.deletedAt });
+      } else if (!entry.deletedAt && local.deletedAt) {
+        // Local deleted, remote not — update manifest to reflect deletion
+        entry.deletedAt = local.deletedAt;
+      }
+    }
+
+    // Download books missing locally (manifest-first: no re-downloading existing books)
+    for (const entry of booksToDownload) {
+      const file = await findFile(`book_${entry.id}.json`, token);
+      if (file) {
+        const bookData = await downloadFile(file.id, token);
+        await restoreBook(bookData);
+      }
       synced++;
       onProgress?.(synced, total);
     }
+
+    // Upload new local books + extend manifest
+    let manifestChanged = deletedAtChanges.length > 0;
+    for (const book of booksToUpload) {
+      const bookData = await getBookWithChapters(book.id);
+      if (bookData) await upsertFile(`book_${book.id}.json`, bookData, token);
+      remoteManifest.push({ id: book.id, title: book.title, author: book.author, deletedAt: book.deletedAt ?? null });
+      manifestChanged = true;
+      synced++;
+      onProgress?.(synced, total);
+    }
+
+    if (manifestChanged) await pushManifest(remoteManifest, token);
 
     return { synced, error: null };
   } catch (err) {
@@ -146,7 +213,7 @@ export async function syncAll(onProgress) {
   }
 }
 
-// Debounced single-book sync — call after saving local position
+// Debounced single-book position sync — call after saving local position
 export function scheduleBookSync(bookId) {
   clearTimeout(_bookSyncTimers[bookId]);
   _bookSyncTimers[bookId] = setTimeout(() => {

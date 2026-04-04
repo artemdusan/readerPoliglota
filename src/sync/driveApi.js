@@ -86,13 +86,3 @@ export async function listAllProgressFiles(token) {
   return data.files ?? [];
 }
 
-// --- Book files ---
-
-export async function listAllBookFiles(token) {
-  const q = encodeURIComponent("name contains 'book_' and trashed=false");
-  const data = await apiFetch(
-    `${BASE}/files?spaces=appDataFolder&q=${q}&fields=files(id,name)&pageSize=1000`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  return data.files ?? [];
-}
