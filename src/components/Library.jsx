@@ -29,6 +29,11 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
 
   useEffect(() => { loadBooks(); }, [loadBooks]);
 
+  useEffect(() => {
+    window.addEventListener('vocabapp:synced', loadBooks);
+    return () => window.removeEventListener('vocabapp:synced', loadBooks);
+  }, [loadBooks]);
+
   async function handleFile(file) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.epub')) {
