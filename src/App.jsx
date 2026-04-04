@@ -1,35 +1,22 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSettings } from './hooks/useSettings';
 import Library from './components/Library';
 import Reader  from './components/Reader';
 import Settings from './components/Settings';
-import { initGoogleAuth, onAuthChange } from './sync/googleAuth';
-import { initAutoSync, syncAll } from './sync/syncManager';
+import { initGoogleAuth } from './sync/googleAuth';
 
 export default function App() {
   const { settings, updateSetting, updateLanguage, loaded } = useSettings();
   const [view, setView] = useState('library');          // 'library' | 'reader'
   const [currentBookId, setCurrentBookId] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
-  const autoSyncStarted = useRef(false);
-
-  // Init Google Auth + auto-sync once settings are loaded
+  // Init Google Auth once settings are loaded
   useEffect(() => {
     if (!loaded) return;
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
     if (!clientId) return;
-    initGoogleAuth(clientId).then(() => {
-      if (!autoSyncStarted.current) {
-        autoSyncStarted.current = true;
-        initAutoSync();
-      }
-    });
+    initGoogleAuth(clientId);
   }, [loaded]);
-
-  // When user signs in mid-session, run a full sync immediately
-  useEffect(() => {
-    return onAuthChange((signedIn) => { if (signedIn) syncAll(); });
-  }, []);
 
   const openBook = useCallback((bookId) => {
     setCurrentBookId(bookId);

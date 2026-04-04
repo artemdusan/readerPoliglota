@@ -7,8 +7,6 @@ import {
 } from './driveApi';
 
 let _lastSyncAt = 0;
-let _bookSyncTimers = {};
-let _autoSyncInitialized = false;
 
 const MANIFEST_NAME = 'books_manifest.json';
 
@@ -214,25 +212,3 @@ export async function syncAll(onProgress) {
   }
 }
 
-// Debounced single-book position sync — call after saving local position
-export function scheduleBookSync(bookId) {
-  clearTimeout(_bookSyncTimers[bookId]);
-  _bookSyncTimers[bookId] = setTimeout(() => {
-    delete _bookSyncTimers[bookId];
-    syncBook(bookId);
-  }, 5000);
-}
-
-// Register window focus + interval triggers — call once on app init
-export function initAutoSync() {
-  if (_autoSyncInitialized) return;
-  _autoSyncInitialized = true;
-
-  syncAll();
-
-  window.addEventListener('focus', () => {
-    if (Date.now() - _lastSyncAt > 30_000) syncAll();
-  });
-
-  setInterval(syncAll, 5 * 60 * 1000);
-}
