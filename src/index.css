@@ -337,9 +337,10 @@ html, body, #root {
 .pb-wordcount { font-size: 10px; color: var(--txt-3); letter-spacing: .08em; }
 .pb-right { display: flex; gap: 6px; margin-left: auto; }
 
-/* Chapter scroll */
-.ch-scroll { flex: 1; overflow-y: auto; padding: 56px 48px 56px; }
-.ch-inner { max-width: 668px; margin: 0 auto; }
+/* Chapter scroll — always page mode */
+.ch-scroll { flex: 1; overflow: hidden; padding: 0 48px; transition: opacity 0.1s ease; }
+.ch-scroll.page-turning { opacity: 0.06; }
+.ch-inner { max-width: 668px; margin: 0 auto; padding: 48px 0 64px; }
 .ch-anim { animation: fadeup .28s ease both; }
 @keyframes fadeup { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
@@ -708,7 +709,7 @@ html, body, #root {
   .sb-tog { display: flex; }
   .sb-overlay.open { display: block; }
   .topbar    { padding: 0 14px; }
-  .ch-scroll { padding: 36px 18px 36px; }
+  .ch-scroll { padding: 0 18px; }
   .bottombar { padding: 0 12px; }
   .poly-banner { padding: 0 14px; }
   .nav-btn span { display: none; }
@@ -741,14 +742,8 @@ html, body, #root {
 .poly-confirm-btns { display: flex; gap: 10px; margin-top: 4px; }
 .poly-loading-hint { font-size: 12px; color: var(--txt-3); letter-spacing: .06em; }
 
-/* ════════════════ PAGE MODE ════════════════ */
-
-.ch-scroll.ch-pages { overflow: hidden; }
-
 /* ════════════════ TTS CURSOR + HIGHLIGHT ════════════════ */
 
-.ch-body.tts-cursor p { cursor: pointer; }
-.ch-body.tts-cursor p:hover { background: rgba(192,144,80,.04); border-radius: 3px; }
 .ch-body.tts-cursor [data-sentence] { cursor: pointer; }
 .ch-body.tts-cursor [data-sentence]:hover { background: rgba(192,144,80,.05); border-radius: 2px; }
 .tts-active-para {
@@ -793,6 +788,41 @@ html, body, #root {
 }
 .tts-voice-opt:hover { background: var(--bg-hover); color: var(--txt-1); }
 .tts-voice-opt.active { color: var(--gold); }
+
+/* ════════════════ TTS VOICE MODAL ════════════════ */
+
+.tts-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.6);
+  z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+}
+.tts-modal {
+  background: #1a1714;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: min(340px, 92vw);
+  max-height: 80vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0,0,0,.7);
+}
+.tts-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13px; font-weight: 500; color: var(--txt-1);
+  flex-shrink: 0;
+}
+.tts-modal-close {
+  background: none; border: none; color: var(--txt-3);
+  cursor: pointer; font-size: 14px; padding: 2px 6px;
+}
+.tts-modal-close:hover { color: var(--txt-1); }
+.tts-modal-body {
+  overflow-y: auto; padding: 8px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.tts-voice-section { display: flex; flex-direction: column; gap: 1px; }
 
 /* ════════════════ BOOK POLY BUTTON ════════════════ */
 

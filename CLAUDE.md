@@ -11,3 +11,5 @@
 4. **Sequential work**: When given a list of tasks, do the simplest first. Finish and confirm each before starting the next.
 
 5. **Large changes**: Before any rewrite, large refactor, or multi-file change — describe scope, show a plan, offer a simpler alternative, and wait for "go ahead".
+
+6. **Parallel branch work**: Use `git worktree` to work on multiple branches simultaneously — each worktree is a separate folder with its own checkout. When spawning parallel agents, use `isolation: "worktree"` so each agent gets an isolated copy without interfering with others.

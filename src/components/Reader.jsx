@@ -57,7 +57,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const [chapterLoading, setChapterLoading] = useState(true);
 
   // Polyglot state
-  // polyState: 'idle' | 'confirm' | 'loading' | 'done' | 'error'
   const [polyMode, setPolyMode]           = useState(false);
   const [polyState, setPolyState]         = useState('idle');
   const [polyHtml, setPolyHtml]           = useState('');
@@ -76,8 +75,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [fs, setFs]                   = useState(settings.fontSize ?? 19);
 
-  // Page mode
-  const [viewMode, setViewMode]       = useState('scroll'); // 'scroll' | 'pages'
+  // Page state (always page mode)
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages]   = useState(1);
 
@@ -93,9 +91,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const posRestoredRef   = useRef(false);
   const activeParagraphRef = useRef(-1);
   const activeSentenceRef  = useRef(-1);
-  const pendingPositionRef = useRef(null); // { sentenceIdx, scrollTop } — set before render, consumed by sentence effect
-  const viewModeRef        = useRef('scroll');
+  const pendingPositionRef = useRef(null);
   const currentPageRef     = useRef(0);
+  const totalPagesRef      = useRef(1);
+  const flippingRef        = useRef(false);
 
   /* ── Plain HTML with data-para ids for TTS highlighting ── */
   const plainHtmlWithParaIds = useMemo(() => {
@@ -135,9 +134,11 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     clearTimeout(tooltipTimerRef.current);
     openPwRef.current = null;
     setCurrentPage(0);
+    currentPageRef.current = 0;
+    totalPagesRef.current = 1;
+    flippingRef.current = false;
 
     getChapter(bookId, chapterIdx).then(async ch => {
-      // Read position BEFORE triggering re-render to avoid race with sentence effect
       const pos = await getReadingPosition(bookId);
       if (pos && pos.chapterIndex === chapterIdx) {
         pendingPositionRef.current = { sentenceIdx: pos.sentenceIdx ?? -1, scrollTop: pos.scrollTop ?? 0 };
@@ -150,7 +151,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       setChapterLoading(false);
       animKeyRef.current += 1;
 
-      // Restore polyglot mode if it was active and cache exists
       if (pos?.polyMode && ch?.id && settings.targetLang) {
         const cached = await getPolyglotCache(ch.id, settings.targetLang);
         if (cached) {
@@ -165,7 +165,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     });
   }, [bookId, chapterIdx]);
 
-  /* ── Add sentence spans to DOM + restore reading position ── */
+  /* ── Add sentence spans to DOM ── */
   useEffect(() => {
     const container = chScrollRef.current;
     if (!container || !chapter?.id) return;
@@ -177,7 +177,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         if (!text) continue;
         const sentences = sentencesOrFull(text);
         if (para.querySelector('a')) {
-          // Preserve links — mark paragraph with sentence range instead of splitting
           para.dataset.sentenceStart = si;
           si += sentences.length;
         } else {
@@ -187,61 +186,59 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         }
       }
     }
-
-    // Restore saved position
-    const pos = pendingPositionRef.current;
-    pendingPositionRef.current = null;
-    if (pos) {
-      requestAnimationFrame(() => {
-        if (!container) return;
-        if (!polyMode && pos.sentenceIdx >= 0) {
-          const el = container.querySelector(`[data-sentence="${pos.sentenceIdx}"]`);
-          if (el) { el.scrollIntoView({ block: 'start' }); return; }
-        }
-        if (pos.scrollTop > 0) container.scrollTop = pos.scrollTop;
-      });
-    }
   }, [chapter?.id, polyMode]);
 
-  /* ── Page mode: calculate total pages ── */
+  /* ── Page break calculation + position restore ── */
   useEffect(() => {
-    if (viewMode !== 'pages' || !chInnerRef.current || !chScrollRef.current) return;
-    requestAnimationFrame(() => {
-      if (!chInnerRef.current || !chScrollRef.current) return;
-      const ph = chScrollRef.current.clientHeight;
-      setTotalPages(Math.max(1, Math.ceil(chInnerRef.current.scrollHeight / ph)));
-    });
-  }, [viewMode, chapter?.id]);
-
-  /* ── Page mode: apply translateY transform to inner div ── */
-  useEffect(() => {
+    const container = chScrollRef.current;
     const inner = chInnerRef.current;
-    if (!inner) return;
-    if (viewMode === 'pages') {
-      const ph = chScrollRef.current?.clientHeight || 0;
-      inner.style.transform = `translateY(-${currentPage * ph}px)`;
-      inner.style.transition = currentPage === 0 ? '' : 'transform 0.28s ease';
-      currentPageRef.current = currentPage;
-    } else {
-      inner.style.transform = '';
-      inner.style.transition = '';
-      currentPageRef.current = 0;
-    }
-  }, [viewMode, currentPage, chapter?.id]);
+    if (!container || !inner || !chapter?.id) return;
 
-  /* ── Keep viewModeRef in sync ── */
-  useEffect(() => {
-    viewModeRef.current = viewMode;
-    // Reset currentPage to 0 when leaving page mode
-    if (viewMode === 'scroll') setCurrentPage(0);
-  }, [viewMode]);
+    requestAnimationFrame(() => {
+      if (!container || !inner) return;
+      const ph = container.clientHeight;
+      if (!ph) return;
+
+      const total = Math.max(1, Math.ceil(inner.scrollHeight / ph));
+      totalPagesRef.current = total;
+      setTotalPages(total);
+
+      // Restore position if pending (chapter just loaded)
+      const pos = pendingPositionRef.current;
+      pendingPositionRef.current = null;
+
+      if (pos) {
+        let targetPage = 0;
+        if (!polyMode && pos.sentenceIdx >= 0) {
+          const el = container.querySelector(`[data-sentence="${pos.sentenceIdx}"]`);
+          if (el && inner) {
+            const elTopFromInner = el.getBoundingClientRect().top - inner.getBoundingClientRect().top;
+            targetPage = Math.floor(elTopFromInner / ph);
+          }
+        } else if (pos.scrollTop > 0) {
+          targetPage = Math.round(pos.scrollTop / ph);
+        }
+        targetPage = Math.max(0, Math.min(targetPage, total - 1));
+        setCurrentPage(targetPage);
+        currentPageRef.current = targetPage;
+        inner.style.transition = '';
+        inner.style.transform = `translateY(-${targetPage * ph}px)`;
+      } else {
+        setCurrentPage(0);
+        currentPageRef.current = 0;
+        inner.style.transition = '';
+        inner.style.transform = '';
+      }
+    });
+  }, [chapter?.id, polyMode, fs]);
 
   /* ── Keep polyModeRef in sync and save when polyMode changes ── */
   useEffect(() => {
     polyModeRef.current = polyMode;
     if (!bookId || !posRestoredRef.current) return;
     const sentenceIdx = getCurrentSentenceIdx();
-    const scrollTop = chScrollRef.current?.scrollTop ?? 0;
+    const ph = chScrollRef.current?.clientHeight ?? 0;
+    const scrollTop = currentPageRef.current * ph;
     saveReadingPosition(bookId, chapterIdx, scrollTop, polyMode, sentenceIdx);
   }, [bookId, chapterIdx, polyMode]);
 
@@ -250,7 +247,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const sentenceIdx = getCurrentSentenceIdx();
-      const scrollTop = chScrollRef.current?.scrollTop ?? 0;
+      const ph = chScrollRef.current?.clientHeight ?? 0;
+      const scrollTop = currentPageRef.current * ph;
       saveReadingPosition(bookId, chapterIdx, scrollTop, polyModeRef.current, sentenceIdx);
       scheduleBookSync(bookId);
     }, 800);
@@ -261,32 +259,54 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     const container = chScrollRef.current;
     if (!container) return -1;
 
-    if (viewModeRef.current === 'pages') {
-      const ph = container.clientHeight;
-      const pageTop = currentPageRef.current * ph;
-      for (const el of container.querySelectorAll('[data-sentence]')) {
-        if (el.offsetTop >= pageTop) return parseInt(el.dataset.sentence, 10);
-      }
-      for (const el of container.querySelectorAll('[data-sentence-start]')) {
-        if (el.offsetTop >= pageTop) return parseInt(el.dataset.sentenceStart, 10);
-      }
-      return -1;
-    }
-
-    // Scroll mode: find topmost visible sentence
-    const containerTop = container.getBoundingClientRect().top;
+    const containerRect = container.getBoundingClientRect();
     for (const el of container.querySelectorAll('[data-sentence]')) {
-      if (el.getBoundingClientRect().bottom >= containerTop) return parseInt(el.dataset.sentence, 10);
+      if (el.getBoundingClientRect().bottom >= containerRect.top) return parseInt(el.dataset.sentence, 10);
     }
     for (const el of container.querySelectorAll('[data-sentence-start]')) {
-      if (el.getBoundingClientRect().bottom >= containerTop) return parseInt(el.dataset.sentenceStart, 10);
+      if (el.getBoundingClientRect().bottom >= containerRect.top) return parseInt(el.dataset.sentenceStart, 10);
     }
     return -1;
   }
 
-  /* ── TTS sentence highlight + auto-scroll / page flip ── */
+  /* ── Page navigation with Kindle flash ── */
+  function goToPage(page, animate = true) {
+    const inner = chInnerRef.current;
+    const container = chScrollRef.current;
+    if (!inner || !container) return;
+    const total = totalPagesRef.current;
+    const clampedPage = Math.max(0, Math.min(page, total - 1));
+
+    if (animate && !flippingRef.current) {
+      flippingRef.current = true;
+      container.classList.add('page-turning');
+      setTimeout(() => {
+        if (!chInnerRef.current || !chScrollRef.current) { flippingRef.current = false; return; }
+        const ph = chScrollRef.current.clientHeight;
+        chInnerRef.current.style.transition = '';
+        chInnerRef.current.style.transform = `translateY(-${clampedPage * ph}px)`;
+        chScrollRef.current.classList.remove('page-turning');
+        setCurrentPage(clampedPage);
+        currentPageRef.current = clampedPage;
+        flippingRef.current = false;
+        persistPosition();
+      }, 90);
+    } else {
+      const ph = container.clientHeight;
+      inner.style.transition = '';
+      inner.style.transform = `translateY(-${clampedPage * ph}px)`;
+      setCurrentPage(clampedPage);
+      currentPageRef.current = clampedPage;
+    }
+  }
+
+  function prevPage() { goToPage(currentPageRef.current - 1); }
+  function nextPage() { goToPage(currentPageRef.current + 1); }
+
+  /* ── TTS sentence highlight + auto page flip ── */
   useEffect(() => {
     const container = chScrollRef.current;
+    const inner = chInnerRef.current;
     if (!container) return;
 
     const clearHighlight = () => {
@@ -307,10 +327,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     const segIdx = tts.progress.idx;
 
     if (!polyMode) {
-      // Plain mode: TTS segment index = sentence index
       let el = container.querySelector(`[data-sentence="${segIdx}"]`);
       if (!el) {
-        // Fallback: link-containing paragraph (has data-sentence-start)
         const paras = [...container.querySelectorAll('[data-sentence-start]')];
         for (let i = paras.length - 1; i >= 0; i--) {
           if (parseInt(paras[i].dataset.sentenceStart) <= segIdx) { el = paras[i]; break; }
@@ -321,16 +339,14 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       el.classList.add('tts-active-para');
       activeSentenceRef.current = segIdx;
 
-      // Auto-scroll or page flip
-      if (viewModeRef.current === 'pages') {
+      // Auto page flip for TTS
+      if (inner) {
+        const elTopFromInner = el.getBoundingClientRect().top - inner.getBoundingClientRect().top;
         const ph = container.clientHeight;
-        const page = Math.floor(el.offsetTop / ph);
-        if (page !== currentPageRef.current) setCurrentPage(page);
-      } else {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const page = Math.floor(elTopFromInner / ph);
+        if (page !== currentPageRef.current) goToPage(page, false);
       }
     } else {
-      // Polyglot mode: paragraph-level highlight
       const paraStarts = ttsParaStartsRef.current;
       if (!paraStarts?.length) return;
       let pi = 0;
@@ -341,9 +357,12 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       if (pi === activeParagraphRef.current) return;
       clearHighlight();
       const el = container.querySelector(`[data-para="${pi}"]`);
-      if (el) {
+      if (el && inner) {
         el.classList.add('tts-active-para');
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const elTopFromInner = el.getBoundingClientRect().top - inner.getBoundingClientRect().top;
+        const ph = container.clientHeight;
+        const page = Math.floor(elTopFromInner / ph);
+        if (page !== currentPageRef.current) goToPage(page, false);
         activeParagraphRef.current = pi;
       }
     }
@@ -384,30 +403,17 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   useEffect(() => {
     function onKey(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if (viewModeRef.current === 'pages') {
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); prevPage(); }
-        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); nextPage(); }
-      } else {
-        if (e.key === 'ArrowLeft'  && chapterIdx > 0) navigate(chapterIdx - 1);
-        if (e.key === 'ArrowRight' && chapterIdx < chapterCount - 1) navigate(chapterIdx + 1);
-      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); goToPage(currentPageRef.current - 1); }
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); goToPage(currentPageRef.current + 1); }
       if (e.key === 'Escape') setSidebarOpen(false);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [chapterIdx, chapterCount]);
+  }, []);
 
   function navigate(idx) {
     persistPosition();
     setChapterIdx(Math.max(0, Math.min(idx, chapterCount - 1)));
-  }
-
-  function prevPage() {
-    setCurrentPage(p => Math.max(0, p - 1));
-  }
-
-  function nextPage() {
-    setCurrentPage(p => Math.min(totalPages - 1, p + 1));
   }
 
   /* ─────────────────────────────────────────
@@ -548,13 +554,11 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     }
 
     if (ttsActive && !polyMode) {
-      // Jump to clicked sentence
       const sentenceEl = e.target.closest('[data-sentence]');
       if (sentenceEl) {
         tts.jumpTo(parseInt(sentenceEl.dataset.sentence, 10));
         return;
       }
-      // Fallback for link-containing paragraphs
       const para = e.target.closest('[data-sentence-start]');
       if (para) {
         tts.jumpTo(parseInt(para.dataset.sentenceStart, 10));
@@ -683,20 +687,12 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
           </div>
           <div className="tb-controls">
             <button
-              className={`ctl ${polyMode ? 'ctl-active' : 'ctl-gold'}`}
+              className={`ctl ${polyMode ? 'ctl-active' : ''}`}
               onClick={togglePolyglot}
               title="Tryb Poligloty"
             >
               {settings.targetLangFlag} Poliglota
               {polyState === 'loading' && ' …'}
-            </button>
-            <div className="tb-sep" />
-            <button
-              className={`ctl ${viewMode === 'pages' ? 'ctl-active' : ''}`}
-              onClick={() => setViewMode(v => v === 'scroll' ? 'pages' : 'scroll')}
-              title="Tryb stron"
-            >
-              Strony
             </button>
             <div className="tb-sep" />
             <button className="ctl" onClick={() => setFs(f => Math.max(13, f - 1))}>A−</button>
@@ -733,12 +729,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
           />
         )}
 
-        {/* Chapter scroll area */}
-        <div
-          className={`ch-scroll${viewMode === 'pages' ? ' ch-pages' : ''}`}
-          ref={chScrollRef}
-          onScroll={viewMode === 'scroll' ? persistPosition : undefined}
-        >
+        {/* Chapter page area */}
+        <div className="ch-scroll" ref={chScrollRef}>
           <div className="ch-inner" ref={chInnerRef} key={animKeyRef.current}>
 
             {chapterLoading ? (
@@ -751,7 +743,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
               <>
                 {chapter.title && <div className="ch-title ch-anim">{chapter.title}</div>}
 
-                {/* Ask to generate */}
                 {polyMode && polyState === 'confirm' && (
                   <div className="poly-confirm ch-anim">
                     <div className="poly-confirm-icon">🌍</div>
@@ -769,7 +760,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                   </div>
                 )}
 
-                {/* Loading */}
                 {polyMode && polyState === 'loading' && (
                   <div className="poly-loading">
                     <div className="spin-ring" />
@@ -798,7 +788,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                   </div>
                 )}
 
-                {/* Error */}
                 {polyMode && polyState === 'error' && (
                   <div className="poly-error">
                     <div>⚠ {polyError}</div>
@@ -806,7 +795,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                   </div>
                 )}
 
-                {/* Polyglot content */}
                 {polyMode && polyState === 'done' && (
                   <div
                     className={`ch-body ch-anim${ttsActive ? ' tts-cursor tts-poly' : ''}`}
@@ -815,7 +803,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                   />
                 )}
 
-                {/* Normal content */}
                 {!polyMode && (
                   <div
                     className={`ch-body ch-anim${ttsActive ? ' tts-cursor' : ''}`}
@@ -831,38 +818,31 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
           </div>
         </div>
 
-        {/* Bottom navigation */}
-        {viewMode === 'pages' ? (
-          <div className="bottombar">
-            <button className="nav-btn" onClick={prevPage} disabled={currentPage === 0}>
-              ← <span>Strona</span>
-            </button>
-            <div className="prog-wrap">
-              <div className="prog-lbl">Strona {currentPage + 1} / {totalPages}</div>
-              <div className="prog-track">
-                <div className="prog-fill" style={{ width: `${((currentPage + 1) / totalPages) * 100}%` }} />
-              </div>
+        {/* Bottom navigation — always page mode */}
+        <div className="bottombar">
+          <button
+            className="nav-btn"
+            onClick={() => currentPage === 0 ? navigate(chapterIdx - 1) : prevPage()}
+            disabled={currentPage === 0 && chapterIdx === 0}
+          >
+            ←
+          </button>
+          <div className="prog-wrap">
+            <div className="prog-lbl">
+              {chapterIdx + 1}/{chapterCount} · {currentPage + 1}/{totalPages}
             </div>
-            <button className="nav-btn" onClick={nextPage} disabled={currentPage >= totalPages - 1}>
-              <span>Strona</span> →
-            </button>
-          </div>
-        ) : (
-          <div className="bottombar">
-            <button className="nav-btn" onClick={() => navigate(chapterIdx - 1)} disabled={chapterIdx === 0}>
-              ← <span>Poprzedni</span>
-            </button>
-            <div className="prog-wrap">
-              <div className="prog-lbl">{chapterIdx + 1} / {chapterCount}</div>
-              <div className="prog-track">
-                <div className="prog-fill" style={{ width: progressPct }} />
-              </div>
+            <div className="prog-track">
+              <div className="prog-fill" style={{ width: progressPct }} />
             </div>
-            <button className="nav-btn" onClick={() => navigate(chapterIdx + 1)} disabled={chapterIdx >= chapterCount - 1}>
-              <span>Następny</span> →
-            </button>
           </div>
-        )}
+          <button
+            className="nav-btn"
+            onClick={() => currentPage >= totalPages - 1 ? navigate(chapterIdx + 1) : nextPage()}
+            disabled={currentPage >= totalPages - 1 && chapterIdx >= chapterCount - 1}
+          >
+            →
+          </button>
+        </div>
       </div>
 
       <button className="sb-tog" onClick={() => setSidebarOpen(s => !s)} title="Spis treści">☰</button>
