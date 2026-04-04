@@ -102,8 +102,8 @@ export async function getReadingPosition(bookId) {
   return db.readingPositions.get(bookId);
 }
 
-export async function saveReadingPosition(bookId, chapterIndex, scrollTop = 0, polyMode = false) {
-  await db.readingPositions.put({ bookId, chapterIndex, scrollTop, polyMode, updatedAt: Date.now() });
+export async function saveReadingPosition(bookId, chapterIndex, scrollTop = 0, polyMode = false, sentenceIdx = -1) {
+  await db.readingPositions.put({ bookId, chapterIndex, scrollTop, polyMode, sentenceIdx, updatedAt: Date.now() });
 }
 
 /** Returns chapters sorted by index, each with hasPoly flag for given targetLang. */

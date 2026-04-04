@@ -17,7 +17,7 @@ function splitSentences(text) {
   return parts.map(s => s.trim()).filter(s => s.length > 1);
 }
 
-function sentencesOrFull(text) {
+export function sentencesOrFull(text) {
   const s = splitSentences(text);
   return s.length > 0 ? s : (text.trim() ? [text.trim()] : []);
 }

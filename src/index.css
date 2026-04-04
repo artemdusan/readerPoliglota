@@ -741,10 +741,16 @@ html, body, #root {
 .poly-confirm-btns { display: flex; gap: 10px; margin-top: 4px; }
 .poly-loading-hint { font-size: 12px; color: var(--txt-3); letter-spacing: .06em; }
 
+/* ════════════════ PAGE MODE ════════════════ */
+
+.ch-scroll.ch-pages { overflow: hidden; }
+
 /* ════════════════ TTS CURSOR + HIGHLIGHT ════════════════ */
 
 .ch-body.tts-cursor p { cursor: pointer; }
 .ch-body.tts-cursor p:hover { background: rgba(192,144,80,.04); border-radius: 3px; }
+.ch-body.tts-cursor [data-sentence] { cursor: pointer; }
+.ch-body.tts-cursor [data-sentence]:hover { background: rgba(192,144,80,.05); border-radius: 2px; }
 .tts-active-para {
   background: rgba(192,144,80,.10) !important;
   border-radius: 4px;

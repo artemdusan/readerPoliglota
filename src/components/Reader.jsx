@@ -7,7 +7,7 @@ import {
 import { generatePolyglot } from '../lib/polyglotApi';
 import { PROVIDERS } from '../hooks/useSettings';
 import { parsePolyglotHtml } from '../lib/polyglotParser';
-import { buildTTSSegments, buildPlainTTSSegments, buildTTSFromHtmlParas, getLangBCP47 } from '../lib/ttsSegments';
+import { buildTTSSegments, buildPlainTTSSegments, buildTTSFromHtmlParas, getLangBCP47, sentencesOrFull } from '../lib/ttsSegments';
 import { MODEL_PRICING } from '../lib/polyglotApi';
 import { useTTS } from '../hooks/useTTS';
 import TTSBar from './TTSBar';
@@ -34,6 +34,10 @@ function navigableTocItems(toc) {
     seen.add(base);
     return true;
   });
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /* ═══════════════════════════════════════════
@@ -71,16 +75,26 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [fs, setFs]                   = useState(settings.fontSize ?? 19);
 
+  // Page mode
+  const [viewMode, setViewMode]       = useState('scroll'); // 'scroll' | 'pages'
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages]   = useState(1);
+
   // Refs
   const chScrollRef      = useRef(null);
+  const chInnerRef       = useRef(null);
   const animKeyRef       = useRef(0);
   const saveTimerRef     = useRef(null);
-  const genTokenRef      = useRef(0);       // incremented per generation to cancel stale results
-  const tooltipTimerRef  = useRef(null);    // auto-close tooltip timer
-  const openPwRef        = useRef(null);    // currently open .pw element
-  const polyModeRef      = useRef(false);   // kept in sync with polyMode state for save callbacks
-  const posRestoredRef   = useRef(false);   // true once initial reading position has been loaded
-  const activeParagraphRef = useRef(-1);    // data-para index of currently highlighted paragraph
+  const genTokenRef      = useRef(0);
+  const tooltipTimerRef  = useRef(null);
+  const openPwRef        = useRef(null);
+  const polyModeRef      = useRef(false);
+  const posRestoredRef   = useRef(false);
+  const activeParagraphRef = useRef(-1);
+  const activeSentenceRef  = useRef(-1);
+  const pendingPositionRef = useRef(null); // { sentenceIdx, scrollTop } — set before render, consumed by sentence effect
+  const viewModeRef        = useRef('scroll');
+  const currentPageRef     = useRef(0);
 
   /* ── Plain HTML with data-para ids for TTS highlighting ── */
   const plainHtmlWithParaIds = useMemo(() => {
@@ -105,20 +119,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     });
   }, [bookId]);
 
-  /* ── Restore reading position (chapter index only) ── */
-  useEffect(() => {
-    if (!bookId) return;
-    posRestoredRef.current = false; // reset guard when book changes
-    getReadingPosition(bookId).then(pos => {
-      if (pos) setChapterIdx(pos.chapterIndex ?? 0);
-      posRestoredRef.current = true; // allow saves from now on
-    });
-  }, [bookId]);
-
   /* ── Load chapter when index changes ── */
   useEffect(() => {
     if (!bookId) return;
-    genTokenRef.current++;           // invalidate any in-flight generation
+    genTokenRef.current++;
     setChapterLoading(true);
     setPolyMode(false);
     setPolyState('idle');
@@ -129,25 +133,23 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     window.speechSynthesis?.cancel();
     clearTimeout(tooltipTimerRef.current);
     openPwRef.current = null;
+    setCurrentPage(0);
 
     getChapter(bookId, chapterIdx).then(async ch => {
+      // Read position BEFORE triggering re-render to avoid race with sentence effect
+      const pos = await getReadingPosition(bookId);
+      if (pos && pos.chapterIndex === chapterIdx) {
+        pendingPositionRef.current = { sentenceIdx: pos.sentenceIdx ?? -1, scrollTop: pos.scrollTop ?? 0 };
+      } else {
+        pendingPositionRef.current = null;
+      }
+      posRestoredRef.current = true;
+
       setChapter(ch || null);
       setChapterLoading(false);
       animKeyRef.current += 1;
 
-      // Restore scroll — only when this chapter matches the saved position
-      const pos = await getReadingPosition(bookId);
-      if (chScrollRef.current) {
-        if (pos && pos.chapterIndex === chapterIdx && pos.scrollTop > 0) {
-          requestAnimationFrame(() => requestAnimationFrame(() => {
-            if (chScrollRef.current) chScrollRef.current.scrollTop = pos.scrollTop;
-          }));
-        } else {
-          chScrollRef.current.scrollTop = 0;
-        }
-      }
-
-      // Restore polyglot mode if it was active and cache exists for this chapter
+      // Restore polyglot mode if it was active and cache exists
       if (pos?.polyMode && ch?.id && settings.targetLang) {
         const cached = await getPolyglotCache(ch.id, settings.targetLang);
         if (cached) {
@@ -162,29 +164,135 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     });
   }, [bookId, chapterIdx]);
 
+  /* ── Add sentence spans to DOM + restore reading position ── */
+  useEffect(() => {
+    const container = chScrollRef.current;
+    if (!container || !chapter?.id) return;
+
+    if (!polyMode) {
+      let si = 0;
+      for (const para of container.querySelectorAll('[data-para]')) {
+        const text = para.textContent.trim();
+        if (!text) continue;
+        const sentences = sentencesOrFull(text);
+        if (para.querySelector('a')) {
+          // Preserve links — mark paragraph with sentence range instead of splitting
+          para.dataset.sentenceStart = si;
+          si += sentences.length;
+        } else {
+          para.innerHTML = sentences
+            .map(s => `<span data-sentence="${si++}">${escapeHtml(s)}</span>`)
+            .join(' ');
+        }
+      }
+    }
+
+    // Restore saved position
+    const pos = pendingPositionRef.current;
+    pendingPositionRef.current = null;
+    if (pos) {
+      requestAnimationFrame(() => {
+        if (!container) return;
+        if (!polyMode && pos.sentenceIdx >= 0) {
+          const el = container.querySelector(`[data-sentence="${pos.sentenceIdx}"]`);
+          if (el) { el.scrollIntoView({ block: 'start' }); return; }
+        }
+        if (pos.scrollTop > 0) container.scrollTop = pos.scrollTop;
+      });
+    }
+  }, [chapter?.id, polyMode]);
+
+  /* ── Page mode: calculate total pages ── */
+  useEffect(() => {
+    if (viewMode !== 'pages' || !chInnerRef.current || !chScrollRef.current) return;
+    requestAnimationFrame(() => {
+      if (!chInnerRef.current || !chScrollRef.current) return;
+      const ph = chScrollRef.current.clientHeight;
+      setTotalPages(Math.max(1, Math.ceil(chInnerRef.current.scrollHeight / ph)));
+    });
+  }, [viewMode, chapter?.id]);
+
+  /* ── Page mode: apply translateY transform to inner div ── */
+  useEffect(() => {
+    const inner = chInnerRef.current;
+    if (!inner) return;
+    if (viewMode === 'pages') {
+      const ph = chScrollRef.current?.clientHeight || 0;
+      inner.style.transform = `translateY(-${currentPage * ph}px)`;
+      inner.style.transition = currentPage === 0 ? '' : 'transform 0.28s ease';
+      currentPageRef.current = currentPage;
+    } else {
+      inner.style.transform = '';
+      inner.style.transition = '';
+      currentPageRef.current = 0;
+    }
+  }, [viewMode, currentPage, chapter?.id]);
+
+  /* ── Keep viewModeRef in sync ── */
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+    // Reset currentPage to 0 when leaving page mode
+    if (viewMode === 'scroll') setCurrentPage(0);
+  }, [viewMode]);
+
   /* ── Keep polyModeRef in sync and save when polyMode changes ── */
   useEffect(() => {
     polyModeRef.current = polyMode;
     if (!bookId || !posRestoredRef.current) return;
+    const sentenceIdx = getCurrentSentenceIdx();
     const scrollTop = chScrollRef.current?.scrollTop ?? 0;
-    saveReadingPosition(bookId, chapterIdx, scrollTop, polyMode);
+    saveReadingPosition(bookId, chapterIdx, scrollTop, polyMode, sentenceIdx);
   }, [bookId, chapterIdx, polyMode]);
 
   /* ── Save reading position (debounced) ── */
   const persistPosition = useCallback(() => {
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
+      const sentenceIdx = getCurrentSentenceIdx();
       const scrollTop = chScrollRef.current?.scrollTop ?? 0;
-      saveReadingPosition(bookId, chapterIdx, scrollTop, polyModeRef.current);
+      saveReadingPosition(bookId, chapterIdx, scrollTop, polyModeRef.current, sentenceIdx);
     }, 800);
   }, [bookId, chapterIdx]);
 
-  /* ── TTS paragraph highlight + auto-scroll ── */
+  function getCurrentSentenceIdx() {
+    if (polyModeRef.current) return -1;
+    const container = chScrollRef.current;
+    if (!container) return -1;
+
+    if (viewModeRef.current === 'pages') {
+      const ph = container.clientHeight;
+      const pageTop = currentPageRef.current * ph;
+      for (const el of container.querySelectorAll('[data-sentence]')) {
+        if (el.offsetTop >= pageTop) return parseInt(el.dataset.sentence, 10);
+      }
+      for (const el of container.querySelectorAll('[data-sentence-start]')) {
+        if (el.offsetTop >= pageTop) return parseInt(el.dataset.sentenceStart, 10);
+      }
+      return -1;
+    }
+
+    // Scroll mode: find topmost visible sentence
+    const containerTop = container.getBoundingClientRect().top;
+    for (const el of container.querySelectorAll('[data-sentence]')) {
+      if (el.getBoundingClientRect().bottom >= containerTop) return parseInt(el.dataset.sentence, 10);
+    }
+    for (const el of container.querySelectorAll('[data-sentence-start]')) {
+      if (el.getBoundingClientRect().bottom >= containerTop) return parseInt(el.dataset.sentenceStart, 10);
+    }
+    return -1;
+  }
+
+  /* ── TTS sentence highlight + auto-scroll / page flip ── */
   useEffect(() => {
     const container = chScrollRef.current;
     if (!container) return;
 
     const clearHighlight = () => {
+      if (activeSentenceRef.current >= 0) {
+        container.querySelector(`[data-sentence="${activeSentenceRef.current}"]`)
+          ?.classList.remove('tts-active-para');
+        activeSentenceRef.current = -1;
+      }
       if (activeParagraphRef.current >= 0) {
         container.querySelector(`[data-para="${activeParagraphRef.current}"]`)
           ?.classList.remove('tts-active-para');
@@ -194,27 +302,50 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
     if (!ttsActive) { clearHighlight(); return; }
 
-    const paraStarts = ttsParaStartsRef.current;
-    if (!paraStarts?.length) return;
     const segIdx = tts.progress.idx;
 
-    // Find largest paraStarts index ≤ segIdx
-    let pi = 0;
-    for (let i = 0; i < paraStarts.length; i++) {
-      if (paraStarts[i] <= segIdx) pi = i;
-      else break;
-    }
-
-    if (pi === activeParagraphRef.current) return;
-    clearHighlight();
-
-    const el = container.querySelector(`[data-para="${pi}"]`);
-    if (el) {
+    if (!polyMode) {
+      // Plain mode: TTS segment index = sentence index
+      let el = container.querySelector(`[data-sentence="${segIdx}"]`);
+      if (!el) {
+        // Fallback: link-containing paragraph (has data-sentence-start)
+        const paras = [...container.querySelectorAll('[data-sentence-start]')];
+        for (let i = paras.length - 1; i >= 0; i--) {
+          if (parseInt(paras[i].dataset.sentenceStart) <= segIdx) { el = paras[i]; break; }
+        }
+      }
+      if (!el || activeSentenceRef.current === segIdx) return;
+      clearHighlight();
       el.classList.add('tts-active-para');
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      activeParagraphRef.current = pi;
+      activeSentenceRef.current = segIdx;
+
+      // Auto-scroll or page flip
+      if (viewModeRef.current === 'pages') {
+        const ph = container.clientHeight;
+        const page = Math.floor(el.offsetTop / ph);
+        if (page !== currentPageRef.current) setCurrentPage(page);
+      } else {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    } else {
+      // Polyglot mode: paragraph-level highlight
+      const paraStarts = ttsParaStartsRef.current;
+      if (!paraStarts?.length) return;
+      let pi = 0;
+      for (let i = 0; i < paraStarts.length; i++) {
+        if (paraStarts[i] <= segIdx) pi = i;
+        else break;
+      }
+      if (pi === activeParagraphRef.current) return;
+      clearHighlight();
+      const el = container.querySelector(`[data-para="${pi}"]`);
+      if (el) {
+        el.classList.add('tts-active-para');
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        activeParagraphRef.current = pi;
+      }
     }
-  }, [ttsActive, tts.progress.idx]);
+  }, [ttsActive, polyMode, tts.progress.idx]);
 
   /* ── TTS word highlight (polyglot mode only) ── */
   useEffect(() => {
@@ -251,8 +382,13 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   useEffect(() => {
     function onKey(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      if (e.key === 'ArrowLeft'  && chapterIdx > 0) navigate(chapterIdx - 1);
-      if (e.key === 'ArrowRight' && chapterIdx < chapterCount - 1) navigate(chapterIdx + 1);
+      if (viewModeRef.current === 'pages') {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); prevPage(); }
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); nextPage(); }
+      } else {
+        if (e.key === 'ArrowLeft'  && chapterIdx > 0) navigate(chapterIdx - 1);
+        if (e.key === 'ArrowRight' && chapterIdx < chapterCount - 1) navigate(chapterIdx + 1);
+      }
       if (e.key === 'Escape') setSidebarOpen(false);
     }
     window.addEventListener('keydown', onKey);
@@ -262,6 +398,14 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   function navigate(idx) {
     persistPosition();
     setChapterIdx(Math.max(0, Math.min(idx, chapterCount - 1)));
+  }
+
+  function prevPage() {
+    setCurrentPage(p => Math.max(0, p - 1));
+  }
+
+  function nextPage() {
+    setCurrentPage(p => Math.min(totalPages - 1, p + 1));
   }
 
   /* ─────────────────────────────────────────
@@ -277,7 +421,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     if (!settings.apiKey) { onOpenSettings(); return; }
     if (!chapter?.text) return;
 
-    // Check cache first
     const cached = await getPolyglotCache(chapter.id, settings.targetLang);
     if (cached) {
       const { html, count } = parsePolyglotHtml(cached.rawText);
@@ -289,7 +432,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       return;
     }
 
-    // No cache — ask user before generating
     setPolyMode(true);
     setPolyState('confirm');
   }
@@ -311,7 +453,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         }
       );
 
-      if (token !== genTokenRef.current) return; // chapter changed during generation — result saved to cache but UI not updated
+      if (token !== genTokenRef.current) return;
 
       await savePolyglotCache(chapter.id, settings.targetLang, rawText);
       const { html, count } = parsePolyglotHtml(rawText);
@@ -331,14 +473,12 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   ───────────────────────────────────────── */
 
   function openTooltip(pw) {
-    // Close previously open one
     if (openPwRef.current && openPwRef.current !== pw) {
       openPwRef.current.classList.remove('open');
     }
     clearTimeout(tooltipTimerRef.current);
 
     if (pw.classList.contains('open') && openPwRef.current === pw) {
-      // Same word clicked again — close immediately
       pw.classList.remove('open');
       openPwRef.current = null;
       return;
@@ -356,19 +496,16 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
      EPUB INTERNAL LINK RESOLVER
   ───────────────────────────────────────── */
 
-  /** Resolve an epub href (possibly relative or absolute localhost) to a root-relative chapter path. */
   function resolveEpubHref(linkHref) {
     if (!linkHref) return null;
-    // Absolute localhost URL — extract path portion
     if (/^https?:\/\/localhost/.test(linkHref)) {
       try { linkHref = new URL(linkHref).pathname.slice(1); } catch { return null; }
     } else if (/^https?:\/\//.test(linkHref) || linkHref.startsWith('mailto:')) {
-      return null; // true external link — don't intercept
+      return null;
     }
     const withoutAnchor = linkHref.split('#')[0];
     if (!withoutAnchor) return null;
     if (withoutAnchor.startsWith('/')) return withoutAnchor.slice(1);
-    // Relative — resolve against current chapter's directory
     const dir = chapter?.href?.includes('/') ? chapter.href.slice(0, chapter.href.lastIndexOf('/') + 1) : '';
     const parts = (dir + withoutAnchor).split('/');
     const out = [];
@@ -384,7 +521,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   ───────────────────────────────────────── */
 
   function handleContentClick(e) {
-    // Internal EPUB navigation links
     const anchor = e.target.closest('a[href]');
     if (anchor) {
       const target = resolveEpubHref(anchor.getAttribute('href') || '');
@@ -392,14 +528,12 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         e.preventDefault();
         goToHref(target);
       }
-      // external links: don't preventDefault, let browser open them
       return;
     }
 
     const pw = e.target.closest('.pw');
     if (pw) {
       openTooltip(pw);
-      // If TTS active, jump to the paragraph containing this word
       if (ttsActive) {
         const para = pw.closest('[data-para]');
         if (para) {
@@ -411,8 +545,22 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       return;
     }
 
-    // Click on plain paragraph — jump TTS
-    if (ttsActive) {
+    if (ttsActive && !polyMode) {
+      // Jump to clicked sentence
+      const sentenceEl = e.target.closest('[data-sentence]');
+      if (sentenceEl) {
+        tts.jumpTo(parseInt(sentenceEl.dataset.sentence, 10));
+        return;
+      }
+      // Fallback for link-containing paragraphs
+      const para = e.target.closest('[data-sentence-start]');
+      if (para) {
+        tts.jumpTo(parseInt(para.dataset.sentenceStart, 10));
+        return;
+      }
+    }
+
+    if (ttsActive && polyMode) {
       const para = e.target.closest('[data-para]');
       if (para) {
         const pi = parseInt(para.dataset.para, 10);
@@ -541,6 +689,14 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
               {polyState === 'loading' && ' …'}
             </button>
             <div className="tb-sep" />
+            <button
+              className={`ctl ${viewMode === 'pages' ? 'ctl-active' : ''}`}
+              onClick={() => setViewMode(v => v === 'scroll' ? 'pages' : 'scroll')}
+              title="Tryb stron"
+            >
+              Strony
+            </button>
+            <div className="tb-sep" />
             <button className="ctl" onClick={() => setFs(f => Math.max(13, f - 1))}>A−</button>
             <span className="fs-val">{fs}</span>
             <button className="ctl" onClick={() => setFs(f => Math.min(30, f + 1))}>A+</button>
@@ -576,8 +732,12 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         )}
 
         {/* Chapter scroll area */}
-        <div className="ch-scroll" ref={chScrollRef} onScroll={persistPosition}>
-          <div className="ch-inner" key={animKeyRef.current}>
+        <div
+          className={`ch-scroll${viewMode === 'pages' ? ' ch-pages' : ''}`}
+          ref={chScrollRef}
+          onScroll={viewMode === 'scroll' ? persistPosition : undefined}
+        >
+          <div className="ch-inner" ref={chInnerRef} key={animKeyRef.current}>
 
             {chapterLoading ? (
               <div className="poly-loading"><div className="spin-ring" /></div>
@@ -670,20 +830,37 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         </div>
 
         {/* Bottom navigation */}
-        <div className="bottombar">
-          <button className="nav-btn" onClick={() => navigate(chapterIdx - 1)} disabled={chapterIdx === 0}>
-            ← <span>Poprzedni</span>
-          </button>
-          <div className="prog-wrap">
-            <div className="prog-lbl">{chapterIdx + 1} / {chapterCount}</div>
-            <div className="prog-track">
-              <div className="prog-fill" style={{ width: progressPct }} />
+        {viewMode === 'pages' ? (
+          <div className="bottombar">
+            <button className="nav-btn" onClick={prevPage} disabled={currentPage === 0}>
+              ← <span>Strona</span>
+            </button>
+            <div className="prog-wrap">
+              <div className="prog-lbl">Strona {currentPage + 1} / {totalPages}</div>
+              <div className="prog-track">
+                <div className="prog-fill" style={{ width: `${((currentPage + 1) / totalPages) * 100}%` }} />
+              </div>
             </div>
+            <button className="nav-btn" onClick={nextPage} disabled={currentPage >= totalPages - 1}>
+              <span>Strona</span> →
+            </button>
           </div>
-          <button className="nav-btn" onClick={() => navigate(chapterIdx + 1)} disabled={chapterIdx >= chapterCount - 1}>
-            <span>Następny</span> →
-          </button>
-        </div>
+        ) : (
+          <div className="bottombar">
+            <button className="nav-btn" onClick={() => navigate(chapterIdx - 1)} disabled={chapterIdx === 0}>
+              ← <span>Poprzedni</span>
+            </button>
+            <div className="prog-wrap">
+              <div className="prog-lbl">{chapterIdx + 1} / {chapterCount}</div>
+              <div className="prog-track">
+                <div className="prog-fill" style={{ width: progressPct }} />
+              </div>
+            </div>
+            <button className="nav-btn" onClick={() => navigate(chapterIdx + 1)} disabled={chapterIdx >= chapterCount - 1}>
+              <span>Następny</span> →
+            </button>
+          </div>
+        )}
       </div>
 
       <button className="sb-tog" onClick={() => setSidebarOpen(s => !s)} title="Spis treści">☰</button>
