@@ -11,6 +11,7 @@ import { buildTTSSegments, buildPlainTTSSegments, buildTTSFromHtmlParas, getLang
 import { MODEL_PRICING } from '../lib/polyglotApi';
 import { useTTS } from '../hooks/useTTS';
 import TTSBar from './TTSBar';
+import { scheduleBookSync } from '../sync/syncManager';
 
 /* ═══════════════════════════════════════════
    Helpers
@@ -251,6 +252,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       const sentenceIdx = getCurrentSentenceIdx();
       const scrollTop = chScrollRef.current?.scrollTop ?? 0;
       saveReadingPosition(bookId, chapterIdx, scrollTop, polyModeRef.current, sentenceIdx);
+      scheduleBookSync(bookId);
     }, 800);
   }, [bookId, chapterIdx]);
 

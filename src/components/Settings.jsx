@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react';
 import { LANGUAGES, PROVIDERS } from '../hooks/useSettings';
+import { isSignedIn, onAuthChange, signIn, signOut } from '../sync/googleAuth';
 
 export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, onClose }) {
-  const [apiKey, setApiKey]   = useState(settings.apiKey || '');
-  const [showKey, setShowKey] = useState(false);
-  const [saved, setSaved]     = useState(false);
+  const [apiKey, setApiKey]         = useState(settings.apiKey || '');
+  const [showKey, setShowKey]       = useState(false);
+  const [saved, setSaved]           = useState(false);
+  const [driveConnected, setDriveConnected] = useState(isSignedIn());
+  const driveEnabled = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+  useEffect(() => {
+    return onAuthChange(setDriveConnected);
+  }, []);
 
   const currentProvider = PROVIDERS.find(p => p.id === settings.provider) ?? PROVIDERS[0];
 
@@ -26,7 +33,7 @@ export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, 
     setTimeout(() => setSaved(false), 2000);
   }
 
-  function handleOverlayClick(e) {
+function handleOverlayClick(e) {
     if (e.target === e.currentTarget) onClose();
   }
 
@@ -136,6 +143,22 @@ export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, 
               </span>
             </div>
           </div>
+
+          {/* Google Drive Sync */}
+          {driveEnabled && (
+            <div className="form-group">
+              <label className="form-label">Synchronizacja Google Drive</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13, color: driveConnected ? 'var(--gold)' : 'var(--txt-2)' }}>
+                  {driveConnected ? '● Połączono z Drive' : '○ Niepołączono'}
+                </span>
+                {driveConnected
+                  ? <button className="btn-ghost" onClick={signOut}>Rozłącz</button>
+                  : <button className="btn-ghost" onClick={signIn}>Połącz z Google Drive</button>
+                }
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
