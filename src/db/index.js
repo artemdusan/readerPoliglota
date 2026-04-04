@@ -106,6 +106,24 @@ export async function saveReadingPosition(bookId, chapterIndex, scrollTop = 0, p
   await db.readingPositions.put({ bookId, chapterIndex, scrollTop, polyMode, sentenceIdx, updatedAt: Date.now() });
 }
 
+export async function getBookWithChapters(bookId) {
+  const book = await db.books.get(bookId);
+  if (!book) return null;
+  const chapters = await db.chapters.where('bookId').equals(bookId).sortBy('chapterIndex');
+  return { ...book, chapters };
+}
+
+// Restore a book from Drive (uses original IDs, skips if already exists)
+export async function restoreBook(bookData) {
+  const { chapters = [], ...book } = bookData;
+  const exists = await db.books.get(book.id);
+  if (exists) return;
+  await db.transaction('rw', db.books, db.chapters, async () => {
+    await db.books.add(book);
+    if (chapters.length) await db.chapters.bulkAdd(chapters);
+  });
+}
+
 /** Returns chapters sorted by index, each with hasPoly flag for given targetLang. */
 export async function getBookChaptersWithCacheStatus(bookId, targetLang) {
   const chapters = await db.chapters

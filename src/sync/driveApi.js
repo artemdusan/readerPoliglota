@@ -10,8 +10,10 @@ async function apiFetch(url, opts = {}) {
   return resp.json();
 }
 
-export async function findProgressFile(bookId, token) {
-  const q = encodeURIComponent(`name='progress_${bookId}.json' and trashed=false`);
+// --- Generic file helpers ---
+
+export async function findFile(name, token) {
+  const q = encodeURIComponent(`name='${name}' and trashed=false`);
   const data = await apiFetch(
     `${BASE}/files?spaces=appDataFolder&q=${q}&fields=files(id,name)`,
     { headers: { Authorization: `Bearer ${token}` } }
@@ -19,42 +21,20 @@ export async function findProgressFile(bookId, token) {
   return data.files?.[0] ?? null;
 }
 
-export async function listAllProgressFiles(token) {
-  const q = encodeURIComponent("name contains 'progress_' and trashed=false");
-  const data = await apiFetch(
-    `${BASE}/files?spaces=appDataFolder&q=${q}&fields=files(id,name)&pageSize=1000`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  return data.files ?? [];
-}
-
-export async function downloadFile(fileId, token) {
-  const resp = await fetch(`${BASE}/files/${fileId}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!resp.ok) throw new Error(`Drive download ${resp.status}`);
-  return resp.json();
-}
-
-export async function upsertProgressFile(bookId, data, token) {
+export async function upsertFile(name, data, token) {
   const body = JSON.stringify(data);
-  const existing = await findProgressFile(bookId, token);
+  const existing = await findFile(name, token);
 
   if (existing) {
-    // Update content only (no metadata change needed)
-    const resp = await fetch(
-      `${UPLOAD_BASE}/files/${existing.id}?uploadType=media`,
-      {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body,
-      }
-    );
+    const resp = await fetch(`${UPLOAD_BASE}/files/${existing.id}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body,
+    });
     if (!resp.ok) throw new Error(`Drive patch ${resp.status}`);
   } else {
-    // Create new file with multipart upload
     const boundary = 'vr_boundary';
-    const meta = JSON.stringify({ name: `progress_${bookId}.json`, parents: ['appDataFolder'] });
+    const meta = JSON.stringify({ name, parents: ['appDataFolder'] });
     const multipart = [
       `--${boundary}`,
       'Content-Type: application/json; charset=UTF-8',
@@ -77,4 +57,42 @@ export async function upsertProgressFile(bookId, data, token) {
     });
     if (!resp.ok) throw new Error(`Drive create ${resp.status}`);
   }
+}
+
+export async function downloadFile(fileId, token) {
+  const resp = await fetch(`${BASE}/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) throw new Error(`Drive download ${resp.status}`);
+  return resp.json();
+}
+
+// --- Progress files ---
+
+export async function findProgressFile(bookId, token) {
+  return findFile(`progress_${bookId}.json`, token);
+}
+
+export async function upsertProgressFile(bookId, data, token) {
+  return upsertFile(`progress_${bookId}.json`, data, token);
+}
+
+export async function listAllProgressFiles(token) {
+  const q = encodeURIComponent("name contains 'progress_' and trashed=false");
+  const data = await apiFetch(
+    `${BASE}/files?spaces=appDataFolder&q=${q}&fields=files(id,name)&pageSize=1000`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return data.files ?? [];
+}
+
+// --- Book files ---
+
+export async function listAllBookFiles(token) {
+  const q = encodeURIComponent("name contains 'book_' and trashed=false");
+  const data = await apiFetch(
+    `${BASE}/files?spaces=appDataFolder&q=${q}&fields=files(id,name)&pageSize=1000`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return data.files ?? [];
 }
