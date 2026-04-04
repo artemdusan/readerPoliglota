@@ -1,0 +1,13 @@
+#!/bin/sh
+# Auto-bump patch version after every merge
+node -e "
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const parts = pkg.version.split('.').map(Number);
+parts[2]++;
+pkg.version = parts.join('.');
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+console.log('[post-merge] Version → ' + pkg.version);
+"
+git add package.json
+git commit -m "chore: bump version to $(node -e "process.stdout.write(require('./package.json').version)")"
