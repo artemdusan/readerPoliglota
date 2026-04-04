@@ -206,6 +206,7 @@ export async function syncAll(onProgress) {
 
     if (manifestChanged) await pushManifest(remoteManifest, token);
 
+    window.dispatchEvent(new CustomEvent('vocabapp:synced'));
     return { synced, error: null };
   } catch (err) {
     console.warn('[Drive sync] syncAll failed:', err.message);
