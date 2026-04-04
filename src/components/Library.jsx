@@ -3,6 +3,7 @@ import { EpubParser } from '../lib/epubParser';
 import { getActiveBooks, saveBook, softDeleteBook, getReadingPosition } from '../db';
 import BatchGenModal from './BatchGenModal';
 import { version } from '../../package.json';
+import { uploadBook } from '../sync/syncManager';
 
 export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const [books, setBooks]       = useState([]);
@@ -40,6 +41,7 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
       const parsed = await EpubParser.parse(file);
       if (!parsed.chapters.length) throw new Error('EPUB nie zawiera żadnych rozdziałów.');
       const bookId = await saveBook(parsed, parsed.chapters);
+      uploadBook(bookId); // fire-and-forget — upload to Drive in background
       await loadBooks();
       onOpenBook(bookId);
     } catch (err) {

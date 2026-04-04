@@ -1,6 +1,10 @@
-import { db, saveReadingPosition } from '../db';
+import { db, saveReadingPosition, getBookWithChapters, restoreBook } from '../db';
 import { getAccessToken } from './googleAuth';
-import { listAllProgressFiles, downloadFile, upsertProgressFile, findProgressFile } from './driveApi';
+import {
+  listAllProgressFiles, listAllBookFiles,
+  downloadFile, upsertProgressFile, findProgressFile,
+  upsertFile,
+} from './driveApi';
 
 let _lastSyncAt = 0;
 let _bookSyncTimers = {};
@@ -55,9 +59,22 @@ export async function syncBook(bookId) {
   }
 }
 
-// Full sync — merge all remote progress files with local Dexie state
-// Returns { synced: number, error: string|null }
-// onProgress(done, total) called after each file
+// Upload a book (metadata + chapters) to Drive — call after adding a new book locally
+export async function uploadBook(bookId) {
+  let token;
+  try { token = await getAccessToken(); } catch { return; }
+
+  try {
+    const bookData = await getBookWithChapters(bookId);
+    if (!bookData) return;
+    await upsertFile(`book_${bookId}.json`, bookData, token);
+  } catch (err) {
+    console.warn('[Drive sync] uploadBook failed:', err.message);
+  }
+}
+
+// Full sync — merge all remote progress files + download missing books
+// onProgress(done, total) called after each item
 export async function syncAll(onProgress) {
   let token;
   try { token = await getAccessToken(); } catch { return { synced: 0, error: 'Brak autoryzacji' }; }
@@ -65,24 +82,36 @@ export async function syncAll(onProgress) {
   _lastSyncAt = Date.now();
 
   try {
-    const [remoteFiles, localPositions] = await Promise.all([
+    const [remoteProgressFiles, remoteBookFiles, localPositions, localBooks] = await Promise.all([
       listAllProgressFiles(token),
+      listAllBookFiles(token),
       db.readingPositions.toArray(),
+      db.books.toArray(),
     ]);
 
-    const localMap = Object.fromEntries(localPositions.map(p => [p.bookId, p]));
-    const localOnly = Object.values(localMap).filter(l => !remoteFiles.find(
+    const localPosMap = Object.fromEntries(localPositions.map(p => [p.bookId, p]));
+    const localBookIds = new Set(localBooks.map(b => b.id));
+
+    // Find remote books missing locally
+    const missingBooks = remoteBookFiles.filter(rf => {
+      const bookId = rf.name.replace(/^book_/, '').replace(/\.json$/, '');
+      return !localBookIds.has(bookId);
+    });
+
+    // Find local positions with no remote file
+    const localOnlyPositions = localPositions.filter(l => !remoteProgressFiles.find(
       rf => rf.name === `progress_${l.bookId}.json`
     ));
-    const total = remoteFiles.length + localOnly.length;
-    let synced = 0;
 
+    const total = remoteProgressFiles.length + localOnlyPositions.length + missingBooks.length;
+    let synced = 0;
     onProgress?.(0, total);
 
-    for (const rf of remoteFiles) {
+    // Sync reading positions
+    for (const rf of remoteProgressFiles) {
       const bookId = rf.name.replace(/^progress_/, '').replace(/\.json$/, '');
       const remote = await downloadFile(rf.id, token);
-      const local = localMap[bookId];
+      const local = localPosMap[bookId];
 
       if (!local || remote.updatedAt > (local.updatedAt ?? 0)) {
         await applyRemote(remote);
@@ -90,14 +119,22 @@ export async function syncAll(onProgress) {
         await upsertProgressFile(bookId, toRemoteData(local), token);
       }
 
-      delete localMap[bookId];
+      delete localPosMap[bookId];
       synced++;
       onProgress?.(synced, total);
     }
 
     // Upload local positions that have no remote file yet
-    for (const local of localOnly) {
+    for (const local of localOnlyPositions) {
       await upsertProgressFile(local.bookId, toRemoteData(local), token);
+      synced++;
+      onProgress?.(synced, total);
+    }
+
+    // Download books that exist remotely but not locally
+    for (const rf of missingBooks) {
+      const bookData = await downloadFile(rf.id, token);
+      await restoreBook(bookData);
       synced++;
       onProgress?.(synced, total);
     }
