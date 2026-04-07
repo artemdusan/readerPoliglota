@@ -213,6 +213,7 @@ async function handleDeleteBook(request, env, userId, bookId) {
   await env.DB.prepare(
     'UPDATE book_manifest SET deleted_at = ? WHERE user_id = ? AND book_id = ?',
   ).bind(deletedAt || Date.now(), userId, bookId).run();
+  await env.vocabapp_books.delete(`${userId}/${bookId}.json`);
   return json({ ok: true });
 }
 

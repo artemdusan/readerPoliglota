@@ -14,6 +14,10 @@ export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, 
   const [authWorking, setAuthWorking]   = useState(false);
   const [syncStatus, setSyncStatus]     = useState(null); // null | 'syncing' | { synced, error }
   const [syncProgress, setSyncProgress] = useState(null); // null | { done, total }
+  const [lastSync, setLastSync]         = useState(() => {
+    const v = localStorage.getItem('vocabapp:lastSync');
+    return v ? Number(v) : null;
+  });
 
   useEffect(() => {
     return onAuthChange(setCfConnected);
@@ -41,7 +45,14 @@ export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, 
     const result = await syncAll((done, total) => setSyncProgress({ done, total }));
     setSyncStatus(result);
     setSyncProgress(null);
-    setTimeout(() => setSyncStatus(null), 5000);
+    if (result.lastSync) setLastSync(result.lastSync);
+    setTimeout(() => setSyncStatus(null), 8000);
+  }
+
+  function formatLastSync(ts) {
+    if (!ts) return null;
+    const d = new Date(ts);
+    return d.toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
   }
 
   function handleOverlayClick(e) {
@@ -93,8 +104,13 @@ export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, 
                   <p style={{ fontSize: 12, marginTop: 6, color: syncStatus.error ? 'var(--err, #e55)' : 'var(--txt-2)' }}>
                     {syncStatus.error
                       ? `Błąd: ${syncStatus.error}`
-                      : `✓ Zsynchronizowano ${syncStatus.synced} ${syncStatus.synced === 1 ? 'plik' : 'pliki/plików'}`
+                      : `✓ Zsynchronizowano ${syncStatus.synced} ${syncStatus.synced === 1 ? 'plik' : 'pliki/plików'} · ↑ ${syncStatus.sentMB} MB · ↓ ${syncStatus.receivedMB} MB`
                     }
+                  </p>
+                )}
+                {lastSync && (
+                  <p style={{ fontSize: 11, color: 'var(--txt-2)', marginTop: 4 }}>
+                    Ostatni sync: {formatLastSync(lastSync)}
                   </p>
                 )}
               </>

@@ -8,9 +8,11 @@ const WORKER_URL = import.meta.env.VITE_WORKER_URL ?? '';
 
 // ─── Internal fetch wrapper ───────────────────────────────────────────────────
 
-async function apiFetch(path, opts = {}) {
+async function apiFetch(path, opts = {}, stats = null) {
   const token = getToken();
   if (!token) throw Object.assign(new Error('Brak autoryzacji'), { code: 'not_logged_in' });
+
+  if (stats && opts.body) stats.sent += new TextEncoder().encode(opts.body).length;
 
   const resp = await fetch(`${WORKER_URL}${path}`, {
     ...opts,
@@ -26,7 +28,9 @@ async function apiFetch(path, opts = {}) {
     throw new Error(`Worker ${resp.status}: ${text}`);
   }
 
-  return resp.json();
+  const text = await resp.text();
+  if (stats) stats.received += new TextEncoder().encode(text).length;
+  return JSON.parse(text);
 }
 
 // ─── Reading position helpers ─────────────────────────────────────────────────
@@ -109,10 +113,12 @@ export async function uploadBook(bookId) {
 export async function syncAll(onProgress) {
   if (!getToken()) return { synced: 0, error: 'Brak autoryzacji' };
 
+  const stats = { sent: 0, received: 0 };
+
   try {
     const [remoteManifest, remotePositions, localPositions, allLocalBooks] = await Promise.all([
-      apiFetch('/books'),
-      apiFetch('/progress'),
+      apiFetch('/books', {}, stats),
+      apiFetch('/progress', {}, stats),
       db.readingPositions.toArray(),
       db.books.toArray(), // includes soft-deleted
     ]);
@@ -141,7 +147,7 @@ export async function syncAll(onProgress) {
       if (!local || remote.updatedAt > (local.updatedAt ?? 0)) {
         await applyRemote(remote);
       } else if ((local.updatedAt ?? 0) > remote.updatedAt) {
-        await apiFetch(`/progress/${remote.bookId}`, { method: 'POST', body: JSON.stringify(toRemoteData(local)) });
+        await apiFetch(`/progress/${remote.bookId}`, { method: 'POST', body: JSON.stringify(toRemoteData(local)) }, stats);
       }
       synced++;
       onProgress?.(synced, total);
@@ -149,7 +155,7 @@ export async function syncAll(onProgress) {
 
     // Positions: local-only → push to remote
     for (const local of localOnlyPositions) {
-      await apiFetch(`/progress/${local.bookId}`, { method: 'POST', body: JSON.stringify(toRemoteData(local)) });
+      await apiFetch(`/progress/${local.bookId}`, { method: 'POST', body: JSON.stringify(toRemoteData(local)) }, stats);
       synced++;
       onProgress?.(synced, total);
     }
@@ -165,13 +171,13 @@ export async function syncAll(onProgress) {
         await apiFetch(`/books/${entry.book_id}`, {
           method: 'DELETE',
           body: JSON.stringify({ deletedAt: local.deletedAt }),
-        });
+        }, stats);
       }
     }
 
     // Download books missing locally
     for (const entry of booksToDownload) {
-      const bookData = await apiFetch(`/books/${entry.book_id}`);
+      const bookData = await apiFetch(`/books/${entry.book_id}`, {}, stats);
       await restoreBook(bookData);
       synced++;
       onProgress?.(synced, total);
@@ -181,14 +187,23 @@ export async function syncAll(onProgress) {
     for (const book of booksToUpload) {
       const bookData = await getBookWithChapters(book.id);
       if (bookData) {
-        await apiFetch(`/books/${book.id}`, { method: 'POST', body: JSON.stringify(bookData) });
+        await apiFetch(`/books/${book.id}`, { method: 'POST', body: JSON.stringify(bookData) }, stats);
       }
       synced++;
       onProgress?.(synced, total);
     }
 
+    const now = Date.now();
+    localStorage.setItem('vocabapp:lastSync', now);
+
     window.dispatchEvent(new CustomEvent('vocabapp:synced'));
-    return { synced, error: null };
+    return {
+      synced,
+      error: null,
+      sentMB:     +(stats.sent     / 1_048_576).toFixed(2),
+      receivedMB: +(stats.received / 1_048_576).toFixed(2),
+      lastSync:   now,
+    };
   } catch (err) {
     console.warn('[CF sync] syncAll failed:', err.message);
     return { synced: 0, error: err.message };
