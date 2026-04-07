@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { getBookChaptersWithCacheStatus, savePolyglotCache } from '../db';
 import { generatePolyglot } from '../lib/polyglotApi';
-import { PROVIDERS } from '../hooks/useSettings';
 
 /* Cost table: USD per 1M tokens */
 const MODEL_PRICES = {
@@ -81,15 +80,14 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
     setGenerating(true);
     setErrors({});
     setDone(false);
-    const provider = PROVIDERS.find(p => p.id === settings.provider) ?? PROVIDERS[0];
 
     for (let i = 0; i < toGenerate.length; i++) {
       const ch = toGenerate[i];
       setGenStep({ chIdx: i, total: toGenerate.length, batchDone: 0, batchTotal: 0 });
       try {
-        const rawText = await generatePolyglot(
+        const { rawText } = await generatePolyglot(
           ch.text,
-          { apiKey: settings.apiKey, baseURL: provider.baseURL, targetLangName: settings.targetLangName, model: settings.polyglotModel },
+          { targetLangName: settings.targetLangName, model: settings.polyglotModel },
           (done, total) => setGenStep(s => ({ ...s, batchDone: done, batchTotal: total }))
         );
         await savePolyglotCache(ch.id, settings.targetLang, rawText);

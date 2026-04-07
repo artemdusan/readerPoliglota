@@ -3,20 +3,15 @@ import { useSettings } from './hooks/useSettings';
 import Library from './components/Library';
 import Reader  from './components/Reader';
 import Settings from './components/Settings';
-import { initGoogleAuth } from './sync/googleAuth';
+import { initCfAuth } from './sync/cfAuth';
 
 export default function App() {
   const { settings, updateSetting, updateLanguage, loaded } = useSettings();
   const [view, setView] = useState('library');          // 'library' | 'reader'
   const [currentBookId, setCurrentBookId] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
-  // Init Google Auth once settings are loaded
-  useEffect(() => {
-    if (!loaded) return;
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    if (!clientId) return;
-    initGoogleAuth(clientId);
-  }, [loaded]);
+  // Load CF JWT from Dexie into memory on startup
+  useEffect(() => { initCfAuth(); }, []);
 
   const openBook = useCallback((bookId) => {
     setCurrentBookId(bookId);

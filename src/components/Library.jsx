@@ -3,7 +3,7 @@ import { EpubParser } from '../lib/epubParser';
 import { getActiveBooks, saveBook, softDeleteBook, getReadingPosition } from '../db';
 import BatchGenModal from './BatchGenModal';
 import { version } from '../../package.json';
-import { uploadBook } from '../sync/syncManager';
+import { uploadBook } from '../sync/cfSync';
 
 export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const [books, setBooks]       = useState([]);

@@ -1,4 +1,6 @@
-import OpenAI from 'openai';
+import { getToken } from '../sync/cfAuth';
+
+const WORKER_URL = import.meta.env.VITE_WORKER_URL ?? '';
 
 /** Approximate pricing in USD per 1 000 tokens (input / output) */
 export const MODEL_PRICING = {
@@ -25,21 +27,35 @@ Zasady:
 • Odpowiedz WYŁĄCZNIE przerobioną wersją tekstu — zero komentarzy, wstępu ani podsumowania`;
 }
 
-async function processBatch(batchText, apiKey, langName, model, baseURL) {
-  const client = new OpenAI({ apiKey, baseURL, dangerouslyAllowBrowser: true });
-  const resp = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: buildSystemPrompt(langName) },
-      { role: 'user',   content: batchText },
-    ],
-    temperature: 0.3,
-    max_tokens: 4096,
+async function processBatch(batchText, langName, model) {
+  const token = getToken();
+  if (!token) throw new Error('Nie jesteś zalogowany. Zaloguj się w Ustawieniach.');
+
+  const resp = await fetch(`${WORKER_URL}/translate`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: buildSystemPrompt(langName) },
+        { role: 'user',   content: batchText },
+      ],
+    }),
   });
+
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(body.error || `Worker error ${resp.status}`);
+  }
+
+  const { content, usage } = await resp.json();
   return {
-    text:             resp.choices[0].message.content ?? '',
-    promptTokens:     resp.usage?.prompt_tokens     ?? 0,
-    completionTokens: resp.usage?.completion_tokens ?? 0,
+    text:             content ?? '',
+    promptTokens:     usage?.prompt_tokens     ?? 0,
+    completionTokens: usage?.completion_tokens ?? 0,
   };
 }
 
@@ -49,13 +65,12 @@ async function processBatch(batchText, apiKey, langName, model, baseURL) {
  *
  * @param {string} chapterText  - plain text of the chapter
  * @param {object} opts
- *   @param {string} opts.apiKey
  *   @param {string} opts.targetLangName  - e.g. "hiszpański"
- *   @param {string} [opts.model]         - default "gpt-4o-mini"
+ *   @param {string} [opts.model]         - default "deepseek-chat"
  * @param {(done: number, total: number, cost: number, secs: number) => void} [onProgress]
  * @returns {Promise<{rawText: string, cost: number, elapsedMs: number}>}
  */
-export async function generatePolyglot(chapterText, { apiKey, baseURL, targetLangName, model = 'deepseek-chat' }, onProgress) {
+export async function generatePolyglot(chapterText, { targetLangName, model = 'deepseek-chat' }, onProgress) {
   const paragraphs = chapterText
     .split(/\n\n+/)
     .map(p => p.trim())
@@ -88,7 +103,7 @@ export async function generatePolyglot(chapterText, { apiKey, baseURL, targetLan
 
   for (let i = 0; i < batches.length; i++) {
     onProgress?.(i + 1, batches.length, totalCost, (Date.now() - startTime) / 1000);
-    const { text, promptTokens, completionTokens } = await processBatch(batches[i], apiKey, targetLangName, model, baseURL);
+    const { text, promptTokens, completionTokens } = await processBatch(batches[i], targetLangName, model);
     totalCost += (promptTokens / 1000) * pricing.input + (completionTokens / 1000) * pricing.output;
     results.push(text);
     onProgress?.(i + 1, batches.length, totalCost, (Date.now() - startTime) / 1000);

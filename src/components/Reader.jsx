@@ -5,7 +5,7 @@ import {
   getReadingPosition, saveReadingPosition,
 } from '../db';
 import { generatePolyglot } from '../lib/polyglotApi';
-import { PROVIDERS } from '../hooks/useSettings';
+import { isLoggedIn } from '../sync/cfAuth';
 import { parsePolyglotHtml } from '../lib/polyglotParser';
 import { buildTTSSegments, buildPlainTTSSegments, buildTTSFromHtmlParas, getLangBCP47, sentencesOrFull } from '../lib/ttsSegments';
 import { MODEL_PRICING } from '../lib/polyglotApi';
@@ -433,7 +433,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       return;
     }
 
-    if (!settings.apiKey) { onOpenSettings(); return; }
+    if (!isLoggedIn()) { onOpenSettings(); return; }
     if (!chapter?.text) return;
 
     const cached = await getPolyglotCache(chapter.id, settings.targetLang);
@@ -459,10 +459,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     setPolyError('');
 
     try {
-      const provider = PROVIDERS.find(p => p.id === settings.provider) ?? PROVIDERS[0];
       const { rawText, cost, elapsedMs } = await generatePolyglot(
         chapter.text,
-        { apiKey: settings.apiKey, baseURL: provider.baseURL, targetLangName: settings.targetLangName, model: settings.polyglotModel },
+        { targetLangName: settings.targetLangName, model: settings.polyglotModel },
         (done, total, cost, secs) => {
           if (token === genTokenRef.current) setPolyProgress({ done, total, cost, secs });
         }

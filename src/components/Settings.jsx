@@ -1,39 +1,38 @@
 import { useState, useEffect } from 'react';
 import { LANGUAGES, PROVIDERS } from '../hooks/useSettings';
-import { isSignedIn, onAuthChange, signIn, signOut } from '../sync/googleAuth';
-import { syncAll } from '../sync/syncManager';
+import { isLoggedIn, onAuthChange, login, register, logout } from '../sync/cfAuth';
+import { syncAll } from '../sync/cfSync';
+
+const deepseekProvider = PROVIDERS.find(p => p.id === 'deepseek') ?? PROVIDERS[0];
 
 export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, onClose }) {
-  const [apiKey, setApiKey]         = useState(settings.apiKey || '');
-  const [showKey, setShowKey]       = useState(false);
-  const [saved, setSaved]           = useState(false);
-  const [driveConnected, setDriveConnected] = useState(isSignedIn());
-  const [syncStatus, setSyncStatus] = useState(null); // null | 'syncing' | { synced, error }
+  const [cfConnected, setCfConnected]   = useState(isLoggedIn());
+  const [authMode, setAuthMode]         = useState('login'); // 'login' | 'register'
+  const [email, setEmail]               = useState('');
+  const [password, setPassword]         = useState('');
+  const [authError, setAuthError]       = useState('');
+  const [authWorking, setAuthWorking]   = useState(false);
+  const [syncStatus, setSyncStatus]     = useState(null); // null | 'syncing' | { synced, error }
   const [syncProgress, setSyncProgress] = useState(null); // null | { done, total }
-  const driveEnabled = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   useEffect(() => {
-    return onAuthChange(setDriveConnected);
+    return onAuthChange(setCfConnected);
   }, []);
 
-  const currentProvider = PROVIDERS.find(p => p.id === settings.provider) ?? PROVIDERS[0];
-
-  // Sync if settings change externally
-  useEffect(() => {
-    setApiKey(settings.apiKey || '');
-  }, [settings.apiKey]);
-
-  async function handleProviderChange(providerId) {
-    const p = PROVIDERS.find(pr => pr.id === providerId);
-    if (!p) return;
-    await onUpdateSetting('provider', p.id);
-    await onUpdateSetting('polyglotModel', p.defaultModel);
-  }
-
-  async function handleSaveApiKey() {
-    await onUpdateSetting('apiKey', apiKey.trim());
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  async function handleAuth(e) {
+    e.preventDefault();
+    setAuthWorking(true);
+    setAuthError('');
+    try {
+      if (authMode === 'login') await login(email, password);
+      else await register(email, password);
+      setEmail('');
+      setPassword('');
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthWorking(false);
+    }
   }
 
   async function handleManualSync() {
@@ -59,53 +58,99 @@ export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, 
 
         <div className="modal-body">
 
-          {/* Provider */}
+          {/* Sync / Auth */}
           <div className="form-group">
-            <label className="form-label">Dostawca API</label>
-            <select
-              className="form-select"
-              value={settings.provider ?? 'deepseek'}
-              onChange={e => handleProviderChange(e.target.value)}
-            >
-              {PROVIDERS.map(p => (
-                <option key={p.id} value={p.id}>{p.label}</option>
-              ))}
-            </select>
-          </div>
+            <label className="form-label">Synchronizacja (Cloudflare)</label>
 
-          {/* API Key */}
-          <div className="form-group">
-            <label className="form-label">Klucz API — {currentProvider.label}</label>
-            <p className="form-hint">
-              Klucz jest przechowywany wyłącznie lokalnie w IndexedDB Twojej przeglądarki.
-              Wymagany do trybu poligloty.
-            </p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                type={showKey ? 'text' : 'password'}
-                className={`form-input ${apiKey ? 'has-value' : ''}`}
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                placeholder={currentProvider.keyPlaceholder}
-                spellCheck={false}
-                style={{ flex: 1 }}
-              />
-              <button
-                className="ctl"
-                onClick={() => setShowKey(s => !s)}
-                title={showKey ? 'Ukryj' : 'Pokaż'}
-                style={{ flexShrink: 0 }}
-              >
-                {showKey ? '🙈' : '👁'}
-              </button>
-            </div>
-            <button
-              className={`btn-ghost ${saved ? 'ctl-ok' : ''}`}
-              onClick={handleSaveApiKey}
-              style={{ alignSelf: 'flex-start', marginTop: 4 }}
-            >
-              {saved ? '✓ Zapisano' : 'Zapisz klucz'}
-            </button>
+            {cfConnected ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, color: 'var(--gold)' }}>● Zalogowano</span>
+                  <button className="btn-ghost" onClick={logout}>Wyloguj</button>
+                  <button
+                    className="btn-ghost"
+                    onClick={handleManualSync}
+                    disabled={syncStatus === 'syncing'}
+                  >
+                    {syncStatus === 'syncing' ? '⟳ Synchronizuję…' : '↻ Synchronizuj teraz'}
+                  </button>
+                </div>
+                {syncStatus === 'syncing' && syncProgress && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ height: 4, borderRadius: 2, background: 'var(--bg-2, #333)', overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', borderRadius: 2, background: 'var(--gold)',
+                        width: syncProgress.total > 0 ? `${(syncProgress.done / syncProgress.total) * 100}%` : '0%',
+                        transition: 'width 0.2s ease',
+                      }} />
+                    </div>
+                    <p style={{ fontSize: 11, color: 'var(--txt-2)', marginTop: 4 }}>
+                      {syncProgress.done} / {syncProgress.total}
+                    </p>
+                  </div>
+                )}
+                {syncStatus && syncStatus !== 'syncing' && (
+                  <p style={{ fontSize: 12, marginTop: 6, color: syncStatus.error ? 'var(--err, #e55)' : 'var(--txt-2)' }}>
+                    {syncStatus.error
+                      ? `Błąd: ${syncStatus.error}`
+                      : `✓ Zsynchronizowano ${syncStatus.synced} ${syncStatus.synced === 1 ? 'plik' : 'pliki/plików'}`
+                    }
+                  </p>
+                )}
+              </>
+            ) : (
+              <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
+                  <button
+                    type="button"
+                    className={`ctl ${authMode === 'login' ? 'ctl-active' : ''}`}
+                    onClick={() => { setAuthMode('login'); setAuthError(''); }}
+                  >
+                    Zaloguj
+                  </button>
+                  <button
+                    type="button"
+                    className={`ctl ${authMode === 'register' ? 'ctl-active' : ''}`}
+                    onClick={() => { setAuthMode('register'); setAuthError(''); }}
+                  >
+                    Zarejestruj
+                  </button>
+                </div>
+                <input
+                  type="email"
+                  className="form-input"
+                  placeholder="Email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="Hasło (min. 8 znaków)"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                />
+                {authError && (
+                  <p style={{ fontSize: 12, color: 'var(--err, #e55)', margin: 0 }}>{authError}</p>
+                )}
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={authWorking}
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  {authWorking
+                    ? (authMode === 'login' ? 'Logowanie…' : 'Rejestracja…')
+                    : (authMode === 'login' ? 'Zaloguj' : 'Zarejestruj')
+                  }
+                </button>
+              </form>
+            )}
           </div>
 
           {/* Target language */}
@@ -126,13 +171,13 @@ export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, 
 
           {/* Model */}
           <div className="form-group">
-            <label className="form-label">Model</label>
+            <label className="form-label">Model (DeepSeek)</label>
             <select
               className="form-select"
               value={settings.polyglotModel}
               onChange={e => onUpdateSetting('polyglotModel', e.target.value)}
             >
-              {currentProvider.models.map(m => (
+              {deepseekProvider.models.map(m => (
                 <option key={m.id} value={m.id}>{m.label}</option>
               ))}
             </select>
@@ -155,55 +200,6 @@ export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, 
               </span>
             </div>
           </div>
-
-          {/* Google Drive Sync */}
-          {driveEnabled && (
-            <div className="form-group">
-              <label className="form-label">Synchronizacja Google Drive</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 13, color: driveConnected ? 'var(--gold)' : 'var(--txt-2)' }}>
-                  {driveConnected ? '● Połączono z Drive' : '○ Niepołączono'}
-                </span>
-                {driveConnected
-                  ? <button className="btn-ghost" onClick={signOut}>Rozłącz</button>
-                  : <button className="btn-ghost" onClick={signIn}>Połącz z Google Drive</button>
-                }
-                {driveConnected && (
-                  <button
-                    className="btn-ghost"
-                    onClick={handleManualSync}
-                    disabled={syncStatus === 'syncing'}
-                  >
-                    {syncStatus === 'syncing' ? '⟳ Synchronizuję…' : '↻ Synchronizuj teraz'}
-                  </button>
-                )}
-              </div>
-              {syncStatus === 'syncing' && syncProgress && (
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ height: 4, borderRadius: 2, background: 'var(--bg-2, #333)', overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%',
-                      borderRadius: 2,
-                      background: 'var(--gold)',
-                      width: syncProgress.total > 0 ? `${(syncProgress.done / syncProgress.total) * 100}%` : '0%',
-                      transition: 'width 0.2s ease',
-                    }} />
-                  </div>
-                  <p style={{ fontSize: 11, color: 'var(--txt-2)', marginTop: 4 }}>
-                    {syncProgress.done} / {syncProgress.total}
-                  </p>
-                </div>
-              )}
-              {syncStatus && syncStatus !== 'syncing' && (
-                <p style={{ fontSize: 12, marginTop: 6, color: syncStatus.error ? 'var(--err, #e55)' : 'var(--txt-2)' }}>
-                  {syncStatus.error
-                    ? `Błąd: ${syncStatus.error}`
-                    : `✓ Zsynchronizowano ${syncStatus.synced} ${syncStatus.synced === 1 ? 'plik' : 'pliki/plików'}`
-                  }
-                </p>
-              )}
-            </div>
-          )}
 
         </div>
       </div>
