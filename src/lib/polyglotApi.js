@@ -99,14 +99,20 @@ export async function generatePolyglot(chapterText, { targetLangName, model = 'd
   const pricing = MODEL_PRICING[model] ?? { input: 0, output: 0 };
   const startTime = Date.now();
   let totalCost = 0;
-  const results = [];
+  let done = 0;
+  const results = new Array(batches.length);
 
-  for (let i = 0; i < batches.length; i++) {
-    onProgress?.(i + 1, batches.length, totalCost, (Date.now() - startTime) / 1000);
-    const { text, promptTokens, completionTokens } = await processBatch(batches[i], targetLangName, model);
-    totalCost += (promptTokens / 1000) * pricing.input + (completionTokens / 1000) * pricing.output;
-    results.push(text);
-    onProgress?.(i + 1, batches.length, totalCost, (Date.now() - startTime) / 1000);
+  const CONCURRENCY = 5;
+  for (let i = 0; i < batches.length; i += CONCURRENCY) {
+    const chunk = batches.slice(i, i + CONCURRENCY);
+    await Promise.all(chunk.map(async (batchText, j) => {
+      const idx = i + j;
+      const { text, promptTokens, completionTokens } = await processBatch(batchText, targetLangName, model);
+      totalCost += (promptTokens / 1000) * pricing.input + (completionTokens / 1000) * pricing.output;
+      results[idx] = text;
+      done++;
+      onProgress?.(done, batches.length, totalCost, (Date.now() - startTime) / 1000);
+    }));
   }
 
   return { rawText: results.join('\n\n'), cost: totalCost, elapsedMs: Date.now() - startTime };
