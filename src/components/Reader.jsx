@@ -7,6 +7,7 @@ import {
 import { LANGUAGES } from '../hooks/useSettings';
 import { generatePolyglot } from '../lib/polyglotApi';
 import { isLoggedIn } from '../sync/cfAuth';
+import { uploadPolyglot } from '../sync/cfSync';
 import { parsePolyglotHtml } from '../lib/polyglotParser';
 import { buildTTSSegments, buildPlainTTSSegments, buildTTSFromHtmlParas, getLangBCP47, sentencesOrFull } from '../lib/ttsSegments';
 import { MODEL_PRICING } from '../lib/polyglotApi';
@@ -489,6 +490,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       if (token !== genTokenRef.current) return;
 
       await savePolyglotCache(chapter.id, settings.targetLang, rawText);
+      uploadPolyglot(chapter.bookId, chapter.chapterIndex, settings.targetLang, rawText);
       const { html, count } = parsePolyglotHtml(rawText);
       setPolyHtml(html);
       setPolyWordCount(count);

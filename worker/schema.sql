@@ -1,4 +1,6 @@
 -- Run once: wrangler d1 execute vocabapp-db --file=schema.sql --remote
+-- Migration (run separately if DB already exists):
+--   wrangler d1 execute vocabapp-db --command="ALTER TABLE book_manifest ADD COLUMN chapter_count INTEGER NOT NULL DEFAULT 0" --remote
 
 CREATE TABLE IF NOT EXISTS users (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -13,7 +15,8 @@ CREATE TABLE IF NOT EXISTS book_manifest (
   title      TEXT    NOT NULL,
   author     TEXT    NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
-  deleted_at INTEGER,            -- NULL = active; ms timestamp = soft-deleted
+  deleted_at    INTEGER,            -- NULL = active; ms timestamp = soft-deleted
+  chapter_count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, book_id)
 );
 

@@ -1,5 +1,10 @@
 // VocabApp Worker — single-file backend
 // Handles: auth (JWT + PBKDF2), translation proxy (DeepSeek), book sync (D1 + R2)
+//
+// R2 structure per book:
+//   {userId}/{bookId}/meta.json
+//   {userId}/{bookId}/ch/{idx}.json
+//   {userId}/{bookId}/pl/{idx}/{lang}.json
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +104,38 @@ async function requireAuth(request, env) {
   }
 }
 
+// ─── R2 KEY HELPERS ──────────────────────────────────────────────────────────
+
+const metaKey    = (u, b)       => `${u}/${b}/meta.json`;
+const chapterKey = (u, b, idx)  => `${u}/${b}/ch/${idx}.json`;
+const polyKey    = (u, b, i, l) => `${u}/${b}/pl/${i}/${l}.json`;
+const bookPrefix = (u, b)       => `${u}/${b}/`;
+const polyPrefix = (u, b)       => `${u}/${b}/pl/`;
+
+async function r2PutJson(env, key, data) {
+  await env.vocabapp_books.put(key, JSON.stringify(data), {
+    httpMetadata: { contentType: 'application/json' },
+  });
+}
+
+async function r2GetJson(env, key) {
+  const obj = await env.vocabapp_books.get(key);
+  if (!obj) return null;
+  return obj.json();
+}
+
+/** List all R2 keys under a prefix (handles pagination). */
+async function r2ListKeys(env, prefix) {
+  const keys = [];
+  let cursor;
+  do {
+    const result = await env.vocabapp_books.list({ prefix, cursor });
+    for (const obj of result.objects) keys.push(obj.key);
+    cursor = result.truncated ? result.cursor : undefined;
+  } while (cursor);
+  return keys;
+}
+
 // ─── ROUTE HANDLERS ──────────────────────────────────────────────────────────
 
 async function handleRegister(request, env) {
@@ -163,59 +200,135 @@ async function handleTranslate(request, env) {
   });
 }
 
+// ─── BOOK MANIFEST ────────────────────────────────────────────────────────────
+
 async function handleGetBooks(env, userId) {
   const { results } = await env.DB.prepare(
-    'SELECT book_id, title, author, created_at, deleted_at FROM book_manifest WHERE user_id = ?',
+    'SELECT book_id, title, author, chapter_count, created_at, deleted_at FROM book_manifest WHERE user_id = ?',
   ).bind(userId).all();
   return json(results);
 }
 
-async function handleUpsertBook(request, env, userId, bookId) {
-  const body = await request.text();
+// ─── BOOK META ────────────────────────────────────────────────────────────────
+
+/** POST /books/{bookId} — store metadata (without chapters) */
+async function handleUpsertMeta(request, env, userId, bookId) {
   let meta;
   try {
-    meta = JSON.parse(body);
+    meta = await request.json();
   } catch {
     return err('nieprawidłowy JSON');
   }
 
-  await env.vocabapp_books.put(`${userId}/${bookId}.json`, body, {
-    httpMetadata: { contentType: 'application/json' },
-  });
+  // Strip chapters if accidentally included
+  const { chapters: _ch, ...cleanMeta } = meta;
+
+  await r2PutJson(env, metaKey(userId, bookId), cleanMeta);
 
   await env.DB.prepare(
-    `INSERT INTO book_manifest (user_id, book_id, title, author, created_at, deleted_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO book_manifest (user_id, book_id, title, author, chapter_count, created_at, deleted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (user_id, book_id) DO UPDATE SET
-       title = excluded.title, author = excluded.author, deleted_at = excluded.deleted_at`,
+       title = excluded.title, author = excluded.author,
+       chapter_count = excluded.chapter_count, deleted_at = excluded.deleted_at`,
   ).bind(
     userId, bookId,
-    meta.title || 'Bez tytułu',
-    meta.author || '',
-    meta.createdAt || Date.now(),
-    meta.deletedAt || null,
+    cleanMeta.title || 'Bez tytułu',
+    cleanMeta.author || '',
+    cleanMeta.chapterCount || 0,
+    cleanMeta.createdAt || Date.now(),
+    cleanMeta.deletedAt || null,
   ).run();
 
   return json({ ok: true });
 }
 
-async function handleGetBook(env, userId, bookId) {
-  const obj = await env.vocabapp_books.get(`${userId}/${bookId}.json`);
-  if (!obj) return err('nie znaleziono', 404);
-  const text = await obj.text();
-  return new Response(text, {
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  });
+/** GET /books/{bookId} — fetch metadata only */
+async function handleGetMeta(env, userId, bookId) {
+  const data = await r2GetJson(env, metaKey(userId, bookId));
+  if (!data) return err('nie znaleziono', 404);
+  return json(data);
 }
+
+// ─── CHAPTERS ─────────────────────────────────────────────────────────────────
+
+/** POST /books/{bookId}/ch/{idx} */
+async function handleUpsertChapter(request, env, userId, bookId, idx) {
+  let chapter;
+  try {
+    chapter = await request.json();
+  } catch {
+    return err('nieprawidłowy JSON');
+  }
+  await r2PutJson(env, chapterKey(userId, bookId, idx), chapter);
+  return json({ ok: true });
+}
+
+/** GET /books/{bookId}/ch/{idx} */
+async function handleGetChapter(env, userId, bookId, idx) {
+  const data = await r2GetJson(env, chapterKey(userId, bookId, idx));
+  if (!data) return err('nie znaleziono', 404);
+  return json(data);
+}
+
+// ─── POLYGLOT CACHE ───────────────────────────────────────────────────────────
+
+/** POST /books/{bookId}/pl/{idx}/{lang} */
+async function handleUpsertPoly(request, env, userId, bookId, idx, lang) {
+  let poly;
+  try {
+    poly = await request.json();
+  } catch {
+    return err('nieprawidłowy JSON');
+  }
+  await r2PutJson(env, polyKey(userId, bookId, idx, lang), poly);
+  return json({ ok: true });
+}
+
+/** GET /books/{bookId}/pl/{idx}/{lang} */
+async function handleGetPoly(env, userId, bookId, idx, lang) {
+  const data = await r2GetJson(env, polyKey(userId, bookId, idx, lang));
+  if (!data) return err('nie znaleziono', 404);
+  return json(data);
+}
+
+/**
+ * GET /books/{bookId}/polys — list poly files for a book.
+ * Returns [{idx, lang}] extracted from R2 keys.
+ */
+async function handleListPolys(env, userId, bookId) {
+  const prefix = polyPrefix(userId, bookId);
+  const keys = await r2ListKeys(env, prefix);
+  // key format: {userId}/{bookId}/pl/{idx}/{lang}.json
+  const polys = keys.map(k => {
+    const rel = k.slice(prefix.length); // "{idx}/{lang}.json"
+    const parts = rel.split('/');
+    if (parts.length !== 2) return null;
+    const [idx, langFile] = parts;
+    const lang = langFile.replace(/\.json$/, '');
+    return { idx: Number(idx), lang };
+  }).filter(Boolean);
+  return json(polys);
+}
+
+// ─── DELETE BOOK ──────────────────────────────────────────────────────────────
 
 async function handleDeleteBook(request, env, userId, bookId) {
   const { deletedAt } = await request.json().catch(() => ({ deletedAt: Date.now() }));
+
+  // Soft delete in D1
   await env.DB.prepare(
     'UPDATE book_manifest SET deleted_at = ? WHERE user_id = ? AND book_id = ?',
   ).bind(deletedAt || Date.now(), userId, bookId).run();
-  await env.vocabapp_books.delete(`${userId}/${bookId}.json`);
+
+  // Hard delete all R2 objects under this book prefix
+  const keys = await r2ListKeys(env, bookPrefix(userId, bookId));
+  await Promise.all(keys.map(k => env.vocabapp_books.delete(k)));
+
   return json({ ok: true });
 }
+
+// ─── PROGRESS ─────────────────────────────────────────────────────────────────
 
 async function handleGetProgress(env, userId) {
   const { results } = await env.DB.prepare(
@@ -269,19 +382,41 @@ export default {
 
     if (method === 'POST' && path === '/translate') return handleTranslate(request, env);
 
-    if (method === 'GET'  && path === '/books')          return handleGetBooks(env, userId);
-    if (method === 'GET'  && path === '/progress')       return handleGetProgress(env, userId);
+    if (method === 'GET' && path === '/books')    return handleGetBooks(env, userId);
+    if (method === 'GET' && path === '/progress') return handleGetProgress(env, userId);
 
-    // /books/:id
+    // /books/{bookId}
     const bookMatch = path.match(/^\/books\/([^/]+)$/);
     if (bookMatch) {
       const bookId = bookMatch[1];
-      if (method === 'POST')   return handleUpsertBook(request, env, userId, bookId);
-      if (method === 'GET')    return handleGetBook(env, userId, bookId);
+      if (method === 'POST')   return handleUpsertMeta(request, env, userId, bookId);
+      if (method === 'GET')    return handleGetMeta(env, userId, bookId);
       if (method === 'DELETE') return handleDeleteBook(request, env, userId, bookId);
     }
 
-    // /progress/:bookId
+    // /books/{bookId}/ch/{idx}
+    const chMatch = path.match(/^\/books\/([^/]+)\/ch\/(\d+)$/);
+    if (chMatch) {
+      const [, bookId, idx] = chMatch;
+      if (method === 'POST') return handleUpsertChapter(request, env, userId, bookId, idx);
+      if (method === 'GET')  return handleGetChapter(env, userId, bookId, idx);
+    }
+
+    // /books/{bookId}/polys
+    const polysMatch = path.match(/^\/books\/([^/]+)\/polys$/);
+    if (polysMatch && method === 'GET') {
+      return handleListPolys(env, userId, polysMatch[1]);
+    }
+
+    // /books/{bookId}/pl/{idx}/{lang}
+    const polyMatch = path.match(/^\/books\/([^/]+)\/pl\/(\d+)\/([^/]+)$/);
+    if (polyMatch) {
+      const [, bookId, idx, lang] = polyMatch;
+      if (method === 'POST') return handleUpsertPoly(request, env, userId, bookId, idx, lang);
+      if (method === 'GET')  return handleGetPoly(env, userId, bookId, idx, lang);
+    }
+
+    // /progress/{bookId}
     const progressMatch = path.match(/^\/progress\/([^/]+)$/);
     if (progressMatch && method === 'POST') {
       return handleUpsertProgress(request, env, userId, progressMatch[1]);

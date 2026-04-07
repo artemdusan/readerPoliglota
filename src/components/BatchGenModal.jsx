@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { getBookChaptersWithCacheStatus, savePolyglotCache } from '../db';
 import { generatePolyglot } from '../lib/polyglotApi';
+import { uploadPolyglot } from '../sync/cfSync';
 
 /* Cost table: USD per 1M tokens */
 const MODEL_PRICES = {
@@ -91,6 +92,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
           (done, total) => setGenStep(s => ({ ...s, batchDone: done, batchTotal: total }))
         );
         await savePolyglotCache(ch.id, settings.targetLang, rawText);
+        uploadPolyglot(bookId, ch.chapterIndex, settings.targetLang, rawText);
         // Mark chapter as done
         setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, hasPoly: true } : c));
         setSelected(prev => { const n = new Set(prev); n.delete(ch.id); return n; });
