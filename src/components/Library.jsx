@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { EpubParser } from '../lib/epubParser';
 import { getActiveBooks, saveBook, softDeleteBook, getReadingPosition } from '../db';
 import BatchGenModal from './BatchGenModal';
+import ImportDialog from './ImportDialog';
 import { version } from '../../package.json';
 import { uploadBook } from '../sync/cfSync';
 
@@ -13,6 +14,7 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const [dragging, setDragging] = useState(false);
   const [positions, setPositions] = useState({});
   const [batchBook, setBatchBook] = useState(null); // book opened in BatchGenModal
+  const [importDraft, setImportDraft] = useState(null); // parsed EPUB awaiting user confirmation
   const fileInputRef = useRef(null);
 
   const loadBooks = useCallback(async () => {
@@ -45,12 +47,24 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
     try {
       const parsed = await EpubParser.parse(file);
       if (!parsed.chapters.length) throw new Error('EPUB nie zawiera żadnych rozdziałów.');
-      const bookId = await saveBook(parsed, parsed.chapters);
-      uploadBook(bookId); // fire-and-forget — upload to Drive in background
+      setAdding(false);
+      setImportDraft(parsed);
+    } catch (err) {
+      setAddError(err.message || 'Nie udało się otworzyć pliku EPUB.');
+      setAdding(false);
+    }
+  }
+
+  async function handleImportConfirm(draft) {
+    setImportDraft(null);
+    setAdding(true);
+    try {
+      const bookId = await saveBook(draft, draft.chapters);
+      uploadBook(bookId);
       await loadBooks();
       onOpenBook(bookId);
     } catch (err) {
-      setAddError(err.message || 'Nie udało się otworzyć pliku EPUB.');
+      setAddError(err.message || 'Nie udało się zapisać książki.');
       setAdding(false);
     }
   }
@@ -169,6 +183,14 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
           </div>
         )}
       </div>
+
+      {importDraft && (
+        <ImportDialog
+          parsed={importDraft}
+          onConfirm={handleImportConfirm}
+          onCancel={() => setImportDraft(null)}
+        />
+      )}
 
       {batchBook && settings && (
         <BatchGenModal

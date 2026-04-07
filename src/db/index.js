@@ -38,6 +38,7 @@ export async function saveBook(bookData, chaptersData) {
     id: bookId,
     title: bookData.title || 'Bez tytułu',
     author: bookData.author || '',
+    lang: bookData.lang || '',
     cover: bookData.cover || null,
     tocJson: JSON.stringify(bookData.toc || []),
     chapterCount: chaptersData.length,
@@ -87,6 +88,11 @@ export async function getPolyglotCache(chapterId, targetLang) {
     .first();
 }
 
+export async function getChapterCachedLangs(chapterId) {
+  const all = await db.polyglotCache.where('chapterId').equals(chapterId).toArray();
+  return [...new Set(all.map(c => c.targetLang))];
+}
+
 export async function savePolyglotCache(chapterId, targetLang, rawText) {
   const { v4: uuid } = await import('uuid');
   await db.polyglotCache.put({
@@ -102,8 +108,8 @@ export async function getReadingPosition(bookId) {
   return db.readingPositions.get(bookId);
 }
 
-export async function saveReadingPosition(bookId, chapterIndex, scrollTop = 0, polyMode = false, sentenceIdx = -1) {
-  await db.readingPositions.put({ bookId, chapterIndex, scrollTop, polyMode, sentenceIdx, updatedAt: Date.now() });
+export async function saveReadingPosition(bookId, chapterIndex, scrollTop = 0, activeLang = null, sentenceIdx = -1) {
+  await db.readingPositions.put({ bookId, chapterIndex, scrollTop, activeLang, sentenceIdx, updatedAt: Date.now() });
 }
 
 export async function getBookWithChapters(bookId) {

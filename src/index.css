@@ -920,3 +920,76 @@ html, body, #root {
   border-radius: 4px;
   background: rgba(122,175,122,.05);
 }
+
+/* ════════════════ IMPORT DIALOG ════════════════ */
+
+.import-dialog {
+  background: #161412;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: min(540px, 100%);
+  box-shadow: 0 20px 60px rgba(0,0,0,.7);
+  display: flex; flex-direction: column;
+}
+.import-dialog-title {
+  font-family: 'EB Garamond', serif;
+  font-size: 22px; color: var(--txt-1);
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.import-dialog-body {
+  display: flex; gap: 24px;
+  padding: 24px 28px;
+}
+.import-cover {
+  position: relative;
+  flex-shrink: 0;
+  width: 110px; height: 154px;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-side);
+  display: flex; align-items: center; justify-content: center;
+}
+.import-cover img { width: 100%; height: 100%; object-fit: cover; }
+.cover-ph-lg { font-size: 40px; }
+.import-cover-hint {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.55);
+  color: #fff; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .15s;
+}
+.import-cover:hover .import-cover-hint { opacity: 1; }
+
+.import-fields {
+  flex: 1; display: flex; flex-direction: column; gap: 14px;
+}
+.import-field {
+  display: flex; flex-direction: column; gap: 5px;
+}
+.import-field span {
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--txt-3);
+}
+.import-field input,
+.import-field select {
+  background: var(--bg-side);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  color: var(--txt-1);
+  font-size: 14px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color .15s;
+}
+.import-field input:focus,
+.import-field select:focus { border-color: var(--gold); }
+.import-field select { cursor: pointer; }
+
+.import-dialog-footer {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 18px 28px;
+  border-top: 1px solid var(--border-soft);
+}

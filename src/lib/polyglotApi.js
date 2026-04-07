@@ -13,8 +13,9 @@ export const MODEL_PRICING = {
   'anthropic/claude-3.5-haiku':          { input: 0.000800, output: 0.004000 },
 };
 
-function buildSystemPrompt(langName) {
-  return `Jesteś asystentem do nauki języka ${langName}. Przerób poniższy tekst zastępując około 20–25% rzeczowników i przymiotników ich odpowiednikami w języku ${langName}.
+function buildSystemPrompt(targetLangName, sourceLangName) {
+  const sourceHint = sourceLangName ? ` Tekst źródłowy jest w języku ${sourceLangName}.` : '';
+  return `Jesteś asystentem do nauki języka ${targetLangName}.${sourceHint} Przerób poniższy tekst zastępując około 20–25% rzeczowników i przymiotników ich odpowiednikami w języku ${targetLangName}.
 
 Format każdego zastąpionego słowa: [SŁOWO::ORYGINAŁ]
 Przykłady (dla hiszpańskiego): [el perro::pies], [negro::czarny], [la casa::dom], [grande::duży]
@@ -27,7 +28,7 @@ Zasady:
 • Odpowiedz WYŁĄCZNIE przerobioną wersją tekstu — zero komentarzy, wstępu ani podsumowania`;
 }
 
-async function processBatch(batchText, langName, model) {
+async function processBatch(batchText, langName, model, sourceLangName = '') {
   const token = getToken();
   if (!token) throw new Error('Nie jesteś zalogowany. Zaloguj się w Ustawieniach.');
 
@@ -40,7 +41,7 @@ async function processBatch(batchText, langName, model) {
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: buildSystemPrompt(langName) },
+        { role: 'system', content: buildSystemPrompt(langName, sourceLangName) },
         { role: 'user',   content: batchText },
       ],
     }),
@@ -66,11 +67,12 @@ async function processBatch(batchText, langName, model) {
  * @param {string} chapterText  - plain text of the chapter
  * @param {object} opts
  *   @param {string} opts.targetLangName  - e.g. "hiszpański"
+ *   @param {string} [opts.sourceLangName] - e.g. "polski" (source language of the book)
  *   @param {string} [opts.model]         - default "deepseek-chat"
  * @param {(done: number, total: number, cost: number, secs: number) => void} [onProgress]
  * @returns {Promise<{rawText: string, cost: number, elapsedMs: number}>}
  */
-export async function generatePolyglot(chapterText, { targetLangName, model = 'deepseek-chat' }, onProgress) {
+export async function generatePolyglot(chapterText, { targetLangName, sourceLangName = '', model = 'deepseek-chat' }, onProgress) {
   const paragraphs = chapterText
     .split(/\n\n+/)
     .map(p => p.trim())
@@ -107,7 +109,7 @@ export async function generatePolyglot(chapterText, { targetLangName, model = 'd
     const chunk = batches.slice(i, i + CONCURRENCY);
     await Promise.all(chunk.map(async (batchText, j) => {
       const idx = i + j;
-      const { text, promptTokens, completionTokens } = await processBatch(batchText, targetLangName, model);
+      const { text, promptTokens, completionTokens } = await processBatch(batchText, targetLangName, model, sourceLangName);
       totalCost += (promptTokens / 1000) * pricing.input + (completionTokens / 1000) * pricing.output;
       results[idx] = text;
       done++;

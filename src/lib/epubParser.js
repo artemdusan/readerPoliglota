@@ -301,6 +301,7 @@ export const EpubParser = {
     const opfDoc = new DOMParser().parseFromString(opfXml, 'application/xml');
     const title  = dcMeta(opfDoc, 'title');
     const author = dcMeta(opfDoc, 'creator');
+    const lang   = dcMeta(opfDoc, 'language').toLowerCase().split('-')[0] || '';
     const manifest = buildManifest(opfDoc, opfDir);
     const spine    = buildSpine(opfDoc);
     const [cover, toc] = await Promise.all([
@@ -308,6 +309,6 @@ export const EpubParser = {
       extractToc(zip, opfDoc, manifest),
     ]);
     const chapters = await extractChapters(zip, spine, manifest, toc);
-    return { title, author, cover, toc, chapters };
+    return { title, author, cover, toc, chapters, lang };
   },
 };

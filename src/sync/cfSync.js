@@ -40,7 +40,7 @@ function toRemoteData(local) {
     bookId:       local.bookId,
     chapterIndex: local.chapterIndex,
     scrollTop:    local.scrollTop  ?? 0,
-    polyMode:     local.polyMode   ?? false,
+    activeLang:   local.activeLang ?? null,
     sentenceIdx:  local.sentenceIdx ?? -1,
     updatedAt:    local.updatedAt  ?? Date.now(),
   };
@@ -51,7 +51,7 @@ async function applyRemote(remote) {
     remote.bookId,
     remote.chapterIndex,
     remote.scrollTop   ?? 0,
-    remote.polyMode    ?? false,
+    remote.activeLang  ?? null,
     remote.sentenceIdx ?? -1,
   );
 }

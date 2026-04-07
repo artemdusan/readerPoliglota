@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   db,
   getBook, getChapter, getPolyglotCache, savePolyglotCache,
-  getReadingPosition, saveReadingPosition,
+  getChapterCachedLangs, getReadingPosition, saveReadingPosition,
 } from '../db';
+import { LANGUAGES } from '../hooks/useSettings';
 import { generatePolyglot } from '../lib/polyglotApi';
 import { isLoggedIn } from '../sync/cfAuth';
 import { parsePolyglotHtml } from '../lib/polyglotParser';
@@ -56,13 +57,16 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const [chapterLoading, setChapterLoading] = useState(true);
 
   // Polyglot state
-  const [polyMode, setPolyMode]           = useState(false);
+  const [activeLang, setActiveLang]       = useState(null); // null = original, 'es'/'de'/... = translation
+  const [cachedLangs, setCachedLangs]     = useState([]);   // lang codes cached for current chapter
+  const [confirmLang, setConfirmLang]     = useState('');   // language selected in confirm dialog
   const [polyState, setPolyState]         = useState('idle');
   const [polyHtml, setPolyHtml]           = useState('');
-  const [polyWordCount, setPolyWordCount] = useState(0);
   const [polyError, setPolyError]         = useState('');
   const [polyProgress, setPolyProgress]   = useState({ done: 0, total: 0, cost: 0, secs: 0 });
   const [polyRawText, setPolyRawText]     = useState('');
+  // derived
+  const polyMode = activeLang !== null;
 
   // TTS
   const tts = useTTS();
@@ -86,7 +90,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const genTokenRef      = useRef(0);
   const tooltipTimerRef  = useRef(null);
   const openPwRef        = useRef(null);
-  const polyModeRef      = useRef(false);
+  const activeLangRef    = useRef(null);
   const posRestoredRef   = useRef(false);
   const activeParagraphRef = useRef(-1);
   const activeSentenceRef  = useRef(-1);
@@ -123,7 +127,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     if (!bookId) return;
     genTokenRef.current++;
     setChapterLoading(true);
-    setPolyMode(false);
+    setActiveLang(null);
+    setCachedLangs([]);
     setPolyState('idle');
     setPolyHtml('');
     setPolyError('');
@@ -150,15 +155,29 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       setChapterLoading(false);
       animKeyRef.current += 1;
 
-      if (pos?.polyMode && ch?.id && settings.targetLang) {
-        const cached = await getPolyglotCache(ch.id, settings.targetLang);
-        if (cached) {
-          const { html, count } = parsePolyglotHtml(cached.rawText);
-          setPolyHtml(html);
-          setPolyWordCount(count);
-          setPolyRawText(cached.rawText);
-          setPolyState('done');
-          setPolyMode(true);
+      if (ch?.id) {
+        const cached_codes = await getChapterCachedLangs(ch.id);
+        const langs = cached_codes.map(c => LANGUAGES.find(l => l.code === c)).filter(Boolean);
+        setCachedLangs(langs);
+
+        // Restore saved version, else prefer first cached lang
+        const savedLang = (pos?.chapterIndex === chapterIdx && pos?.activeLang) ? pos.activeLang : null;
+        const langToLoad = (savedLang && cached_codes.includes(savedLang))
+          ? savedLang
+          : cached_codes[0] ?? null;
+
+        if (langToLoad) {
+          const entry = await getPolyglotCache(ch.id, langToLoad);
+          if (entry) {
+            const { html } = parsePolyglotHtml(entry.rawText);
+            setPolyHtml(html);
+            setPolyRawText(entry.rawText);
+            setPolyState('done');
+            setActiveLang(langToLoad);
+          }
+        } else if (isLoggedIn()) {
+          setConfirmLang(settings.targetLang);
+          setPolyState('confirm');
         }
       }
     });
@@ -240,15 +259,15 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     });
   }, [chapter?.id, polyMode, fs]);
 
-  /* ── Keep polyModeRef in sync and save when polyMode changes ── */
+  /* ── Keep activeLangRef in sync and save when activeLang changes ── */
   useEffect(() => {
-    polyModeRef.current = polyMode;
+    activeLangRef.current = activeLang;
     if (!bookId || !posRestoredRef.current) return;
     const sentenceIdx = getCurrentSentenceIdx();
     const pw = chScrollRef.current?.clientWidth ?? 0;
     const scrollTop = currentPageRef.current * pw;
-    saveReadingPosition(bookId, chapterIdx, scrollTop, polyMode, sentenceIdx);
-  }, [bookId, chapterIdx, polyMode]);
+    saveReadingPosition(bookId, chapterIdx, scrollTop, activeLang, sentenceIdx);
+  }, [bookId, chapterIdx, activeLang]);
 
   /* ── Save reading position (debounced) ── */
   const persistPosition = useCallback(() => {
@@ -257,12 +276,12 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       const sentenceIdx = getCurrentSentenceIdx();
       const pw = chScrollRef.current?.clientWidth ?? 0;
       const scrollTop = currentPageRef.current * pw;
-      saveReadingPosition(bookId, chapterIdx, scrollTop, polyModeRef.current, sentenceIdx);
+      saveReadingPosition(bookId, chapterIdx, scrollTop, activeLangRef.current, sentenceIdx);
     }, 800);
   }, [bookId, chapterIdx]);
 
   function getCurrentSentenceIdx() {
-    if (polyModeRef.current) return -1;
+    if (activeLangRef.current !== null) return -1;
     const container = chScrollRef.current;
     if (!container) return -1;
 
@@ -695,10 +714,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
             <button
               className={`ctl ${polyMode ? 'ctl-active' : ''}`}
               onClick={togglePolyglot}
-              title="Tryb Poligloty"
+              title={polyMode ? 'Wyłącz tłumaczenia' : 'Włącz tłumaczenia'}
             >
-              {settings.targetLangFlag} Poliglota
-              {polyState === 'loading' && ' …'}
+              {settings.targetLangFlag}{polyState === 'loading' ? ' …' : ''}
             </button>
             <div className="tb-sep" />
             <button className="ctl" onClick={() => setFs(f => Math.max(13, f - 1))}>A−</button>
@@ -752,17 +770,16 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
                 {polyMode && polyState === 'confirm' && (
                   <div className="poly-confirm ch-anim">
-                    <div className="poly-confirm-icon">🌍</div>
-                    <p className="poly-confirm-title">Brak tekstu poligloty dla tego rozdziału</p>
+                    <div className="poly-confirm-icon">{settings.targetLangFlag}</div>
+                    <p className="poly-confirm-title">Czytaj z tłumaczeniami {settings.targetLangName ? `(${settings.targetLangName})` : ''}</p>
                     <p className="poly-confirm-hint">
                       <strong>{estimatedBatches} {estimatedBatches === 1 ? 'partia' : estimatedBatches < 5 ? 'partie' : 'partii'}</strong>
                       {' · ~'}{estimatedSecs < 60 ? `${estimatedSecs}s` : `${Math.round(estimatedSecs / 60)} min`}
                       {estimatedCost > 0 && <>{' · ~$'}{estimatedCost.toFixed(4)}</>}
-                      {' · '}<strong>{settings.provider}</strong>
                     </p>
                     <div className="poly-confirm-btns">
-                      <button className="btn-primary" onClick={startGeneration}>Generuj</button>
-                      <button className="btn-ghost" onClick={() => { setPolyMode(false); setPolyState('idle'); }}>Anuluj</button>
+                      <button className="btn-primary" onClick={startGeneration}>Generuj tłumaczenia</button>
+                      <button className="btn-ghost" onClick={() => { setActiveLang(null); setPolyState('idle'); }}>Czytaj bez tłumaczeń</button>
                     </div>
                   </div>
                 )}
@@ -798,7 +815,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 {polyMode && polyState === 'error' && (
                   <div className="poly-error">
                     <div>⚠ {polyError}</div>
-                    <button className="btn-ghost" onClick={() => { setPolyMode(false); setPolyState('idle'); }}>Wróć</button>
+                    <button className="btn-ghost" onClick={() => { setActiveLang(null); setPolyState('idle'); }}>Wróć</button>
                   </div>
                 )}
 
