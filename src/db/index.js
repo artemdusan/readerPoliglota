@@ -119,7 +119,7 @@ export async function getBookWithChapters(bookId) {
   return { ...book, chapters };
 }
 
-// Restore a book from Drive (uses original IDs, skips if already exists)
+// Restore a book from cloud (uses original IDs, skips if already exists)
 export async function restoreBook(bookData) {
   const { chapters = [], ...book } = bookData;
   const exists = await db.books.get(book.id);
@@ -128,6 +128,20 @@ export async function restoreBook(bookData) {
     await db.books.add(book);
     if (chapters.length) await db.chapters.bulkAdd(chapters);
   });
+}
+
+export async function restoreChapter(chapterData) {
+  const exists = await db.chapters.get(chapterData.id);
+  if (exists) return;
+  await db.chapters.add(chapterData);
+}
+
+export async function restorePolyglotCache(chapterId, targetLang, rawText) {
+  const exists = await db.polyglotCache
+    .where('[chapterId+targetLang]').equals([chapterId, targetLang]).first();
+  if (exists) return;
+  const { v4: uuid } = await import('uuid');
+  await db.polyglotCache.put({ id: uuid(), chapterId, targetLang, rawText, createdAt: Date.now() });
 }
 
 /** Returns chapters sorted by index, each with hasPoly flag for given targetLang. */
