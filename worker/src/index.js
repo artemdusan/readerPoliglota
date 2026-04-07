@@ -179,7 +179,7 @@ async function handleUpsertBook(request, env, userId, bookId) {
     return err('nieprawidłowy JSON');
   }
 
-  await env.BOOKS.put(`${userId}/${bookId}.json`, body, {
+  await env.vocabapp_books.put(`${userId}/${bookId}.json`, body, {
     httpMetadata: { contentType: 'application/json' },
   });
 
@@ -200,7 +200,7 @@ async function handleUpsertBook(request, env, userId, bookId) {
 }
 
 async function handleGetBook(env, userId, bookId) {
-  const obj = await env.BOOKS.get(`${userId}/${bookId}.json`);
+  const obj = await env.vocabapp_books.get(`${userId}/${bookId}.json`);
   if (!obj) return err('nie znaleziono', 404);
   const text = await obj.text();
   return new Response(text, {
