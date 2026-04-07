@@ -5,11 +5,11 @@ compatibility_date = "2024-09-23"
 [[d1_databases]]
 binding = "DB"
 database_name = "vocabapp-db"
-database_id   = "REPLACE_AFTER_wrangler_d1_create"
+database_id   = "6b468e10-6b9b-4bd7-969d-2547f6149dcb"
 
 [[r2_buckets]]
-binding   = "BOOKS"
 bucket_name = "vocabapp-books"
+binding = "vocabapp_books"
 
 # Secrets (set via CLI before deploying):
 #   wrangler secret put JWT_SECRET       (random 64-char string, e.g. openssl rand -hex 32)
