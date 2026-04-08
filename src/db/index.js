@@ -169,9 +169,11 @@ export async function getChapterCachedLangs(chapterId) {
 }
 
 export async function savePolyglotCache(chapterId, targetLang, rawText) {
+  const existing = await db.polyglotCache
+    .where('[chapterId+targetLang]').equals([chapterId, targetLang]).first();
   const { v4: uuid } = await import('uuid');
   await db.polyglotCache.put({
-    id: uuid(),
+    id: existing?.id ?? uuid(),
     chapterId,
     targetLang,
     rawText,

@@ -572,7 +572,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                     <div className="spin-ring" />
                     <div className="poly-loading-text">
                       {polyProgress.total > 0
-                        ? `Partia ${polyProgress.done} / ${polyProgress.total}…`
+                        ? polyProgress.done === 0
+                          ? `Wysyłam ${polyProgress.total} fragmentów…`
+                          : `Przetworzono ${polyProgress.done} / ${polyProgress.total} fragmentów`
                         : 'Łączenie z API…'}
                     </div>
                     {polyProgress.total > 0 && (

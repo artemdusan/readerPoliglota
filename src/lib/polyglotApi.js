@@ -72,6 +72,25 @@ async function processBatch(batchText, langName, model, sourceLangName = '') {
   }
 }
 
+async function processBatchWithRetry(batchText, langName, model, sourceLangName, batchIdx, attempt = 0) {
+  const t0 = Date.now();
+  console.log(`[Polyglot] Fragment ${batchIdx + 1} → wysyłam (${batchText.length} znaków, model: ${model})`);
+  try {
+    const result = await processBatch(batchText, langName, model, sourceLangName);
+    const secs = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[Polyglot] Fragment ${batchIdx + 1} ✓ — ${secs}s, in:${result.promptTokens} out:${result.completionTokens} tokens`);
+    return result;
+  } catch (err) {
+    console.warn(`[Polyglot] Fragment ${batchIdx + 1} ✗ (próba ${attempt + 1}): ${err.message}`);
+    if (attempt < 1) {
+      console.log(`[Polyglot] Fragment ${batchIdx + 1} — ponawiam za 3s…`);
+      await new Promise(r => setTimeout(r, 3000));
+      return processBatchWithRetry(batchText, langName, model, sourceLangName, batchIdx, attempt + 1);
+    }
+    throw err;
+  }
+}
+
 /**
  * Generate polyglot text for a chapter.
  * Splits long text into batches to avoid LLM token limits.
@@ -110,24 +129,38 @@ export async function generatePolyglot(chapterText, { targetLangName, sourceLang
     throw new Error('Rozdział nie zawiera wystarczającej ilości tekstu.');
   }
 
+  console.log(`[Polyglot] Start: ${batches.length} fragmentów, język: ${targetLangName}, model: ${model}`);
+  console.log(`[Polyglot] Łączna liczba znaków: ${chapterText.length}`);
+
+  // Emit initial state immediately so UI shows total count
+  onProgress?.(0, batches.length, 0, 0);
+
   const pricing = MODEL_PRICING[model] ?? { input: 0, output: 0 };
   const startTime = Date.now();
   let totalCost = 0;
   let done = 0;
   const results = new Array(batches.length);
 
-  const CONCURRENCY = 5;
+  // Concurrency=2 — avoids rate-limit and worker timeout cascades
+  const CONCURRENCY = 2;
   for (let i = 0; i < batches.length; i += CONCURRENCY) {
     const chunk = batches.slice(i, i + CONCURRENCY);
     await Promise.all(chunk.map(async (batchText, j) => {
       const idx = i + j;
-      const { text, promptTokens, completionTokens } = await processBatch(batchText, targetLangName, model, sourceLangName);
+      const { text, promptTokens, completionTokens } = await processBatchWithRetry(
+        batchText, targetLangName, model, sourceLangName, idx,
+      );
       totalCost += (promptTokens / 1000) * pricing.input + (completionTokens / 1000) * pricing.output;
       results[idx] = text;
       done++;
-      onProgress?.(done, batches.length, totalCost, (Date.now() - startTime) / 1000);
+      const secs = (Date.now() - startTime) / 1000;
+      console.log(`[Polyglot] Postęp: ${done}/${batches.length} fragmentów, koszt: $${totalCost.toFixed(5)}, czas: ${secs.toFixed(1)}s`);
+      onProgress?.(done, batches.length, totalCost, secs);
     }));
   }
 
-  return { rawText: results.join('\n\n'), cost: totalCost, elapsedMs: Date.now() - startTime };
+  const elapsedMs = Date.now() - startTime;
+  console.log(`[Polyglot] Zakończono: ${batches.length} fragmentów w ${(elapsedMs/1000).toFixed(1)}s, koszt: $${totalCost.toFixed(5)}`);
+
+  return { rawText: results.join('\n\n'), cost: totalCost, elapsedMs };
 }

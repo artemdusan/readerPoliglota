@@ -206,7 +206,9 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
                     Rozdział {genStep.chIdx + 1} / {genStep.total}
                     {currentChapter?.title ? ` · ${currentChapter.title}` : ''}
                     {genStep.batchTotal > 0
-                      ? ` — partia ${genStep.batchDone}/${genStep.batchTotal}`
+                      ? genStep.batchDone === 0
+                        ? ` — wysyłam ${genStep.batchTotal} fragmentów…`
+                        : ` — przetworzono ${genStep.batchDone}/${genStep.batchTotal} fragmentów`
                       : ' — łączenie…'}
                   </div>
                   {genStep.batchTotal > 0 && (
