@@ -178,25 +178,37 @@ async function handleTranslate(request, env) {
   const { model, messages } = await request.json().catch(() => ({}));
   if (!model || !Array.isArray(messages)) return err('model i messages są wymagane');
 
-  const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.DEEPSEEK_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: 4096 }),
-  });
-
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => resp.status);
-    return err(`DeepSeek error ${resp.status}: ${text}`, 502);
+  let resp;
+  try {
+    resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.DEEPSEEK_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: 4096 }),
+    });
+  } catch (e) {
+    return err(`Nie można połączyć z API: ${e.message}`, 502);
   }
 
-  const data = await resp.json();
-  return json({
-    content: data.choices[0].message.content,
-    usage: data.usage,
-  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => null);
+    const msg = body?.error?.message || body?.error || `HTTP ${resp.status}`;
+    return err(`Błąd API (${resp.status}): ${msg}`, 502);
+  }
+
+  let data;
+  try {
+    data = await resp.json();
+  } catch (e) {
+    return err('Nieprawidłowa odpowiedź z API (nie JSON)', 502);
+  }
+
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) return err('API zwróciło pustą odpowiedź', 502);
+
+  return json({ content, usage: data.usage });
 }
 
 // ─── BOOK MANIFEST ────────────────────────────────────────────────────────────

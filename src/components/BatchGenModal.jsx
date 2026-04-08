@@ -93,6 +93,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
         );
         await savePolyglotCache(ch.id, settings.targetLang, rawText);
         uploadPolyglot(bookId, ch.id, settings.targetLang, rawText);
+        window.dispatchEvent(new CustomEvent('polyglot-saved', { detail: { chapterId: ch.id, lang: settings.targetLang } }));
         // Mark chapter as done
         setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, hasPoly: true } : c));
         setSelected(prev => { const n = new Set(prev); n.delete(ch.id); return n; });

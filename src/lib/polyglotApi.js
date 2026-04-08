@@ -32,32 +32,43 @@ async function processBatch(batchText, langName, model, sourceLangName = '') {
   const token = getToken();
   if (!token) throw new Error('Nie jesteś zalogowany. Zaloguj się w Ustawieniach.');
 
-  const resp = await fetch(`${WORKER_URL}/translate`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: buildSystemPrompt(langName, sourceLangName) },
-        { role: 'user',   content: batchText },
-      ],
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90_000);
 
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}));
-    throw new Error(body.error || `Worker error ${resp.status}`);
+  try {
+    const resp = await fetch(`${WORKER_URL}/translate`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: buildSystemPrompt(langName, sourceLangName) },
+          { role: 'user',   content: batchText },
+        ],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.error || `Worker error ${resp.status}`);
+    }
+
+    const { content, usage } = await resp.json();
+    return {
+      text:             content ?? '',
+      promptTokens:     usage?.prompt_tokens     ?? 0,
+      completionTokens: usage?.completion_tokens ?? 0,
+    };
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('Przekroczono limit czasu (90s). Sprawdź połączenie z API.');
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const { content, usage } = await resp.json();
-  return {
-    text:             content ?? '',
-    promptTokens:     usage?.prompt_tokens     ?? 0,
-    completionTokens: usage?.completion_tokens ?? 0,
-  };
 }
 
 /**

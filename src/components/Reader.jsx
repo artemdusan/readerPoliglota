@@ -149,6 +149,18 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     });
   }, [bookId, chapterIdx]);
 
+  /* ── Refresh cached langs when BatchGenModal saves a translation ── */
+  useEffect(() => {
+    function onPolyglotSaved(e) {
+      if (!chapter?.id || e.detail.chapterId !== chapter.id) return;
+      getChapterCachedLangs(chapter.id).then(codes => {
+        setCachedLangs(codes.map(c => LANGUAGES.find(l => l.code === c)).filter(Boolean));
+      });
+    }
+    window.addEventListener('polyglot-saved', onPolyglotSaved);
+    return () => window.removeEventListener('polyglot-saved', onPolyglotSaved);
+  }, [chapter?.id]);
+
   /* ── Page break calculation + position restore ── */
   useEffect(() => {
     const container = chScrollRef.current;
