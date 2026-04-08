@@ -7,7 +7,7 @@ import {
 import { LANGUAGES } from '../hooks/useSettings';
 import { generatePolyglot } from '../lib/polyglotApi';
 import { isLoggedIn } from '../sync/cfAuth';
-import { uploadPolyglot } from '../sync/cfSync';
+import { triggerSync } from '../sync/cfSync';
 import { parsePolyglotHtml } from '../lib/polyglotParser';
 import { MODEL_PRICING } from '../lib/polyglotApi';
 
@@ -330,7 +330,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
       localStorage.setItem('vocabapp:lastLang', langCode);
       await savePolyglotCache(chapter.id, langCode, rawText);
-      uploadPolyglot(chapter.bookId, chapter.id, langCode, rawText);
+      triggerSync();
 
       const { html } = parsePolyglotHtml(rawText);
       setPolyHtml(html);

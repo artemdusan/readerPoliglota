@@ -58,25 +58,16 @@ async function applyRemote(remote) {
   );
 }
 
-// ─── Poly sync helpers ────────────────────────────────────────────────────────
+// ─── Download missing polys (download-only — upload handled by syncPending) ──
 
-/**
- * Sync polyglot cache for one book (both directions).
- * remotePolys: [{chapterId, lang}] from server (/polys)
- * chapters: local chapter records for this book
- */
-async function syncPolys(bookId, remotePolys, chapters, stats) {
+async function downloadMissingPolys(bookId, remotePolys, chapters, stats) {
   const chapterById = Object.fromEntries(chapters.map(c => [c.id, c]));
-
-  const chapterIds = chapters.map(c => c.id);
-  const localPolys = chapterIds.length
+  const chapterIds  = chapters.map(c => c.id);
+  const localPolys  = chapterIds.length
     ? await db.polyglotCache.where('chapterId').anyOf(chapterIds).toArray()
     : [];
+  const localPolySet = new Set(localPolys.map(p => `${p.chapterId}:${p.targetLang}`));
 
-  const localPolySet  = new Set(localPolys.map(p => `${p.chapterId}:${p.targetLang}`));
-  const remotePolySet = new Set(remotePolys.map(p => `${p.chapterId}:${p.lang}`));
-
-  // Download polys missing locally
   for (const { chapterId, lang } of remotePolys) {
     if (localPolySet.has(`${chapterId}:${lang}`)) continue;
     if (!chapterById[chapterId]) continue;
@@ -87,22 +78,13 @@ async function syncPolys(bookId, remotePolys, chapters, stats) {
       // poly missing on server — skip
     }
   }
-
-  // Upload polys missing on server
-  for (const poly of localPolys) {
-    if (remotePolySet.has(`${poly.chapterId}:${poly.targetLang}`)) continue;
-    await apiFetch(
-      `/books/${bookId}/chapters/${poly.chapterId}/translations/${poly.targetLang}`,
-      { method: 'POST', body: JSON.stringify({ rawText: poly.rawText }) },
-      stats,
-    );
-  }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Upload only what has changed since last sync (pendingSyncFlag=1).
+ * Per-chapter error isolation — one failure doesn't abort others.
  * No-op if not logged in.
  */
 export async function syncPending() {
@@ -110,48 +92,83 @@ export async function syncPending() {
 
   const stats = { sent: 0, received: 0 };
   let uploaded = 0;
+  let lastError = null;
 
   try {
     const pendingChapters = await getPendingChapters();
 
     for (const ch of pendingChapters) {
-      const pending = ch.pendingSync;
-      if (!pending) continue;
+      try {
+        const pending = ch.pendingSync;
+        if (!pending) { await clearChapterPending(ch.id); continue; }
 
-      if (pending.meta) {
-        await apiFetch(`/books/${ch.bookId}/chapters/${ch.id}`, {
-          method: 'POST',
-          body: JSON.stringify({
-            id: ch.id,
-            bookId: ch.bookId,
-            chapterIndex: ch.chapterIndex,
-            href: ch.href,
-            title: ch.title,
-            html: ch.html,
-            text: ch.text,
-          }),
-        }, stats);
+        if (pending.meta) {
+          await apiFetch(`/books/${ch.bookId}/chapters/${ch.id}`, {
+            method: 'POST',
+            body: JSON.stringify({
+              id:           ch.id,
+              bookId:       ch.bookId,
+              chapterIndex: ch.chapterIndex,
+              href:         ch.href,
+              title:        ch.title,
+              html:         ch.html,
+              text:         ch.text,
+            }),
+          }, stats);
+        }
+
+        for (const lang of (pending.langs ?? [])) {
+          const poly = await db.polyglotCache
+            .where('[chapterId+targetLang]').equals([ch.id, lang]).first();
+          if (!poly) { await clearPolyPending(ch.id, lang); continue; }
+          await apiFetch(
+            `/books/${ch.bookId}/chapters/${ch.id}/translations/${lang}`,
+            { method: 'POST', body: JSON.stringify({ rawText: poly.rawText }) },
+            stats,
+          );
+        }
+
+        await clearChapterPending(ch.id);
+        uploaded++;
+      } catch (err) {
+        // Leave pendingSyncFlag=1 so it retries on next sync
+        lastError = err.message;
+        console.warn(`[CF sync] chapter ${ch.id} upload failed (will retry):`, err.message);
       }
-
-      for (const lang of (pending.langs ?? [])) {
-        const poly = await db.polyglotCache
-          .where('[chapterId+targetLang]').equals([ch.id, lang]).first();
-        if (!poly) continue;
-        await apiFetch(
-          `/books/${ch.bookId}/chapters/${ch.id}/translations/${lang}`,
-          { method: 'POST', body: JSON.stringify({ rawText: poly.rawText }) },
-          stats,
-        );
-      }
-
-      await clearChapterPending(ch.id);
-      uploaded++;
     }
 
-    return { uploaded, error: null };
+    return { uploaded, error: lastError };
   } catch (err) {
     console.warn('[CF sync] syncPending failed:', err.message);
     return { uploaded, error: err.message };
+  }
+}
+
+/**
+ * Fire-and-forget wrapper around syncPending.
+ * Call after any local write (savePolyglotCache, saveBook) to push to server.
+ */
+export function triggerSync() {
+  if (!getToken()) return;
+  syncPending().catch(err => console.warn('[CF sync] background sync failed:', err.message));
+}
+
+/**
+ * Upload book metadata to server so it appears in the manifest.
+ * Chapter data and polys are handled by triggerSync() via pending flags.
+ * No-op if not logged in.
+ */
+export async function uploadBook(bookId) {
+  if (!getToken()) return;
+  try {
+    const book = await db.books.get(bookId);
+    if (!book) return;
+    await apiFetch(`/books/${bookId}`, { method: 'POST', body: JSON.stringify(book) });
+    // Now upload chapters + polys via pending flags
+    triggerSync();
+  } catch (err) {
+    console.warn('[CF sync] uploadBook failed:', err.message);
+    // pendingSyncFlag is already set on chapters — syncAll will retry
   }
 }
 
@@ -184,77 +201,13 @@ export async function syncBook(bookId) {
 }
 
 /**
- * Upload a new book (meta + all chapters + existing polys).
- * Called after importing a book locally. No-op if not logged in.
- */
-export async function uploadBook(bookId) {
-  if (!getToken()) return;
-  try {
-    const bookData = await getBookWithChapters(bookId);
-    if (!bookData) return;
-
-    const { chapters = [], ...meta } = bookData;
-
-    // 1. Upload meta
-    await apiFetch(`/books/${bookId}`, { method: 'POST', body: JSON.stringify(meta) });
-
-    // 2. Upload chapters via UUID-based paths
-    for (const ch of chapters) {
-      await apiFetch(`/books/${bookId}/chapters/${ch.id}`, {
-        method: 'POST',
-        body: JSON.stringify(ch),
-      });
-    }
-
-    // 3. Upload any existing local polys (usually none right after import)
-    const chapterIds = chapters.map(c => c.id);
-    if (chapterIds.length) {
-      const localPolys = await db.polyglotCache.where('chapterId').anyOf(chapterIds).toArray();
-      for (const poly of localPolys) {
-        await apiFetch(`/books/${bookId}/chapters/${poly.chapterId}/translations/${poly.targetLang}`, {
-          method: 'POST',
-          body: JSON.stringify({ rawText: poly.rawText }),
-        });
-      }
-    }
-
-    // Mark all chapters as synced after successful upload
-    for (const ch of chapters) {
-      await clearChapterPending(ch.id);
-    }
-  } catch (err) {
-    console.warn('[CF sync] uploadBook failed:', err.message);
-  }
-}
-
-/**
- * Upload a single polyglot result right after generation.
- * chapterId is the chapter UUID (not chapterIndex).
- * No-op if not logged in. On failure, pending flag already set — syncPending() will retry.
- */
-export async function uploadPolyglot(bookId, chapterId, targetLang, rawText) {
-  if (!getToken()) return;
-  try {
-    await apiFetch(`/books/${bookId}/chapters/${chapterId}/translations/${targetLang}`, {
-      method: 'POST',
-      body: JSON.stringify({ rawText }),
-    });
-    // Uploaded successfully — clear just this lang from pending
-    await clearPolyPending(chapterId, targetLang);
-  } catch (err) {
-    console.warn('[CF sync] uploadPolyglot failed (will retry via syncPending):', err.message);
-    // pendingSync flag already set by savePolyglotCache — no action needed
-  }
-}
-
-/**
  * Full bidirectional sync:
- *   0. Flush local pending changes (delta upload)
+ *   0. Flush local pending changes (chapter data + polys)
  *   1. Sync all reading positions (both directions)
  *   2. Apply deletedAt changes from remote manifest → local
  *   3. Download books missing locally (meta + chapters + polys)
- *   4. Upload new local books (meta + chapters + polys)
- *   5. Sync polys for books present on both sides
+ *   4. Upload book META for local-only books (chapters already handled by step 0)
+ *   5. Download missing polys for books present on both sides
  *
  * onProgress(done, total) called after each book-level item.
  */
@@ -281,15 +234,18 @@ export async function syncAll(onProgress) {
 
     const localOnlyPositions = localPositions.filter(l => !remotePosMap[l.bookId]);
     const booksToDownload    = remoteManifest.filter(e => !localBookMap[e.book_id] && !e.deleted_at);
-    const booksToUpload      = allLocalBooks.filter(b => !remoteManifestMap[b.id]);
-    // Books present on both sides (not deleted) — sync polys only
-    const booksToPolySync    = allLocalBooks.filter(b => remoteManifestMap[b.id] && !b.deletedAt && !remoteManifestMap[b.id].deleted_at);
+    // Books local-only and NOT on server (uploadBook may have failed)
+    const booksMetaToUpload  = allLocalBooks.filter(b => !b.deletedAt && !remoteManifestMap[b.id]);
+    // Books present on both sides (not deleted) — download missing polys
+    const booksToPolySync    = allLocalBooks.filter(b =>
+      remoteManifestMap[b.id] && !b.deletedAt && !remoteManifestMap[b.id].deleted_at
+    );
 
     const total =
       remotePositions.length +
       localOnlyPositions.length +
       booksToDownload.length +
-      booksToUpload.length;
+      booksMetaToUpload.length;
 
     let synced = 0;
     onProgress?.(0, total);
@@ -330,79 +286,54 @@ export async function syncAll(onProgress) {
     // ── Download books missing locally ──
     for (const entry of booksToDownload) {
       const bookId = entry.book_id;
+      try {
+        const meta = await apiFetch(`/books/${bookId}`, {}, stats);
+        await restoreBook(meta);
 
-      // meta
-      const meta = await apiFetch(`/books/${bookId}`, {}, stats);
-      await restoreBook(meta);
-
-      // chapters — fetch UUID list then each chapter
-      const chapterUUIDs = await apiFetch(`/books/${bookId}/chapters`, {}, stats);
-      for (const chUUID of chapterUUIDs) {
-        try {
-          const ch = await apiFetch(`/books/${bookId}/chapters/${chUUID}`, {}, stats);
-          await restoreChapter(ch);
-        } catch {
-          // chapter missing — skip
+        const chapterUUIDs = await apiFetch(`/books/${bookId}/chapters`, {}, stats);
+        for (const chUUID of chapterUUIDs) {
+          try {
+            const ch = await apiFetch(`/books/${bookId}/chapters/${chUUID}`, {}, stats);
+            await restoreChapter(ch);
+          } catch {
+            // chapter missing — skip
+          }
         }
-      }
 
-      // polys — fetch [{chapterId, lang}] then each translation
-      const remotePolys = await apiFetch(`/books/${bookId}/polys`, {}, stats);
-      for (const { chapterId, lang } of remotePolys) {
-        try {
-          const poly = await apiFetch(`/books/${bookId}/chapters/${chapterId}/translations/${lang}`, {}, stats);
-          await restorePolyglotCache(chapterId, lang, poly.rawText);
-        } catch {
-          // poly missing — skip
+        const remotePolys = await apiFetch(`/books/${bookId}/polys`, {}, stats);
+        for (const { chapterId, lang } of remotePolys) {
+          try {
+            const poly = await apiFetch(`/books/${bookId}/chapters/${chapterId}/translations/${lang}`, {}, stats);
+            await restorePolyglotCache(chapterId, lang, poly.rawText);
+          } catch {
+            // poly missing — skip
+          }
         }
+      } catch {
+        // book missing or broken — skip
       }
 
       synced++;
       onProgress?.(synced, total);
     }
 
-    // ── Upload new local books ──
-    for (const book of booksToUpload) {
-      const bookData = await getBookWithChapters(book.id);
-      if (!bookData) continue;
-
-      const { chapters = [], ...meta } = bookData;
-
-      await apiFetch(`/books/${book.id}`, { method: 'POST', body: JSON.stringify(meta) }, stats);
-
-      for (const ch of chapters) {
-        await apiFetch(`/books/${book.id}/chapters/${ch.id}`, {
-          method: 'POST',
-          body: JSON.stringify(ch),
-        }, stats);
+    // ── Upload book META for local-only books (chapters already uploaded by syncPending in step 0) ──
+    for (const book of booksMetaToUpload) {
+      try {
+        await apiFetch(`/books/${book.id}`, { method: 'POST', body: JSON.stringify(book) }, stats);
+      } catch (err) {
+        console.warn(`[CF sync] book meta upload failed for ${book.id}:`, err.message);
       }
-
-      // polys
-      if (chapters.length) {
-        const localPolys = await db.polyglotCache.where('chapterId').anyOf(chapters.map(c => c.id)).toArray();
-        for (const poly of localPolys) {
-          await apiFetch(`/books/${book.id}/chapters/${poly.chapterId}/translations/${poly.targetLang}`, {
-            method: 'POST',
-            body: JSON.stringify({ rawText: poly.rawText }),
-          }, stats);
-        }
-      }
-
-      // Mark as synced
-      for (const ch of chapters) {
-        await clearChapterPending(ch.id);
-      }
-
       synced++;
       onProgress?.(synced, total);
     }
 
-    // ── Sync polys for books on both sides ──
+    // ── Download missing polys for books on both sides ──
     for (const book of booksToPolySync) {
       try {
         const remotePolys = await apiFetch(`/books/${book.id}/polys`, {}, stats);
-        const chapters = await db.chapters.where('bookId').equals(book.id).toArray();
-        await syncPolys(book.id, remotePolys, chapters, stats);
+        const chapters    = await db.chapters.where('bookId').equals(book.id).toArray();
+        await downloadMissingPolys(book.id, remotePolys, chapters, stats);
       } catch {
         // non-fatal — skip this book's poly sync
       }

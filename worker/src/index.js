@@ -178,8 +178,10 @@ async function handleTranslate(request, env) {
   const { model, messages } = await request.json().catch(() => ({}));
   if (!model || !Array.isArray(messages)) return err('model i messages są wymagane');
 
+  // deepseek-reasoner needs more time for chain-of-thought; use 60s for all models
+  const timeoutMs = model === 'deepseek-reasoner' ? 90_000 : 60_000;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   let resp;
   try {
@@ -193,8 +195,9 @@ async function handleTranslate(request, env) {
       signal: controller.signal,
     });
   } catch (e) {
+    const secs = Math.round(timeoutMs / 1000);
     const msg = e.name === 'AbortError'
-      ? 'DeepSeek nie odpowiedział w czasie (25s) — spróbuj ponownie lub zmień model'
+      ? `DeepSeek nie odpowiedział w czasie (${secs}s) — spróbuj ponownie lub zmień model`
       : `Nie można połączyć z API: ${e.message}`;
     return err(msg, 502);
   } finally {
