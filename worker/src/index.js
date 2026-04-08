@@ -3,8 +3,8 @@
 //
 // R2 structure per book:
 //   {userId}/{bookId}/meta.json
-//   {userId}/{bookId}/ch/{idx}.json
-//   {userId}/{bookId}/pl/{idx}/{lang}.json
+//   {userId}/{bookId}/{chapterUUID}/metadata.json
+//   {userId}/{bookId}/{chapterUUID}/{lang}.json
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 
@@ -106,11 +106,10 @@ async function requireAuth(request, env) {
 
 // ─── R2 KEY HELPERS ──────────────────────────────────────────────────────────
 
-const metaKey    = (u, b)       => `${u}/${b}/meta.json`;
-const chapterKey = (u, b, idx)  => `${u}/${b}/ch/${idx}.json`;
-const polyKey    = (u, b, i, l) => `${u}/${b}/pl/${i}/${l}.json`;
-const bookPrefix = (u, b)       => `${u}/${b}/`;
-const polyPrefix = (u, b)       => `${u}/${b}/pl/`;
+const metaKey      = (u, b)          => `${u}/${b}/meta.json`;
+const chapterKeyV2 = (u, b, chId)    => `${u}/${b}/${chId}/metadata.json`;
+const polyKeyV2    = (u, b, chId, l) => `${u}/${b}/${chId}/${l}.json`;
+const bookPrefix   = (u, b)          => `${u}/${b}/`;
 
 async function r2PutJson(env, key, data) {
   await env.reader_books.put(key, JSON.stringify(data), {
@@ -252,62 +251,71 @@ async function handleGetMeta(env, userId, bookId) {
 
 // ─── CHAPTERS ─────────────────────────────────────────────────────────────────
 
-/** POST /books/{bookId}/ch/{idx} */
-async function handleUpsertChapter(request, env, userId, bookId, idx) {
+/** POST /books/{bookId}/chapters/{chapterId} */
+async function handleUpsertChapterV2(request, env, userId, bookId, chapterId) {
   let chapter;
-  try {
-    chapter = await request.json();
-  } catch {
-    return err('nieprawidłowy JSON');
-  }
-  await r2PutJson(env, chapterKey(userId, bookId, idx), chapter);
+  try { chapter = await request.json(); } catch { return err('nieprawidłowy JSON'); }
+  await r2PutJson(env, chapterKeyV2(userId, bookId, chapterId), chapter);
   return json({ ok: true });
 }
 
-/** GET /books/{bookId}/ch/{idx} */
-async function handleGetChapter(env, userId, bookId, idx) {
-  const data = await r2GetJson(env, chapterKey(userId, bookId, idx));
-  if (!data) return err('nie znaleziono', 404);
-  return json(data);
-}
-
-// ─── POLYGLOT CACHE ───────────────────────────────────────────────────────────
-
-/** POST /books/{bookId}/pl/{idx}/{lang} */
-async function handleUpsertPoly(request, env, userId, bookId, idx, lang) {
-  let poly;
-  try {
-    poly = await request.json();
-  } catch {
-    return err('nieprawidłowy JSON');
-  }
-  await r2PutJson(env, polyKey(userId, bookId, idx, lang), poly);
-  return json({ ok: true });
-}
-
-/** GET /books/{bookId}/pl/{idx}/{lang} */
-async function handleGetPoly(env, userId, bookId, idx, lang) {
-  const data = await r2GetJson(env, polyKey(userId, bookId, idx, lang));
+/** GET /books/{bookId}/chapters/{chapterId} */
+async function handleGetChapterV2(env, userId, bookId, chapterId) {
+  const data = await r2GetJson(env, chapterKeyV2(userId, bookId, chapterId));
   if (!data) return err('nie znaleziono', 404);
   return json(data);
 }
 
 /**
- * GET /books/{bookId}/polys — list poly files for a book.
- * Returns [{idx, lang}] extracted from R2 keys.
+ * GET /books/{bookId}/chapters — list chapter UUIDs for a book.
+ * Scans R2 for keys ending in /metadata.json to find UUID folders.
  */
-async function handleListPolys(env, userId, bookId) {
-  const prefix = polyPrefix(userId, bookId);
+async function handleListChapters(env, userId, bookId) {
+  const prefix = bookPrefix(userId, bookId);
   const keys = await r2ListKeys(env, prefix);
-  // key format: {userId}/{bookId}/pl/{idx}/{lang}.json
-  const polys = keys.map(k => {
-    const rel = k.slice(prefix.length); // "{idx}/{lang}.json"
+  const uuids = [...new Set(
+    keys
+      .filter(k => k.endsWith('/metadata.json'))
+      .map(k => {
+        const rel = k.slice(prefix.length); // "{chUUID}/metadata.json"
+        return rel.split('/')[0];
+      }),
+  )];
+  return json(uuids);
+}
+
+/** POST /books/{bookId}/chapters/{chapterId}/translations/{lang} */
+async function handleUpsertPolyV2(request, env, userId, bookId, chapterId, lang) {
+  let poly;
+  try { poly = await request.json(); } catch { return err('nieprawidłowy JSON'); }
+  await r2PutJson(env, polyKeyV2(userId, bookId, chapterId, lang), poly);
+  return json({ ok: true });
+}
+
+/** GET /books/{bookId}/chapters/{chapterId}/translations/{lang} */
+async function handleGetPolyV2(env, userId, bookId, chapterId, lang) {
+  const data = await r2GetJson(env, polyKeyV2(userId, bookId, chapterId, lang));
+  if (!data) return err('nie znaleziono', 404);
+  return json(data);
+}
+
+/**
+ * GET /books/{bookId}/polys — list all translations for a book.
+ * Returns [{chapterId, lang}] by scanning UUID folder keys.
+ */
+async function handleListPolysV2(env, userId, bookId) {
+  const prefix = bookPrefix(userId, bookId);
+  const keys = await r2ListKeys(env, prefix);
+  const polys = [];
+  for (const k of keys) {
+    const rel = k.slice(prefix.length); // "{chUUID}/{file}.json"
     const parts = rel.split('/');
-    if (parts.length !== 2) return null;
-    const [idx, langFile] = parts;
-    const lang = langFile.replace(/\.json$/, '');
-    return { idx: Number(idx), lang };
-  }).filter(Boolean);
+    if (parts.length !== 2) continue;
+    const [chapterId, langFile] = parts;
+    const name = langFile.replace(/\.json$/, '');
+    if (name === 'metadata') continue; // skip chapter metadata files
+    polys.push({ chapterId, lang: name });
+  }
   return json(polys);
 }
 
@@ -394,26 +402,32 @@ export default {
       if (method === 'DELETE') return handleDeleteBook(request, env, userId, bookId);
     }
 
-    // /books/{bookId}/ch/{idx}
-    const chMatch = path.match(/^\/books\/([^/]+)\/ch\/(\d+)$/);
-    if (chMatch) {
-      const [, bookId, idx] = chMatch;
-      if (method === 'POST') return handleUpsertChapter(request, env, userId, bookId, idx);
-      if (method === 'GET')  return handleGetChapter(env, userId, bookId, idx);
-    }
-
     // /books/{bookId}/polys
     const polysMatch = path.match(/^\/books\/([^/]+)\/polys$/);
     if (polysMatch && method === 'GET') {
-      return handleListPolys(env, userId, polysMatch[1]);
+      return handleListPolysV2(env, userId, polysMatch[1]);
     }
 
-    // /books/{bookId}/pl/{idx}/{lang}
-    const polyMatch = path.match(/^\/books\/([^/]+)\/pl\/(\d+)\/([^/]+)$/);
-    if (polyMatch) {
-      const [, bookId, idx, lang] = polyMatch;
-      if (method === 'POST') return handleUpsertPoly(request, env, userId, bookId, idx, lang);
-      if (method === 'GET')  return handleGetPoly(env, userId, bookId, idx, lang);
+    // /books/{bookId}/chapters  (list UUIDs)
+    const chListMatch = path.match(/^\/books\/([^/]+)\/chapters$/);
+    if (chListMatch && method === 'GET') {
+      return handleListChapters(env, userId, chListMatch[1]);
+    }
+
+    // /books/{bookId}/chapters/{chapterId}/translations/{lang}
+    const trV2Match = path.match(/^\/books\/([^/]+)\/chapters\/([^/]+)\/translations\/([^/]+)$/);
+    if (trV2Match) {
+      const [, bookId, chapterId, lang] = trV2Match;
+      if (method === 'POST') return handleUpsertPolyV2(request, env, userId, bookId, chapterId, lang);
+      if (method === 'GET')  return handleGetPolyV2(env, userId, bookId, chapterId, lang);
+    }
+
+    // /books/{bookId}/chapters/{chapterId}
+    const chV2Match = path.match(/^\/books\/([^/]+)\/chapters\/([^/]+)$/);
+    if (chV2Match) {
+      const [, bookId, chapterId] = chV2Match;
+      if (method === 'POST') return handleUpsertChapterV2(request, env, userId, bookId, chapterId);
+      if (method === 'GET')  return handleGetChapterV2(env, userId, bookId, chapterId);
     }
 
     // /progress/{bookId}
