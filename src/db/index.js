@@ -15,6 +15,77 @@ db.version(1).stores({
   settings: 'key',
 });
 
+// v2: add pendingSyncFlag index to chapters for delta sync tracking
+db.version(2).stores({
+  books:            'id, title, createdAt, deletedAt',
+  chapters:         'id, bookId, chapterIndex, [bookId+chapterIndex], pendingSyncFlag',
+  polyglotCache:    'id, chapterId, targetLang, [chapterId+targetLang]',
+  readingPositions: 'bookId',
+  settings:         'key',
+}).upgrade(async tx => {
+  // Mark all existing chapters as pending (meta + all cached langs) so they
+  // get re-uploaded to the new UUID-based R2 structure on next syncAll.
+  const allChapters = await tx.table('chapters').toArray();
+  const allPolys    = await tx.table('polyglotCache').toArray();
+  const polysByChapter = {};
+  for (const p of allPolys) (polysByChapter[p.chapterId] ??= []).push(p.targetLang);
+  for (const ch of allChapters) {
+    const langs = polysByChapter[ch.id] ?? [];
+    await tx.table('chapters').update(ch.id, {
+      pendingSync:     { meta: true, langs },
+      pendingSyncFlag: 1,
+    });
+  }
+});
+
+// ─── Pending sync helpers ─────────────────────────────────────────────────────
+
+export async function markChapterMetaPending(chapterId) {
+  const ch = await db.chapters.get(chapterId);
+  if (!ch) return;
+  const pending = ch.pendingSync ?? { meta: false, langs: [] };
+  await db.chapters.update(chapterId, {
+    pendingSync:     { ...pending, meta: true },
+    pendingSyncFlag: 1,
+  });
+}
+
+export async function markPolyPending(chapterId, lang) {
+  const ch = await db.chapters.get(chapterId);
+  if (!ch) return;
+  const pending = ch.pendingSync ?? { meta: false, langs: [] };
+  const langs = [...new Set([...(pending.langs ?? []), lang])];
+  await db.chapters.update(chapterId, {
+    pendingSync:     { ...pending, langs },
+    pendingSyncFlag: 1,
+  });
+}
+
+export async function clearChapterPending(chapterId) {
+  await db.chapters.update(chapterId, {
+    pendingSync:     null,
+    pendingSyncFlag: 0,
+  });
+}
+
+export async function clearPolyPending(chapterId, lang) {
+  const ch = await db.chapters.get(chapterId);
+  if (!ch?.pendingSync) return;
+  const langs = (ch.pendingSync.langs ?? []).filter(l => l !== lang);
+  const meta = ch.pendingSync.meta ?? false;
+  const nothingLeft = !meta && langs.length === 0;
+  await db.chapters.update(chapterId, {
+    pendingSync:     nothingLeft ? null : { meta, langs },
+    pendingSyncFlag: nothingLeft ? 0 : 1,
+  });
+}
+
+export async function getPendingChapters() {
+  return db.chapters.where('pendingSyncFlag').equals(1).toArray();
+}
+
+// ─── Settings ────────────────────────────────────────────────────────────────
+
 export async function getSetting(key, defaultValue = null) {
   const row = await db.settings.get(key);
   return row !== undefined ? row.value : defaultValue;
@@ -28,6 +99,8 @@ export async function getAllSettings() {
   const rows = await db.settings.toArray();
   return Object.fromEntries(rows.map(r => [r.key, r.value]));
 }
+
+// ─── Books ───────────────────────────────────────────────────────────────────
 
 export async function saveBook(bookData, chaptersData) {
   const { v4: uuid } = await import('uuid');
@@ -54,6 +127,8 @@ export async function saveBook(bookData, chaptersData) {
     title: ch.title || '',
     html: ch.html || '',
     text: ch.text || '',
+    pendingSync:     { meta: true, langs: [] },
+    pendingSyncFlag: 1,
   }));
 
   await db.transaction('rw', db.books, db.chapters, async () => {
@@ -102,6 +177,7 @@ export async function savePolyglotCache(chapterId, targetLang, rawText) {
     rawText,
     createdAt: Date.now(),
   });
+  await markPolyPending(chapterId, targetLang);
 }
 
 export async function getReadingPosition(bookId) {
@@ -133,7 +209,8 @@ export async function restoreBook(bookData) {
 export async function restoreChapter(chapterData) {
   const exists = await db.chapters.get(chapterData.id);
   if (exists) return;
-  await db.chapters.add(chapterData);
+  // Restored chapters are already on server — not pending
+  await db.chapters.add({ ...chapterData, pendingSync: null, pendingSyncFlag: 0 });
 }
 
 export async function restorePolyglotCache(chapterId, targetLang, rawText) {

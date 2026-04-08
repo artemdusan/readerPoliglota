@@ -92,7 +92,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
           (done, total) => setGenStep(s => ({ ...s, batchDone: done, batchTotal: total }))
         );
         await savePolyglotCache(ch.id, settings.targetLang, rawText);
-        uploadPolyglot(bookId, ch.chapterIndex, settings.targetLang, rawText);
+        uploadPolyglot(bookId, ch.id, settings.targetLang, rawText);
         // Mark chapter as done
         setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, hasPoly: true } : c));
         setSelected(prev => { const n = new Set(prev); n.delete(ch.id); return n; });

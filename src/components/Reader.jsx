@@ -490,7 +490,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       if (token !== genTokenRef.current) return;
 
       await savePolyglotCache(chapter.id, settings.targetLang, rawText);
-      uploadPolyglot(chapter.bookId, chapter.chapterIndex, settings.targetLang, rawText);
+      uploadPolyglot(chapter.bookId, chapter.id, settings.targetLang, rawText);
       const { html, count } = parsePolyglotHtml(rawText);
       setPolyHtml(html);
       setPolyWordCount(count);
