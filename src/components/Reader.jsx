@@ -45,7 +45,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const [chapterCount, setChapterCount] = useState(0);
 
   // Chapter state
-  const [chapterIdx, setChapterIdx]       = useState(0);
+  const [chapterIdx, setChapterIdx]       = useState(null); // null until reading position loaded
   const [chapter, setChapter]             = useState(null);
   const [chapterLoading, setChapterLoading] = useState(true);
 
@@ -84,20 +84,22 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const totalPagesRef  = useRef(1);
   const flippingRef    = useRef(false);
 
-  /* ── Load book metadata ── */
+  /* ── Load book metadata + restore starting chapter ── */
   useEffect(() => {
     if (!bookId) return;
-    getBook(bookId).then(b => {
+    getBook(bookId).then(async b => {
       if (!b) return;
       setBook(b);
       setToc(JSON.parse(b.tocJson || '[]'));
       setChapterCount(b.chapterCount || 0);
+      const pos = await getReadingPosition(bookId);
+      setChapterIdx(pos?.chapterIndex ?? 0);
     });
   }, [bookId]);
 
   /* ── Load chapter when index changes ── */
   useEffect(() => {
-    if (!bookId) return;
+    if (!bookId || chapterIdx === null) return;
     genTokenRef.current++;
     userChangedLangRef.current = false;
     setChapterLoading(true);
@@ -199,7 +201,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         }
       });
     });
-  }, [chapter?.id, polyMode, fs]);
+  }, [chapter?.id, polyMode, fs, polyHtml]);
 
   /* ── Keep activeLangRef in sync; save position only on explicit user lang switch ── */
   useEffect(() => {
@@ -269,6 +271,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   }, []);
 
   function navigate(idx) {
+    if (chapterIdx === null) return;
     persistPosition();
     setChapterIdx(Math.max(0, Math.min(idx, chapterCount - 1)));
   }
@@ -280,6 +283,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   function switchToLang(lang) {
     if (lang === activeLang) return;
     userChangedLangRef.current = true;
+    pendingPageRef.current = 0;
     if (lang === null) {
       setActiveLang(null);
       setPolyState('idle');
@@ -428,7 +432,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   }
 
   const progressPct = chapterCount
-    ? `${Math.round(((chapterIdx + 1) / chapterCount) * 100)}%`
+    ? `${Math.round((((chapterIdx ?? 0) + 1) / chapterCount) * 100)}%`
     : '0%';
 
   const estimatedBatches = chapter?.text ? Math.ceil(chapter.text.length / 3500) : 0;
@@ -506,11 +510,11 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 }}
               >
                 <option value="">
-                  {`Rozdział ${chapterIdx + 1}${chapter.title ? ' · ' + chapter.title : ''} — Oryginał`}
+                  {`Rozdział ${(chapterIdx ?? 0) + 1}${chapter.title ? ' · ' + chapter.title : ''} — Oryginał`}
                 </option>
                 {cachedLangs.map(l => (
                   <option key={l.code} value={l.code}>
-                    {`Rozdział ${chapterIdx + 1}${chapter.title ? ' · ' + chapter.title : ''} — ${l.name}`}
+                    {`Rozdział ${(chapterIdx ?? 0) + 1}${chapter.title ? ' · ' + chapter.title : ''} — ${l.name}`}
                   </option>
                 ))}
                 <option value="__generate__">+ Dodaj tłumaczenie</option>
@@ -632,14 +636,14 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         <div className="bottombar">
           <button
             className="nav-btn"
-            onClick={() => currentPage === 0 ? navigate(chapterIdx - 1) : prevPage()}
-            disabled={currentPage === 0 && chapterIdx === 0}
+            onClick={() => currentPage === 0 ? navigate((chapterIdx ?? 0) - 1) : prevPage()}
+            disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
           >
             ←
           </button>
           <div className="prog-wrap">
             <div className="prog-lbl">
-              {chapterIdx + 1}/{chapterCount} · {currentPage + 1}/{totalPages}
+              {(chapterIdx ?? 0) + 1}/{chapterCount} · {currentPage + 1}/{totalPages}
             </div>
             <div className="prog-track">
               <div className="prog-fill" style={{ width: progressPct }} />
@@ -647,8 +651,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
           </div>
           <button
             className="nav-btn"
-            onClick={() => currentPage >= totalPages - 1 ? navigate(chapterIdx + 1) : nextPage()}
-            disabled={currentPage >= totalPages - 1 && chapterIdx >= chapterCount - 1}
+            onClick={() => currentPage >= totalPages - 1 ? navigate((chapterIdx ?? 0) + 1) : nextPage()}
+            disabled={currentPage >= totalPages - 1 && (chapterIdx ?? 0) >= chapterCount - 1}
           >
             →
           </button>
