@@ -300,15 +300,19 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   function requestGenerate() {
     if (!isLoggedIn()) { onOpenSettings(); return; }
     if (!chapter?.text) return;
+    const lastCode = localStorage.getItem('vocabapp:lastLang');
+    const initialCode = (lastCode && LANGUAGES.some(l => l.code === lastCode)) ? lastCode : LANGUAGES[0].code;
     userChangedLangRef.current = true;
-    setConfirmLang(settings.targetLang);
-    setActiveLang(settings.targetLang);
+    setConfirmLang(initialCode);
+    setActiveLang(initialCode);
     setPolyState('confirm');
   }
 
   async function startGeneration() {
     if (!chapter?.text) return;
     const token = ++genTokenRef.current;
+    const langCode = confirmLang;
+    const langObj = LANGUAGES.find(l => l.code === langCode) ?? LANGUAGES[0];
     setPolyState('loading');
     setPolyProgress({ done: 0, total: 0, cost: 0, secs: 0 });
     setPolyError('');
@@ -316,7 +320,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     try {
       const { rawText, cost, elapsedMs } = await generatePolyglot(
         chapter.text,
-        { targetLangName: settings.targetLangName, model: settings.polyglotModel },
+        { targetLangName: langObj.name, model: settings.polyglotModel },
         (done, total, cost, secs) => {
           if (token === genTokenRef.current) setPolyProgress({ done, total, cost, secs });
         }
@@ -324,8 +328,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
       if (token !== genTokenRef.current) return;
 
-      await savePolyglotCache(chapter.id, confirmLang || settings.targetLang, rawText);
-      uploadPolyglot(chapter.bookId, chapter.id, confirmLang || settings.targetLang, rawText);
+      localStorage.setItem('vocabapp:lastLang', langCode);
+      await savePolyglotCache(chapter.id, langCode, rawText);
+      uploadPolyglot(chapter.bookId, chapter.id, langCode, rawText);
 
       const { html } = parsePolyglotHtml(rawText);
       setPolyHtml(html);
@@ -539,12 +544,17 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
                 {polyMode && polyState === 'confirm' && (
                   <div className="poly-confirm ch-anim">
-                    <div className="poly-confirm-icon">
-                      {LANGUAGES.find(l => l.code === (confirmLang || settings.targetLang))?.flag ?? '🌐'}
-                    </div>
-                    <p className="poly-confirm-title">
-                      Generuj wersję {LANGUAGES.find(l => l.code === (confirmLang || settings.targetLang))?.name ?? confirmLang}
-                    </p>
+                    <p className="poly-confirm-title">Wybierz język tłumaczenia</p>
+                    <select
+                      className="form-select"
+                      value={confirmLang}
+                      onChange={e => { setConfirmLang(e.target.value); setActiveLang(e.target.value); }}
+                      style={{ marginBottom: 12, alignSelf: 'stretch' }}
+                    >
+                      {LANGUAGES.map(l => (
+                        <option key={l.code} value={l.code}>{l.flag} {l.label} ({l.name})</option>
+                      ))}
+                    </select>
                     <p className="poly-confirm-hint">
                       <strong>{estimatedBatches} {estimatedBatches === 1 ? 'partia' : estimatedBatches < 5 ? 'partie' : 'partii'}</strong>
                       {' · ~'}{estimatedSecs < 60 ? `${estimatedSecs}s` : `${Math.round(estimatedSecs / 60)} min`}

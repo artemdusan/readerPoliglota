@@ -25,6 +25,7 @@ Zasady:
 • Zachowaj oryginalną strukturę zdania: gramatykę, szyk wyrazów, interpunkcję, akapity
 • Używaj naturalnych form słów w języku docelowym (z rodzajnikami jeśli wskazane)
 • Rozłóż zamiany równomiernie w całym tekście (nie tylko na początku)
+• Nie zamieniaj słów bezpośrednio sąsiadujących — między dwoma zamienionymi słowami musi być co najmniej jedno niezamienione słowo
 • Odpowiedz WYŁĄCZNIE przerobioną wersją tekstu — zero komentarzy, wstępu ani podsumowania`;
 }
 

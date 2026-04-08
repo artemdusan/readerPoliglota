@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { getBookChaptersWithCacheStatus, savePolyglotCache } from '../db';
 import { generatePolyglot } from '../lib/polyglotApi';
 import { uploadPolyglot } from '../sync/cfSync';
+import { LANGUAGES } from '../hooks/useSettings';
 
 /* Cost table: USD per 1M tokens */
 const MODEL_PRICES = {
@@ -35,6 +36,10 @@ function fmtCost(usd) {
 }
 
 export default function BatchGenModal({ bookId, book, settings, onClose }) {
+  const [selectedLang, setSelectedLang] = useState(() => {
+    const code = localStorage.getItem('vocabapp:lastLang');
+    return LANGUAGES.find(l => l.code === code) ?? LANGUAGES[0];
+  });
   const [chapters, setChapters]   = useState([]);
   const [loading, setLoading]     = useState(true);
   const [selected, setSelected]   = useState(new Set());
@@ -44,13 +49,14 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
   const [done, setDone]           = useState(false);
 
   useEffect(() => {
-    getBookChaptersWithCacheStatus(bookId, settings.targetLang).then(chs => {
+    setLoading(true);
+    getBookChaptersWithCacheStatus(bookId, selectedLang.code).then(chs => {
       setChapters(chs);
       // Pre-select chapters without polyglot cache
       setSelected(new Set(chs.filter(c => !c.hasPoly).map(c => c.id)));
       setLoading(false);
     });
-  }, [bookId, settings.targetLang]);
+  }, [bookId, selectedLang.code]);
 
   const toGenerate = useMemo(
     () => chapters.filter(c => selected.has(c.id) && !c.hasPoly),
@@ -81,6 +87,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
     setGenerating(true);
     setErrors({});
     setDone(false);
+    localStorage.setItem('vocabapp:lastLang', selectedLang.code);
 
     for (let i = 0; i < toGenerate.length; i++) {
       const ch = toGenerate[i];
@@ -88,12 +95,12 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
       try {
         const { rawText } = await generatePolyglot(
           ch.text,
-          { targetLangName: settings.targetLangName, model: settings.polyglotModel },
+          { targetLangName: selectedLang.name, model: settings.polyglotModel },
           (done, total) => setGenStep(s => ({ ...s, batchDone: done, batchTotal: total }))
         );
-        await savePolyglotCache(ch.id, settings.targetLang, rawText);
-        uploadPolyglot(bookId, ch.id, settings.targetLang, rawText);
-        window.dispatchEvent(new CustomEvent('polyglot-saved', { detail: { chapterId: ch.id, lang: settings.targetLang } }));
+        await savePolyglotCache(ch.id, selectedLang.code, rawText);
+        uploadPolyglot(bookId, ch.id, selectedLang.code, rawText);
+        window.dispatchEvent(new CustomEvent('polyglot-saved', { detail: { chapterId: ch.id, lang: selectedLang.code } }));
         // Mark chapter as done
         setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, hasPoly: true } : c));
         setSelected(prev => { const n = new Set(prev); n.delete(ch.id); return n; });
@@ -125,13 +132,26 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
             </div>
           ) : (
             <>
-              {/* Language + model info */}
+              {/* Language picker + model info */}
               <div className="bgen-info">
-                <span>{settings.targetLangFlag} <strong>{settings.targetLangName}</strong></span>
+                <select
+                  className="form-select"
+                  value={selectedLang.code}
+                  onChange={e => {
+                    const lang = LANGUAGES.find(l => l.code === e.target.value) ?? LANGUAGES[0];
+                    setSelectedLang(lang);
+                    setDone(false);
+                    setErrors({});
+                  }}
+                  disabled={generating}
+                  style={{ flex: 1, minWidth: 150 }}
+                >
+                  {LANGUAGES.map(l => (
+                    <option key={l.code} value={l.code}>{l.flag} {l.label} ({l.name})</option>
+                  ))}
+                </select>
                 <span className="bgen-sep">·</span>
                 <span>{settings.polyglotModel}</span>
-                <span className="bgen-sep">·</span>
-                <span>{settings.provider}</span>
               </div>
 
               {/* Chapter list */}

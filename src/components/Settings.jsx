@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { LANGUAGES, PROVIDERS } from '../hooks/useSettings';
+import { PROVIDERS } from '../hooks/useSettings';
 import { isLoggedIn, onAuthChange, login, register, logout } from '../sync/cfAuth';
 import { syncAll } from '../sync/cfSync';
 
 const deepseekProvider = PROVIDERS.find(p => p.id === 'deepseek') ?? PROVIDERS[0];
 
-export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, onClose }) {
+export default function Settings({ settings, onUpdateSetting, onClose }) {
   const [cfConnected, setCfConnected]   = useState(isLoggedIn());
   const [authMode, setAuthMode]         = useState('login'); // 'login' | 'register'
   const [email, setEmail]               = useState('');
@@ -167,22 +167,6 @@ export default function Settings({ settings, onUpdateSetting, onUpdateLanguage, 
                 </button>
               </form>
             )}
-          </div>
-
-          {/* Target language */}
-          <div className="form-group">
-            <label className="form-label">Język nauki (tryb poligloty)</label>
-            <select
-              className="form-select"
-              value={settings.targetLang}
-              onChange={e => onUpdateLanguage(e.target.value)}
-            >
-              {LANGUAGES.map(lang => (
-                <option key={lang.code} value={lang.code}>
-                  {lang.flag} {lang.label} ({lang.name})
-                </option>
-              ))}
-            </select>
           </div>
 
           {/* Model */}
