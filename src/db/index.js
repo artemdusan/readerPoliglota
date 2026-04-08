@@ -1,6 +1,6 @@
 import Dexie from 'dexie';
 
-export const db = new Dexie('VocabAppDB');
+export const db = new Dexie('ReaderDB');
 
 db.version(1).stores({
   // books: metadata + TOC; cover is base64 data URL stored here
@@ -184,8 +184,8 @@ export async function getReadingPosition(bookId) {
   return db.readingPositions.get(bookId);
 }
 
-export async function saveReadingPosition(bookId, chapterIndex, scrollTop = 0, activeLang = null, sentenceIdx = -1) {
-  await db.readingPositions.put({ bookId, chapterIndex, scrollTop, activeLang, sentenceIdx, updatedAt: Date.now() });
+export async function saveReadingPosition(bookId, chapterIndex, page = 0, activeLang = null) {
+  await db.readingPositions.put({ bookId, chapterIndex, page, activeLang, updatedAt: Date.now() });
 }
 
 export async function getBookWithChapters(bookId) {
