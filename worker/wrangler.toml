@@ -11,6 +11,12 @@ database_id   = "d0e1eddd-93c9-44fd-871b-a80181728c1c"
 bucket_name = "reader-books"
 binding = "reader_books"
 
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+
 # Secrets (set via CLI before deploying):
 #   wrangler secret put JWT_SECRET       (random 64-char string, e.g. openssl rand -hex 32)
 #   wrangler secret put DEEPSEEK_API_KEY (your DeepSeek API key)
