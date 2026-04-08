@@ -113,13 +113,13 @@ const bookPrefix = (u, b)       => `${u}/${b}/`;
 const polyPrefix = (u, b)       => `${u}/${b}/pl/`;
 
 async function r2PutJson(env, key, data) {
-  await env.vocabapp_books.put(key, JSON.stringify(data), {
+  await env.reader_books.put(key, JSON.stringify(data), {
     httpMetadata: { contentType: 'application/json' },
   });
 }
 
 async function r2GetJson(env, key) {
-  const obj = await env.vocabapp_books.get(key);
+  const obj = await env.reader_books.get(key);
   if (!obj) return null;
   return obj.json();
 }
@@ -129,7 +129,7 @@ async function r2ListKeys(env, prefix) {
   const keys = [];
   let cursor;
   do {
-    const result = await env.vocabapp_books.list({ prefix, cursor });
+    const result = await env.reader_books.list({ prefix, cursor });
     for (const obj of result.objects) keys.push(obj.key);
     cursor = result.truncated ? result.cursor : undefined;
   } while (cursor);
@@ -323,7 +323,7 @@ async function handleDeleteBook(request, env, userId, bookId) {
 
   // Hard delete all R2 objects under this book prefix
   const keys = await r2ListKeys(env, bookPrefix(userId, bookId));
-  await Promise.all(keys.map(k => env.vocabapp_books.delete(k)));
+  await Promise.all(keys.map(k => env.reader_books.delete(k)));
 
   return json({ ok: true });
 }

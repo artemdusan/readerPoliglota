@@ -1,6 +1,6 @@
--- Run once: wrangler d1 execute vocabapp-db --file=schema.sql --remote
+-- Run once: wrangler d1 execute reader-db --file=schema.sql --remote
 -- Migration (run separately if DB already exists):
---   wrangler d1 execute vocabapp-db --command="ALTER TABLE book_manifest ADD COLUMN chapter_count INTEGER NOT NULL DEFAULT 0" --remote
+--   wrangler d1 execute reader-db --command="ALTER TABLE book_manifest ADD COLUMN chapter_count INTEGER NOT NULL DEFAULT 0" --remote
 
 CREATE TABLE IF NOT EXISTS users (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
