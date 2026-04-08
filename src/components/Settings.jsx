@@ -3,6 +3,8 @@ import { PROVIDERS } from '../hooks/useSettings';
 import { isLoggedIn, onAuthChange, login, register, logout } from '../sync/cfAuth';
 import { syncAll } from '../sync/cfSync';
 
+const WORKER_URL = import.meta.env.VITE_WORKER_URL ?? '';
+
 const deepseekProvider = PROVIDERS.find(p => p.id === 'deepseek') ?? PROVIDERS[0];
 
 export default function Settings({ settings, onUpdateSetting, onClose }) {
@@ -13,7 +15,8 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
   const [authError, setAuthError]       = useState('');
   const [authWorking, setAuthWorking]   = useState(false);
   const [syncStatus, setSyncStatus]     = useState(null); // null | 'syncing' | { synced, error }
-  const [syncProgress, setSyncProgress] = useState(null); // null | { done, total }
+  const [syncProgress, setSyncProgress]   = useState(null); // null | { done, total }
+  const [apiTest, setApiTest]             = useState(null); // null | 'testing' | { ok, msg }
   const [lastSync, setLastSync]         = useState(() => {
     const v = localStorage.getItem('vocabapp:lastSync');
     return v ? Number(v) : null;
@@ -53,6 +56,18 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
     if (!ts) return null;
     const d = new Date(ts);
     return d.toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  async function handleApiTest() {
+    setApiTest('testing');
+    try {
+      const resp = await fetch(`${WORKER_URL}/health`);
+      const body = await resp.json().catch(() => ({}));
+      setApiTest({ ok: resp.ok, msg: resp.ok ? 'Połączono z DeepSeek ✓' : (body.error || `HTTP ${resp.status}`) });
+    } catch (e) {
+      setApiTest({ ok: false, msg: `Nie można połączyć z workerem: ${e.message}` });
+    }
+    setTimeout(() => setApiTest(null), 8000);
   }
 
   function handleOverlayClick(e) {
@@ -181,6 +196,20 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                 <option key={m.id} value={m.id}>{m.label}</option>
               ))}
             </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <button
+                className="btn-ghost"
+                onClick={handleApiTest}
+                disabled={apiTest === 'testing'}
+              >
+                {apiTest === 'testing' ? '⟳ Sprawdzam…' : 'Sprawdź połączenie z DeepSeek'}
+              </button>
+              {apiTest && apiTest !== 'testing' && (
+                <span style={{ fontSize: 12, color: apiTest.ok ? 'var(--gold)' : 'var(--err, #e55)' }}>
+                  {apiTest.msg}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Font size */}

@@ -178,6 +178,9 @@ async function handleTranslate(request, env) {
   const { model, messages } = await request.json().catch(() => ({}));
   if (!model || !Array.isArray(messages)) return err('model i messages są wymagane');
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25_000);
+
   let resp;
   try {
     resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
@@ -187,9 +190,15 @@ async function handleTranslate(request, env) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: 4096 }),
+      signal: controller.signal,
     });
   } catch (e) {
-    return err(`Nie można połączyć z API: ${e.message}`, 502);
+    const msg = e.name === 'AbortError'
+      ? 'DeepSeek nie odpowiedział w czasie (25s) — spróbuj ponownie lub zmień model'
+      : `Nie można połączyć z API: ${e.message}`;
+    return err(msg, 502);
+  } finally {
+    clearTimeout(timeout);
   }
 
   if (!resp.ok) {
@@ -379,6 +388,30 @@ async function handleUpsertProgress(request, env, userId, bookId) {
   return json({ ok: true });
 }
 
+// ─── HEALTH CHECK ────────────────────────────────────────────────────────────
+
+async function handleHealth(env) {
+  if (!env.DEEPSEEK_API_KEY) return err('DEEPSEEK_API_KEY nie jest ustawiony', 500);
+
+  let resp;
+  try {
+    resp = await fetch('https://api.deepseek.com/v1/models', {
+      headers: { 'Authorization': `Bearer ${env.DEEPSEEK_API_KEY}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (e) {
+    return err(`Nie można połączyć z DeepSeek: ${e.message}`, 502);
+  }
+
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => null);
+    const msg = body?.error?.message || `HTTP ${resp.status}`;
+    return err(`Błąd DeepSeek API (${resp.status}): ${msg}`, 502);
+  }
+
+  return json({ ok: true, status: resp.status });
+}
+
 // ─── ROUTER ──────────────────────────────────────────────────────────────────
 
 export default {
@@ -392,7 +425,8 @@ export default {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
-    // Public auth routes
+    // Public routes
+    if (method === 'GET'  && path === '/health')        return handleHealth(env);
     if (method === 'POST' && path === '/auth/register') return handleRegister(request, env);
     if (method === 'POST' && path === '/auth/login')    return handleLogin(request, env);
 
