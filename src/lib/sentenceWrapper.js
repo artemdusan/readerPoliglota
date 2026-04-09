@@ -4,8 +4,11 @@
  *
  * Approach: walk DOM text nodes, accumulate char offset, split at sentence boundaries.
  * chapter.text ≈ body.textContent (minor whitespace normalization only), so offsets align.
+ *
+ * skipSelector: optional CSS selector — text nodes inside matching elements are skipped
+ * (used in polyglot mode to skip <i class="pw-original"> tooltip text).
  */
-export function wrapSentencesInHtml(html, marks) {
+export function wrapSentencesInHtml(html, marks, skipSelector = null) {
   if (!marks || marks.length === 0) return html;
 
   const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -14,7 +17,7 @@ export function wrapSentencesInHtml(html, marks) {
   // 1. Collect all text nodes with their cumulative offsets
   const textNodes = [];
   const state = { pos: 0 };
-  collectTextNodes(root, textNodes, state);
+  collectTextNodes(root, textNodes, state, skipSelector);
 
   // 2. Build sentence ranges: [{ sid, start, end }]
   //    "end" of sentence i = start of sentence i+1 (or Infinity)
@@ -71,7 +74,7 @@ export function wrapSentencesInHtml(html, marks) {
   return root.innerHTML;
 }
 
-function collectTextNodes(node, result, state) {
+function collectTextNodes(node, result, state, skipSelector) {
   if (node.nodeType === Node.TEXT_NODE) {
     const len = node.textContent.length;
     if (len > 0) {
@@ -79,8 +82,9 @@ function collectTextNodes(node, result, state) {
       state.pos += len;
     }
   } else {
+    if (skipSelector && node.nodeType === Node.ELEMENT_NODE && node.matches(skipSelector)) return;
     for (const child of [...node.childNodes]) {
-      collectTextNodes(child, result, state);
+      collectTextNodes(child, result, state, skipSelector);
     }
   }
 }
