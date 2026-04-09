@@ -340,6 +340,42 @@ html, body, #root {
 .fs-val { color: var(--txt-3); font-size: 11px; padding: 0 2px; }
 
 
+/* ════════════════ TTS CONTROL BAR ════════════════ */
+.tts-bar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 28px; height: 40px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-side);
+  flex-shrink: 0;
+}
+.tts-bar-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+.tts-bar-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0;
+  background: none; border: 1px solid var(--border);
+  border-radius: 3px; color: var(--txt-2);
+  font-size: 11px; cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.tts-bar-btn:hover:not(:disabled) { border-color: var(--txt-2); color: var(--txt-1); }
+.tts-bar-btn:disabled { opacity: .25; cursor: default; }
+.tts-bar-btn.tts-bar-play { width: 30px; font-size: 12px; }
+.tts-bar-btn.tts-bar-play.active { border-color: var(--gold); color: var(--gold); }
+.tts-voice-sel {
+  height: 26px; padding: 0 22px 0 8px;
+  background: var(--bg);
+  border: 1px solid var(--border); border-radius: 3px;
+  color: var(--txt-2); font-family: 'DM Sans', sans-serif;
+  font-size: 11px; letter-spacing: .04em;
+  cursor: pointer; appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23453e36'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 6px center;
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: border-color .15s, color .15s;
+}
+.tts-voice-sel:hover { border-color: var(--txt-3); color: var(--txt-1); }
+.tts-voice-sel option { background: #161412; color: var(--txt-1); font-size: 12px; }
+
 /* Chapter scroll — always page mode */
 .ch-scroll { flex: 1; overflow: hidden; transition: opacity 0.1s ease; }
 .ch-scroll.page-turning { opacity: 0.06; }
@@ -852,10 +888,12 @@ span[data-sid].sentence-active {
 /* ════════════════ TOOLBAR HIDE (centre tap) ════════════════ */
 
 .reader-layout .topbar,
+.reader-layout .tts-bar,
 .reader-layout .bottombar {
   transition: transform .25s ease, opacity .25s ease;
 }
-.reader-layout.toolbar-hidden .topbar {
+.reader-layout.toolbar-hidden .topbar,
+.reader-layout.toolbar-hidden .tts-bar {
   transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;

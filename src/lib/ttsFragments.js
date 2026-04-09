@@ -39,12 +39,15 @@ export function extractFragments(polyHtml) {
 /**
  * Web Speech API TTS player.
  * Reads text fragments in sourceLang, word fragments in targetLang.
+ * sourceVoice / targetVoice are SpeechSynthesisVoice objects (optional).
  */
 export class TtsPlayer {
-  constructor({ fragments, sourceLang, targetLang, onFragment, onDone }) {
+  constructor({ fragments, sourceLang, targetLang, sourceVoice, targetVoice, onFragment, onDone }) {
     this.fragments = fragments;
     this.sourceLang = sourceLang;
     this.targetLang = targetLang;
+    this.sourceVoice = sourceVoice || null;
+    this.targetVoice = targetVoice || null;
     this.onFragment = onFragment;
     this.onDone = onDone;
     this._stopped = false;
@@ -73,10 +76,20 @@ export class TtsPlayer {
     }
     const frag = this.fragments[this._fid];
     this.onFragment(this._fid);
-    const utt = new SpeechSynthesisUtterance(
-      frag.type === 'word' ? frag.target : frag.text
-    );
-    utt.lang = frag.type === 'word' ? this.targetLang : this.sourceLang;
+    let text, lang;
+    if (frag.type === 'word') {
+      text = frag.target;
+      lang = this.targetLang;
+    } else {
+      // Append the next word's translation so TTS reads e.g. "This isn't a house"
+      const next = this.fragments[this._fid + 1];
+      text = (next?.type === 'word' && next.original) ? frag.text + next.original : frag.text;
+      lang = this.sourceLang;
+    }
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = lang;
+    const voice = frag.type === 'word' ? this.targetVoice : this.sourceVoice;
+    if (voice) utt.voice = voice;
     utt.onend = () => { if (!this._stopped) { this._fid++; this._next(); } };
     utt.onerror = () => { if (!this._stopped) { this._fid++; this._next(); } };
     window.speechSynthesis.speak(utt);
