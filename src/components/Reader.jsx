@@ -610,6 +610,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
                 {polyMode && polyState === 'done' && (
                   <div
+                    key={activeLang}
                     className="ch-body ch-anim"
                     dangerouslySetInnerHTML={{ __html: polyHtml }}
                     onClick={handleContentClick}
