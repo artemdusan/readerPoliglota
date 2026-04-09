@@ -109,18 +109,37 @@ export async function generatePolyglot(chapterText, { targetLangName, sourceLang
     .map(p => p.trim())
     .filter(p => p.length > 5);
 
-  const BATCH_CHARS = 3500;
+  const BATCH_CHARS = 1000;
   const batches = [];
   let cur = [], len = 0;
 
+  // Split a single long paragraph at word boundaries
+  function splitAtWords(text) {
+    if (text.length <= BATCH_CHARS) return [text];
+    const parts = [];
+    let start = 0;
+    while (start < text.length) {
+      if (start + BATCH_CHARS >= text.length) { parts.push(text.slice(start)); break; }
+      let end = start + BATCH_CHARS;
+      const lastSpace = text.lastIndexOf(' ', end);
+      if (lastSpace > start) end = lastSpace;
+      parts.push(text.slice(start, end));
+      start = end + 1;
+    }
+    return parts;
+  }
+
   for (const p of paragraphs) {
-    if (len + p.length > BATCH_CHARS && cur.length > 0) {
-      batches.push(cur.join('\n\n'));
-      cur = [p];
-      len = p.length;
-    } else {
-      cur.push(p);
-      len += p.length + 2;
+    const parts = splitAtWords(p);
+    for (const part of parts) {
+      if (len + part.length > BATCH_CHARS && cur.length > 0) {
+        batches.push(cur.join('\n\n'));
+        cur = [part];
+        len = part.length;
+      } else {
+        cur.push(part);
+        len += part.length + 2;
+      }
     }
   }
   if (cur.length > 0) batches.push(cur.join('\n\n'));
@@ -142,7 +161,7 @@ export async function generatePolyglot(chapterText, { targetLangName, sourceLang
   const results = new Array(batches.length);
 
   // Concurrency=2 — avoids rate-limit and worker timeout cascades
-  const CONCURRENCY = 2;
+  const CONCURRENCY = 5;
   for (let i = 0; i < batches.length; i += CONCURRENCY) {
     const chunk = batches.slice(i, i + CONCURRENCY);
     await Promise.all(chunk.map(async (batchText, j) => {
