@@ -3,19 +3,16 @@ import {
   db,
   getBook, getChapter, getPolyglotCache, savePolyglotCache,
   getChapterCachedLangs, getReadingPosition, saveReadingPosition,
-  getAudioCache, saveAudioCache,
   saveChapterLang, getChapterStatusMap,
 } from '../db';
 import { LANGUAGES } from '../hooks/useSettings';
 import { generatePolyglot } from '../lib/polyglotApi';
-import { isLoggedIn, getToken } from '../sync/cfAuth';
+import { isLoggedIn } from '../sync/cfAuth';
 import { triggerSync } from '../sync/cfSync';
 import { parsePolyglotHtml } from '../lib/polyglotParser';
 import { MODEL_PRICING } from '../lib/polyglotApi';
-import { wrapSentencesInHtml } from '../lib/sentenceWrapper';
-import { extractFragments, TtsPlayer } from '../lib/ttsFragments';
-
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
+import { annotateSentencesInHtml } from '../lib/sentenceWrapper';
+import { extractFragments, SentenceTtsPlayer, TtsPlayer } from '../lib/ttsFragments';
 
 /* ═══════════════════════════════════════════
    Helpers
@@ -67,23 +64,11 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   // derived
   const polyMode = activeLang !== null;
 
-  // Audio state
-  const [audioState, setAudioState]   = useState('idle'); // 'idle'|'loading'|'ready'|'error'
-  const [audioError, setAudioError]   = useState('');
-  const [audioMarks, setAudioMarks]   = useState(null);   // flat Polly sentence marks array
-  const [audioVoiceId, setAudioVoiceId] = useState('');
-  const [audioChunkCount, setAudioChunkCount] = useState(1);
+  // Original TTS state
+  const [originalHtmlAnnotated, setOriginalHtmlAnnotated] = useState('');
+  const [originalTtsFragments, setOriginalTtsFragments] = useState([]);
+  const [originalTtsPlaying, setOriginalTtsPlaying] = useState(false);
   const [activeSid, setActiveSid]     = useState(-1);
-  const [isPlaying, setIsPlaying]     = useState(false);
-  const [htmlWithSids, setHtmlWithSids] = useState('');   // chapter.html with <span data-sid>
-  const [polyHtmlWithSids, setPolyHtmlWithSids] = useState(''); // polyHtml with <span data-sid>
-  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
-  const [audioDuration, setAudioDuration] = useState(0);
-  const audioRef       = useRef(null);
-  const audioBlobsRef  = useRef([]);   // ObjectURLs per chunk
-  const audioChunkRef  = useRef(0);    // current chunk index
-  const audioVoiceRef  = useRef('');
-  const audioMarksRef  = useRef(null);
   const activeSidRef   = useRef(-1);
   const chapterBodyRef = useRef(null);
 
@@ -122,7 +107,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const desiredLangRef = useRef(null);  // lang to carry over when changing chapter
   const touchStartXRef = useRef(null);
   const touchStartYRef = useRef(null);
-  const sidToMarkRef   = useRef(new Map()); // sid → mark for O(1) click-to-seek
+  const originalTtsPlayerRef = useRef(null);
 
   // Hybrid TTS state (polyglot mode — Web Speech API, no Polly)
   const [ttsPlaying, setTtsPlaying]           = useState(false);
@@ -161,6 +146,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     else setTtsTargetVoice(''); // reset when switching language
   }, [ttsVoices, activeLang]);
 
+  useEffect(() => () => {
+    window.speechSynthesis?.cancel();
+  }, []);
+
   /* ── Load book metadata + restore starting chapter ── */
   useEffect(() => {
     if (!bookId) return;
@@ -198,16 +187,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     totalPagesRef.current = 1;
     flippingRef.current = false;
     setMissingLangBanner(null);
-    // Reset audio
-    stopAudio();
-    setAudioState('idle');
-    setAudioError('');
-    setAudioMarks(null);
-    setAudioVoiceId('');
-    setHtmlWithSids('');
-    setPolyHtmlWithSids('');
-    setAudioCurrentTime(0);
-    setAudioDuration(0);
+    // Reset original TTS
+    stopOriginalTts();
+    setOriginalHtmlAnnotated('');
+    setOriginalTtsFragments([]);
     setActiveSid(-1);
     activeSidRef.current = -1;
     // Reset hybrid TTS
@@ -225,6 +208,14 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         : 0;
 
       setChapter(ch || null);
+      if (ch?.html) {
+        const { html: annotated, fragments } = annotateSentencesInHtml(ch.html, book?.lang || 'en');
+        setOriginalHtmlAnnotated(annotated);
+        setOriginalTtsFragments(fragments);
+      } else {
+        setOriginalHtmlAnnotated('');
+        setOriginalTtsFragments([]);
+      }
       setChapterLoading(false);
       animKeyRef.current += 1;
 
@@ -470,12 +461,11 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     userChangedLangRef.current = true;
     pendingProgressRef.current = 0;
     // Reset audio when switching language — old audio/marks belong to the previous version
-    stopAudio();
-    setAudioState('idle');
-    setAudioError('');
-    setAudioMarks(null);
-    setHtmlWithSids('');
-    setPolyHtmlWithSids('');
+    stopOriginalTts();
+    setOriginalHtmlAnnotated('');
+    setOriginalTtsFragments([]);
+    setActiveSid(-1);
+    activeSidRef.current = -1;
     // Reset hybrid TTS
     ttsPlayerRef.current?.stop();
     ttsPlayerRef.current = null;
@@ -484,6 +474,11 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     setPolyHtmlAnnotated('');
     setTtsFragments([]);
     if (lang === null) {
+      if (chapter?.html) {
+        const { html: annotated, fragments } = annotateSentencesInHtml(chapter.html, book?.lang || 'en');
+        setOriginalHtmlAnnotated(annotated);
+        setOriginalTtsFragments(fragments);
+      }
       setActiveLang(null);
       setPolyState('idle');
       return;
@@ -584,9 +579,118 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     }
   }
 
+  function clearSentenceHighlight() {
+    const body = chapterBodyRef.current;
+    if (!body) return;
+    body.querySelectorAll('.sentence-active').forEach(el => el.classList.remove('sentence-active'));
+  }
+
+  function highlightCurrentSentence(sid) {
+    const body = chapterBodyRef.current;
+    if (!body) return;
+
+    clearSentenceHighlight();
+    if (sid < 0) return;
+
+    const nodes = [...body.querySelectorAll(`[data-sid="${sid}"]`)];
+    if (!nodes.length) return;
+    nodes.forEach(node => node.classList.add('sentence-active'));
+
+    const scrollEl = chScrollRef.current;
+    if (!scrollEl) return;
+
+    const pw = scrollEl.clientWidth;
+    const containerRect = scrollEl.getBoundingClientRect();
+    const elRect = nodes[0].getBoundingClientRect();
+    const currentOffset = currentPageRef.current * pw;
+    const elAbsLeft = elRect.left - containerRect.left + currentOffset;
+    const targetPage = Math.floor(elAbsLeft / pw);
+    if (targetPage !== currentPageRef.current && targetPage >= 0 && targetPage < totalPagesRef.current) {
+      goToPage(targetPage, false);
+    }
+  }
+
+  function stopHybridTts() {
+    ttsPlayerRef.current?.stop();
+    ttsPlayerRef.current = null;
+    setTtsPlaying(false);
+    setActiveFid(-1);
+    const body = chapterBodyRef.current;
+    if (body) body.querySelectorAll('.tts-active').forEach(el => el.classList.remove('tts-active'));
+  }
+
+  function stopOriginalTts() {
+    originalTtsPlayerRef.current?.stop();
+    originalTtsPlayerRef.current = null;
+    setOriginalTtsPlaying(false);
+    setActiveSid(-1);
+    activeSidRef.current = -1;
+    clearSentenceHighlight();
+  }
+
+  function getFirstSidOnCurrentPage() {
+    const scrollEl = chScrollRef.current;
+    const body = chapterBodyRef.current;
+    if (!scrollEl || !body) return 0;
+    const pw = scrollEl.clientWidth;
+    const containerRect = scrollEl.getBoundingClientRect();
+    const page = currentPageRef.current;
+
+    for (const el of body.querySelectorAll('[data-sid]')) {
+      const elRect = el.getBoundingClientRect();
+      const elAbsLeft = elRect.left - containerRect.left + page * pw;
+      if (Math.floor(elAbsLeft / pw) >= page) {
+        return parseInt(el.dataset.sid, 10);
+      }
+    }
+
+    return 0;
+  }
+
+  function startOriginalTts(fromSid = 0) {
+    if (!originalTtsFragments.length) return;
+
+    stopHybridTts();
+    stopOriginalTts();
+
+    const player = new SentenceTtsPlayer({
+      fragments: originalTtsFragments,
+      lang: book?.lang || 'en',
+      voice: ttsVoices.find(v => v.voiceURI === ttsSourceVoice) || null,
+      onSentence: (sid) => {
+        activeSidRef.current = sid;
+        setActiveSid(sid);
+        highlightCurrentSentence(sid);
+      },
+      onDone: () => {
+        setOriginalTtsPlaying(false);
+        setActiveSid(-1);
+        activeSidRef.current = -1;
+        clearSentenceHighlight();
+      },
+    });
+
+    originalTtsPlayerRef.current = player;
+    player.play(fromSid);
+    setOriginalTtsPlaying(true);
+  }
+
+  function jumpSentence(delta) {
+    if (!originalTtsFragments.length) return;
+    const base = activeSid >= 0 ? activeSid : getFirstSidOnCurrentPage();
+    const sid = Math.max(0, Math.min(originalTtsFragments.length - 1, base + delta));
+    startOriginalTts(sid);
+  }
+
+  function toggleOriginalTts() {
+    if (originalTtsPlaying) stopOriginalTts();
+    else startOriginalTts(getFirstSidOnCurrentPage());
+  }
+
   function startHybridTts(fromFid = 0) {
     if (!ttsFragments.length) return;
-    ttsPlayerRef.current?.stop();
+    stopOriginalTts();
+    stopHybridTts();
     const player = new TtsPlayer({
       fragments: ttsFragments,
       sourceLang: book?.lang || 'en',
@@ -620,16 +724,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   }
 
   function toggleHybridTts() {
-    if (ttsPlaying) {
-      ttsPlayerRef.current?.stop();
-      ttsPlayerRef.current = null;
-      setTtsPlaying(false);
-      setActiveFid(-1);
-      const body = chapterBodyRef.current;
-      if (body) body.querySelectorAll('.tts-active').forEach(el => el.classList.remove('tts-active'));
-    } else {
-      startHybridTts(getFirstFidOnCurrentPage());
-    }
+    if (ttsPlaying) stopHybridTts();
+    else startHybridTts(getFirstFidOnCurrentPage());
   }
 
   function getFirstFidOnCurrentPage() {
@@ -650,8 +746,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   }
 
   function playSingleFragment(fid) {
-    ttsPlayerRef.current?.stop();
-    ttsPlayerRef.current = null;
+    stopOriginalTts();
+    stopHybridTts();
     const frag = ttsFragments[fid];
     if (!frag) return;
     highlightFragment(fid);
@@ -672,20 +768,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   /* ─────────────────────────────────────────
      AUDIO — generate, play, highlight
   ───────────────────────────────────────── */
-
-  function stopAudio() {
-    const el = audioRef.current;
-    if (el) { el.pause(); el.src = ''; }
-    audioBlobsRef.current.forEach(u => URL.revokeObjectURL(u));
-    audioBlobsRef.current = [];
-    audioChunkRef.current = 0;
-    audioVoiceRef.current = '';
-    setIsPlaying(false);
-    setActiveSid(-1);
-    activeSidRef.current = -1;
-    setAudioCurrentTime(0);
-    setAudioDuration(0);
-  }
 
   async function generateAudio() {
     if (!isLoggedIn()) { onOpenSettings(); return; }
@@ -946,26 +1028,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
     // Click on sentence span → seek audio to that sentence
     const sidEl = e.target.closest('[data-sid]');
-    if (sidEl && audioState === 'ready') {
+    if (sidEl && !polyMode && originalTtsFragments.length > 0) {
       const sid = parseInt(sidEl.dataset.sid, 10);
-      const mark = sidToMarkRef.current.get(sid);
-      if (mark && audioRef.current && audioBlobsRef.current.length > 0) {
-        const chunkIdx = mark.chunkIndex ?? 0;
-        audioChunkRef.current = chunkIdx;
-        audioRef.current.src = audioBlobsRef.current[chunkIdx];
-        const seekTime = (mark.localTime ?? 0) / 1000;
-        audioRef.current.currentTime = seekTime;
-        audioRef.current.play().catch(() => {});
-        setIsPlaying(true);
-        setActiveSid(sid);
-        activeSidRef.current = sid;
-        // Highlight immediately
-        const body = chapterBodyRef.current;
-        if (body) {
-          body.querySelectorAll('.sentence-active').forEach(el => el.classList.remove('sentence-active'));
-          sidEl.classList.add('sentence-active');
-        }
-      }
+      startOriginalTts(sid);
     }
   }
 
@@ -1037,10 +1102,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                   onClick={() => goToHref(item.href)}
                 >
                   <span className="toc-entry-title">{item.title || '—'}</span>
-                  {(status?.hasTranslation || status?.hasAudio) && (
+                  {status?.hasTranslation && (
                     <span className="toc-badges">
                       {status.hasTranslation && <span className="toc-bdg toc-bdg-tr" title="Tłumaczenie">⊙</span>}
-                      {status.hasAudio && <span className="toc-bdg toc-bdg-au" title="Audio">◉</span>}
                     </span>
                   )}
                 </li>
@@ -1091,46 +1155,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 {ttsPlaying ? '⏸' : '▶'}
               </button>
             ) : (
-              <>
-                {audioState === 'idle' && (
-                  <button className="ctl ctl-icon" onClick={generateAudio} title="Generuj audio" disabled={!chapter?.text}>
-                    ▶
-                  </button>
-                )}
-                {audioState === 'loading' && (
-                  <span className="ctl ctl-icon audio-loading" title="Generowanie audio…">
-                    <span className="spin-ring spin-ring--sm" />
-                  </span>
-                )}
-                {audioState === 'ready' && (
-                  <>
-                    <button className="ctl ctl-icon" onClick={togglePlayPause} title={isPlaying ? 'Pauza' : 'Odtwórz'}>
-                      {isPlaying ? '⏸' : '▶'}
-                    </button>
-                    <input
-                      type="range"
-                      className="audio-slider"
-                      min={0}
-                      max={audioDuration || 100}
-                      step={0.1}
-                      value={audioCurrentTime}
-                      onChange={e => {
-                        const t = parseFloat(e.target.value);
-                        if (audioRef.current) {
-                          audioRef.current.currentTime = t;
-                          setAudioCurrentTime(t);
-                        }
-                      }}
-                      title="Pozycja audio"
-                    />
-                  </>
-                )}
-                {audioState === 'error' && (
-                  <button className="ctl ctl-icon audio-err" onClick={() => setAudioState('idle')} title={`Błąd: ${audioError}. Kliknij aby spróbować ponownie.`}>
-                    ⚠
-                  </button>
-                )}
-              </>
+              <button className="ctl ctl-icon" onClick={toggleOriginalTts} title={originalTtsPlaying ? 'Stop' : 'Odtwórz'} disabled={!originalTtsFragments.length}>
+                {originalTtsPlaying ? '⏸' : '▶'}
+              </button>
             )}
             {polyMode && polyState === 'done' && (
               <>
@@ -1144,6 +1171,47 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         </div>
 
         {/* TTS control bar — visible when polyglot TTS is ready */}
+        {!polyMode && originalTtsFragments.length > 0 && (() => {
+          const srcCode = (book?.lang || 'en').split('-')[0].toLowerCase();
+          const srcVoices = ttsVoices.filter(v => v.lang.toLowerCase().startsWith(srcCode));
+          return (
+            <div className="tts-bar">
+              <button
+                className="tts-bar-btn"
+                onClick={() => jumpSentence(-1)}
+                disabled={activeSid <= 0}
+                title="Poprzednie zdanie"
+              >⏮</button>
+              <button
+                className={`tts-bar-btn tts-bar-play${originalTtsPlaying ? ' active' : ''}`}
+                onClick={toggleOriginalTts}
+                title={originalTtsPlaying ? 'Pauza' : 'Odtwórz'}
+              >{originalTtsPlaying ? '⏸' : '▶'}</button>
+              <button
+                className="tts-bar-btn"
+                onClick={() => jumpSentence(1)}
+                disabled={activeSid >= originalTtsFragments.length - 1}
+                title="Następne zdanie"
+              >⏭</button>
+              <div className="tts-bar-sep" />
+              <select
+                className="tts-voice-sel"
+                value={ttsSourceVoice}
+                title="Głos oryginału"
+                onChange={e => {
+                  setTtsSourceVoice(e.target.value);
+                  localStorage.setItem(`tts-voice-src-${srcCode}`, e.target.value);
+                }}
+              >
+                <option value="">Domyślny ({srcCode})</option>
+                {srcVoices.map(v => (
+                  <option key={v.voiceURI} value={v.voiceURI}>{v.name} [{v.lang}]</option>
+                ))}
+              </select>
+            </div>
+          );
+        })()}
+
         {polyMode && polyState === 'done' && ttsFragments.length > 0 && (() => {
           const srcCode = (book?.lang || 'en').split('-')[0].toLowerCase();
           const tgtCode = (activeLang || 'es').split('-')[0].toLowerCase();
@@ -1321,10 +1389,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 {!polyMode && (
                   <div
                     ref={chapterBodyRef}
-                    className={`ch-body ch-anim${audioState === 'ready' ? ' audio-ready' : ''}`}
+                    className={`ch-body ch-anim${originalTtsFragments.length ? ' audio-ready' : ''}`}
                     dangerouslySetInnerHTML={{
-                      __html: audioState === 'ready' && htmlWithSids
-                        ? htmlWithSids
+                      __html: originalHtmlAnnotated
+                        ? originalHtmlAnnotated
                         : (chapter.html ||
                             '<p style="color:var(--txt-3);font-style:italic">Ten rozdział nie zawiera tekstu.</p>'),
                     }}
@@ -1363,17 +1431,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
           </button>
         </div>
       </div>
-
-      {/* Hidden audio element */}
-      <audio
-        ref={audioRef}
-        onTimeUpdate={handleTimeUpdate}
-        onDurationChange={handleDurationChange}
-        onEnded={handleAudioEnded}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-        style={{ display: 'none' }}
-      />
 
     </div>
   );

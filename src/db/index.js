@@ -38,7 +38,7 @@ db.version(2).stores({
   }
 });
 
-// v3: add audioCache for Polly TTS (marks stored locally, audio streamed from R2)
+// v3: add audioCache for Polly TTS (legacy)
 db.version(3).stores({
   books:            'id, title, createdAt, deletedAt',
   chapters:         'id, bookId, chapterIndex, [bookId+chapterIndex], pendingSyncFlag',
@@ -46,6 +46,15 @@ db.version(3).stores({
   readingPositions: 'bookId',
   settings:         'key',
   audioCache:       '[chapterId+voiceId], chapterId',
+});
+
+// v4: remove legacy Polly audio cache
+db.version(4).stores({
+  books:            'id, title, createdAt, deletedAt',
+  chapters:         'id, bookId, chapterIndex, [bookId+chapterIndex], pendingSyncFlag',
+  polyglotCache:    'id, chapterId, targetLang, [chapterId+targetLang]',
+  readingPositions: 'bookId',
+  settings:         'key',
 });
 
 // ─── Pending sync helpers ─────────────────────────────────────────────────────
@@ -235,14 +244,6 @@ export async function restorePolyglotCache(chapterId, targetLang, rawText) {
 
 // ─── Audio cache ──────────────────────────────────────────────────────────────
 
-export async function getAudioCache(chapterId, voiceId) {
-  return db.audioCache.get([chapterId, voiceId]);
-}
-
-export async function saveAudioCache(chapterId, voiceId, marks, chunkCount = 1) {
-  await db.audioCache.put({ chapterId, voiceId, marks, chunkCount, createdAt: Date.now() });
-}
-
 // ─── Chapter language memory ──────────────────────────────────────────────────
 
 /** Persist the language chosen for a specific chapter. langCode=null clears it. */
@@ -262,7 +263,7 @@ export async function getChapterLang(bookId, chapterIndex) {
   return map[String(chapterIndex)] ?? null;
 }
 
-/** Returns { chapterIndex: { hasTranslation, hasAudio, chapterId } } for all chapters. */
+/** Returns { chapterIndex: { hasTranslation, chapterId } } for all chapters. */
 export async function getChapterStatusMap(bookId, langCode) {
   const chapters = await db.chapters.where('bookId').equals(bookId).sortBy('chapterIndex');
   const chapterIds = chapters.map(c => c.id);
@@ -275,14 +276,10 @@ export async function getChapterStatusMap(bookId, langCode) {
     polyEntries.filter(p => !langCode || p.targetLang === langCode).map(p => p.chapterId)
   );
 
-  const audioEntries = await db.audioCache.where('chapterId').anyOf(chapterIds).toArray();
-  const audioSet = new Set(audioEntries.map(a => a.chapterId));
-
   const map = {};
   for (const ch of chapters) {
     map[ch.chapterIndex] = {
       hasTranslation: polySet.has(ch.id),
-      hasAudio: audioSet.has(ch.id),
       chapterId: ch.id,
     };
   }

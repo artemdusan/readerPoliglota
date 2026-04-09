@@ -36,6 +36,61 @@ export function extractFragments(polyHtml) {
   return { html: doc.body.innerHTML, fragments };
 }
 
+export class SentenceTtsPlayer {
+  constructor({ fragments, lang, voice, onSentence, onDone }) {
+    this.fragments = fragments;
+    this.lang = lang;
+    this.voice = voice || null;
+    this.onSentence = onSentence;
+    this.onDone = onDone;
+    this._stopped = false;
+    this._sid = 0;
+  }
+
+  play(fromSid = 0) {
+    this._stopped = false;
+    this._sid = fromSid;
+    window.speechSynthesis.cancel();
+    this._next();
+  }
+
+  stop() {
+    this._stopped = true;
+    window.speechSynthesis.cancel();
+  }
+
+  _next() {
+    if (this._stopped || this._sid >= this.fragments.length) {
+      if (!this._stopped) this.onDone?.();
+      return;
+    }
+
+    const fragment = this.fragments[this._sid];
+    if (!fragment?.text?.trim()) {
+      this._sid++;
+      this._next();
+      return;
+    }
+
+    this.onSentence?.(this._sid);
+
+    const utt = new SpeechSynthesisUtterance(fragment.text);
+    utt.lang = this.lang;
+    if (this.voice) utt.voice = this.voice;
+    utt.onend = () => {
+      if (this._stopped) return;
+      this._sid++;
+      this._next();
+    };
+    utt.onerror = () => {
+      if (this._stopped) return;
+      this._sid++;
+      this._next();
+    };
+    window.speechSynthesis.speak(utt);
+  }
+}
+
 /**
  * Web Speech API TTS player.
  * Reads text fragments in sourceLang, word fragments in targetLang.

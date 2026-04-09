@@ -1,90 +1,114 @@
 /**
- * Wraps sentences in chapter HTML with <span data-sid="N"> using Polly speech marks.
- * Marks: [{ time, type, start, end, value }, ...] — start/end are char offsets in chapter.text.
- *
- * Approach: walk DOM text nodes, accumulate char offset, split at sentence boundaries.
- * chapter.text ≈ body.textContent (minor whitespace normalization only), so offsets align.
- *
- * skipSelector: optional CSS selector — text nodes inside matching elements are skipped
- * (used in polyglot mode to skip <i class="pw-original"> tooltip text).
+ * Annotate chapter HTML with <span data-sid="N"> sentence wrappers and
+ * return the extracted sentence fragments for local Web Speech playback.
  */
-export function wrapSentencesInHtml(html, marks, skipSelector = null) {
-  if (!marks || marks.length === 0) return html;
+export function annotateSentencesInHtml(html, lang = 'en') {
+  if (!html) return { html, fragments: [] };
 
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const root = doc.body;
-
-  // 1. Collect all text nodes with their cumulative offsets
   const textNodes = [];
-  const state = { pos: 0 };
-  collectTextNodes(root, textNodes, state, skipSelector);
+  const state = { pos: 0, text: '' };
 
-  // 2. Build sentence ranges: [{ sid, start, end }]
-  //    "end" of sentence i = start of sentence i+1 (or Infinity)
-  const sentRanges = marks.map((m, i) => ({
-    sid: i,
-    start: m.start,
-    end: marks[i + 1] ? marks[i + 1].start : state.pos,
-  }));
+  collectTextNodes(root, textNodes, state);
 
-  // 3. Process text nodes in REVERSE to avoid invalidating offsets after splits
+  const ranges = buildSentenceRanges(state.text, lang);
+  if (!ranges.length) return { html: root.innerHTML, fragments: [] };
+
   for (let ni = textNodes.length - 1; ni >= 0; ni--) {
-    const { node, start: nStart, end: nEnd } = textNodes[ni];
+    const { node, start: nodeStart, end: nodeEnd } = textNodes[ni];
+    const overlapping = ranges.filter(range => range.start < nodeEnd && range.end > nodeStart);
+    if (!overlapping.length) continue;
 
-    // Sentence ranges overlapping this text node
-    const overlapping = sentRanges.filter(s => s.start < nEnd && s.end > nStart);
-    if (overlapping.length === 0) continue;
-
-    // Build segments: [{text, sid|null}]
-    const segments = [];
-    let cur = nStart;
     const raw = node.textContent;
+    const segments = [];
+    let cursor = nodeStart;
 
-    for (const s of overlapping) {
-      const segStart = Math.max(s.start, nStart);
-      const segEnd   = Math.min(s.end, nEnd);
+    for (const range of overlapping) {
+      const segStart = Math.max(range.start, nodeStart);
+      const segEnd = Math.min(range.end, nodeEnd);
 
-      if (segStart > cur) {
-        // Gap before this sentence (belongs to previous or no sentence)
-        segments.push({ text: raw.slice(cur - nStart, segStart - nStart), sid: null });
+      if (segStart > cursor) {
+        segments.push({ text: raw.slice(cursor - nodeStart, segStart - nodeStart), sid: null });
       }
-      segments.push({ text: raw.slice(segStart - nStart, segEnd - nStart), sid: s.sid });
-      cur = segEnd;
-    }
-    if (cur < nEnd) {
-      segments.push({ text: raw.slice(cur - nStart), sid: null });
+
+      segments.push({
+        text: raw.slice(segStart - nodeStart, segEnd - nodeStart),
+        sid: range.sid,
+      });
+      cursor = segEnd;
     }
 
-    // Replace text node with fragments
-    const frag = doc.createDocumentFragment();
-    for (const seg of segments) {
-      if (!seg.text) continue;
-      if (seg.sid !== null) {
-        const span = doc.createElement('span');
-        span.dataset.sid = String(seg.sid);
-        span.textContent = seg.text;
-        frag.appendChild(span);
-      } else {
-        frag.appendChild(doc.createTextNode(seg.text));
-      }
+    if (cursor < nodeEnd) {
+      segments.push({ text: raw.slice(cursor - nodeStart), sid: null });
     }
-    node.parentNode.replaceChild(frag, node);
+
+    const fragment = doc.createDocumentFragment();
+    for (const segment of segments) {
+      if (!segment.text) continue;
+      if (segment.sid === null) {
+        fragment.appendChild(doc.createTextNode(segment.text));
+        continue;
+      }
+      const span = doc.createElement('span');
+      span.dataset.sid = String(segment.sid);
+      span.textContent = segment.text;
+      fragment.appendChild(span);
+    }
+
+    node.parentNode.replaceChild(fragment, node);
   }
 
-  return root.innerHTML;
+  return {
+    html: root.innerHTML,
+    fragments: ranges.map(({ sid, start, end }) => ({
+      id: sid,
+      type: 'sentence',
+      text: state.text.slice(start, end).trim(),
+    })),
+  };
 }
 
-function collectTextNodes(node, result, state, skipSelector) {
+function collectTextNodes(node, result, state) {
   if (node.nodeType === Node.TEXT_NODE) {
-    const len = node.textContent.length;
-    if (len > 0) {
-      result.push({ node, start: state.pos, end: state.pos + len });
-      state.pos += len;
-    }
-  } else {
-    if (skipSelector && node.nodeType === Node.ELEMENT_NODE && node.matches(skipSelector)) return;
-    for (const child of [...node.childNodes]) {
-      collectTextNodes(child, result, state, skipSelector);
-    }
+    const text = node.textContent || '';
+    if (!text.length) return;
+    result.push({ node, start: state.pos, end: state.pos + text.length });
+    state.text += text;
+    state.pos += text.length;
+    return;
   }
+
+  for (const child of [...node.childNodes]) {
+    collectTextNodes(child, result, state);
+  }
+}
+
+function buildSentenceRanges(text, lang) {
+  if (!text.trim()) return [];
+
+  if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+    const segmenter = new Intl.Segmenter(lang || 'en', { granularity: 'sentence' });
+    const ranges = Array.from(segmenter.segment(text), segment => toTrimmedRange(text, segment.index, segment.index + segment.segment.length))
+      .filter(Boolean)
+      .map((range, sid) => ({ ...range, sid }));
+    if (ranges.length) return ranges;
+  }
+
+  const ranges = [];
+  const regex = /[\s\S]*?(?:[.!?]+(?=\s|$)|$)/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (!match[0]) break;
+    const range = toTrimmedRange(text, match.index, match.index + match[0].length);
+    if (range) ranges.push({ ...range, sid: ranges.length });
+    if (match.index + match[0].length >= text.length) break;
+  }
+  return ranges;
+}
+
+function toTrimmedRange(text, start, end) {
+  while (start < end && /\s/.test(text[start])) start++;
+  while (end > start && /\s/.test(text[end - 1])) end--;
+  return start < end ? { start, end } : null;
 }

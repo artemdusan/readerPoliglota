@@ -1,12 +1,10 @@
 // VocabApp Worker — single-file backend
-// Handles: auth (JWT + PBKDF2), translation proxy (DeepSeek), book sync (D1 + R2), TTS (Polly)
+// Handles: auth (JWT + PBKDF2), translation proxy (DeepSeek), book sync (D1 + R2)
 //
 // R2 structure per book:
 //   {userId}/{bookId}/meta.json
 //   {userId}/{bookId}/{chapterUUID}/metadata.json
 //   {userId}/{bookId}/{chapterUUID}/{lang}.json
-//   {userId}/{bookId}/{chapterUUID}/audio_{voiceId}.ogg
-//   {userId}/{bookId}/{chapterUUID}/marks_{voiceId}.json
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 
@@ -108,120 +106,7 @@ async function requireAuth(request, env) {
 
 // ─── AWS SIGV4 (for Amazon Polly) ────────────────────────────────────────────
 
-async function hmacSha256(key, data) {
-  const k = typeof key === 'string' ? new TextEncoder().encode(key) : key;
-  const cryptoKey = await crypto.subtle.importKey('raw', k, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(data)));
-}
-
-async function sha256hex(data) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
-  return toHex(buf);
-}
-
-async function sigV4Sign(method, url, body, service, env) {
-  const region = env.AWS_REGION || 'eu-central-1';
-  const accessKey = env.AWS_ACCESS_KEY_ID;
-  const secretKey = env.AWS_SECRET_ACCESS_KEY;
-
-  const parsed = new URL(url);
-  const now = new Date();
-  const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const amzDate  = now.toISOString().replace(/[:-]/g, '').replace(/\.\d+/, '');
-
-  const bodyHash = await sha256hex(body);
-
-  const headers = {
-    'content-type': 'application/json',
-    'host': parsed.host,
-    'x-amz-date': amzDate,
-    'x-amz-content-sha256': bodyHash,
-  };
-
-  const signedHeaders = Object.keys(headers).sort().join(';');
-  const canonicalHeaders = Object.keys(headers).sort().map(k => `${k}:${headers[k]}\n`).join('');
-  const canonicalRequest = [method, parsed.pathname, parsed.search.slice(1), canonicalHeaders, signedHeaders, bodyHash].join('\n');
-
-  const credScope = `${dateStamp}/${region}/${service}/aws4_request`;
-  const strToSign = ['AWS4-HMAC-SHA256', amzDate, credScope, await sha256hex(canonicalRequest)].join('\n');
-
-  let sigKey = await hmacSha256(`AWS4${secretKey}`, dateStamp);
-  sigKey = await hmacSha256(sigKey, region);
-  sigKey = await hmacSha256(sigKey, service);
-  sigKey = await hmacSha256(sigKey, 'aws4_request');
-
-  const sig = toHex((await hmacSha256(sigKey, strToSign)).buffer);
-  const auth = `AWS4-HMAC-SHA256 Credential=${accessKey}/${credScope}, SignedHeaders=${signedHeaders}, Signature=${sig}`;
-
-  return { ...headers, 'authorization': auth };
-}
-
 // ─── POLLY HELPERS ────────────────────────────────────────────────────────────
-
-const POLLY_VOICES = { pl: 'Ola', en: 'Joanna', es: 'Lupe' };
-const POLLY_LANGS  = { pl: 'pl-PL', en: 'en-US', es: 'es-US' };
-const POLLY_CHUNK  = 2800; // chars per request (Polly NEURAL limit: 3000)
-// Approximate ms per char for timing offset between chunks (neural voices ~150 wpm)
-const MS_PER_CHAR  = 75;
-
-function pollyVoiceForLang(lang) {
-  const code = (lang || '').toLowerCase().slice(0, 2);
-  return POLLY_VOICES[code] || 'Joanna';
-}
-
-function pollyLangCode(lang) {
-  const code = (lang || '').toLowerCase().slice(0, 2);
-  return POLLY_LANGS[code] || 'en-US';
-}
-
-/** Split text at sentence boundaries, max maxLen chars per chunk. */
-function splitChunks(text, maxLen = POLLY_CHUNK) {
-  const chunks = [];
-  let rem = text.trim();
-  while (rem.length > 0) {
-    if (rem.length <= maxLen) { chunks.push(rem); break; }
-    // Find last sentence end (.!?) before maxLen
-    const slice = rem.slice(0, maxLen);
-    const lastEnd = Math.max(
-      slice.lastIndexOf('. '), slice.lastIndexOf('! '), slice.lastIndexOf('? '),
-      slice.lastIndexOf('.\n'), slice.lastIndexOf('!\n'), slice.lastIndexOf('?\n'),
-    );
-    const cut = lastEnd > 0 ? lastEnd + 1 : maxLen;
-    chunks.push(rem.slice(0, cut));
-    rem = rem.slice(cut).replace(/^\s+/, '');
-  }
-  return chunks;
-}
-
-async function callPolly(body, env) {
-  const region = env.AWS_REGION || 'eu-central-1';
-  const url = `https://polly.${region}.amazonaws.com/v1/speech`;
-  const bodyStr = JSON.stringify(body);
-  const headers = await sigV4Sign('POST', url, bodyStr, 'polly', env);
-  return fetch(url, { method: 'POST', headers, body: bodyStr, signal: AbortSignal.timeout(30_000) });
-}
-
-async function pollyMarks(text, voiceId, langCode, env) {
-  const resp = await callPolly({
-    Text: text, OutputFormat: 'json', SpeechMarkTypes: ['sentence'],
-    VoiceId: voiceId, LanguageCode: langCode, Engine: 'neural',
-  }, env);
-  if (!resp.ok) throw new Error(`Polly marks HTTP ${resp.status}: ${await resp.text()}`);
-  const lines = (await resp.text()).trim().split('\n');
-  return lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-}
-
-async function pollyAudio(text, voiceId, langCode, env) {
-  const resp = await callPolly({
-    Text: text, OutputFormat: 'ogg_vorbis',
-    VoiceId: voiceId, LanguageCode: langCode, Engine: 'neural',
-  }, env);
-  if (!resp.ok) throw new Error(`Polly audio HTTP ${resp.status}: ${await resp.text()}`);
-  return resp.arrayBuffer();
-}
-
-const audioChunkKey = (u, b, chId, vId, ci) => `${u}/${b}/${chId}/audio_${vId}_${ci}.ogg`;
-const marksKey      = (u, b, chId, vId)      => `${u}/${b}/${chId}/marks_${vId}.json`;
 
 /** POST /books/:bookId/chapters/:chapterId/audio  { text, lang } */
 async function handleGenerateAudio(request, env, userId, bookId, chapterId) {
@@ -678,14 +563,6 @@ async function handleRequest(request, env) {
       const [, bookId, chapterId, lang] = trV2Match;
       if (method === 'POST') return handleUpsertPolyV2(request, env, userId, bookId, chapterId, lang);
       if (method === 'GET')  return handleGetPolyV2(env, userId, bookId, chapterId, lang);
-    }
-
-    // /books/{bookId}/chapters/{chapterId}/audio
-    const audioMatch = path.match(/^\/books\/([^/]+)\/chapters\/([^/]+)\/audio$/);
-    if (audioMatch) {
-      const [, bookId, chapterId] = audioMatch;
-      if (method === 'POST') return handleGenerateAudio(request, env, userId, bookId, chapterId);
-      if (method === 'GET')  return handleGetAudio(request, env, userId, bookId, chapterId);
     }
 
     // /books/{bookId}/chapters/{chapterId}
