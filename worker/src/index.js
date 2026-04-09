@@ -160,7 +160,7 @@ async function sigV4Sign(method, url, body, service, env) {
 
 const POLLY_VOICES = { pl: 'Ola', en: 'Joanna', es: 'Lupe' };
 const POLLY_LANGS  = { pl: 'pl-PL', en: 'en-US', es: 'es-US' };
-const POLLY_CHUNK  = 5500; // chars per request (Polly neural limit: 6000)
+const POLLY_CHUNK  = 2800; // chars per request (Polly NEURAL limit: 3000)
 // Approximate ms per char for timing offset between chunks (neural voices ~150 wpm)
 const MS_PER_CHAR  = 75;
 
