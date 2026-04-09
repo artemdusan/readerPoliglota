@@ -243,6 +243,52 @@ export async function saveAudioCache(chapterId, voiceId, marks, chunkCount = 1) 
   await db.audioCache.put({ chapterId, voiceId, marks, chunkCount, createdAt: Date.now() });
 }
 
+// ─── Chapter language memory ──────────────────────────────────────────────────
+
+/** Persist the language chosen for a specific chapter. langCode=null clears it. */
+export async function saveChapterLang(bookId, chapterIndex, langCode) {
+  const pos = await db.readingPositions.get(bookId);
+  const map = JSON.parse(pos?.chapterLang || '{}');
+  if (langCode) map[String(chapterIndex)] = langCode;
+  else delete map[String(chapterIndex)];
+  await db.readingPositions.put({ ...(pos || { bookId }), chapterLang: JSON.stringify(map) });
+}
+
+/** Get the saved language for a specific chapter, or null. */
+export async function getChapterLang(bookId, chapterIndex) {
+  const pos = await db.readingPositions.get(bookId);
+  if (!pos?.chapterLang) return null;
+  const map = JSON.parse(pos.chapterLang);
+  return map[String(chapterIndex)] ?? null;
+}
+
+/** Returns { chapterIndex: { hasTranslation, hasAudio, chapterId } } for all chapters. */
+export async function getChapterStatusMap(bookId, langCode) {
+  const chapters = await db.chapters.where('bookId').equals(bookId).sortBy('chapterIndex');
+  const chapterIds = chapters.map(c => c.id);
+  if (!chapterIds.length) return {};
+
+  const polyEntries = langCode
+    ? await db.polyglotCache.where('chapterId').anyOf(chapterIds).toArray()
+    : [];
+  const polySet = new Set(
+    polyEntries.filter(p => !langCode || p.targetLang === langCode).map(p => p.chapterId)
+  );
+
+  const audioEntries = await db.audioCache.where('chapterId').anyOf(chapterIds).toArray();
+  const audioSet = new Set(audioEntries.map(a => a.chapterId));
+
+  const map = {};
+  for (const ch of chapters) {
+    map[ch.chapterIndex] = {
+      hasTranslation: polySet.has(ch.id),
+      hasAudio: audioSet.has(ch.id),
+      chapterId: ch.id,
+    };
+  }
+  return map;
+}
+
 /** Returns chapters sorted by index, each with hasPoly flag for given targetLang. */
 export async function getBookChaptersWithCacheStatus(bookId, targetLang) {
   const chapters = await db.chapters

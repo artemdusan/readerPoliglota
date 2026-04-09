@@ -20,7 +20,16 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const [positions, setPositions] = useState({});
   const [batchBook, setBatchBook] = useState(null); // book opened in BatchGenModal
   const [importDraft, setImportDraft] = useState(null); // parsed EPUB awaiting user confirmation
+  const [ctxBookId, setCtxBookId] = useState(null); // book with open context menu
   const fileInputRef = useRef(null);
+
+  // Close context menu on any outside click
+  useEffect(() => {
+    if (!ctxBookId) return;
+    const close = () => setCtxBookId(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [ctxBookId]);
 
   const loadBooks = useCallback(async () => {
     const list = await getActiveBooks();
@@ -194,13 +203,36 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                     <span className="book-cover-ph">📖</span>
                   )}
                 </div>
+                {/* ⋮ context menu button */}
                 <button
-                  className="book-delete-btn"
-                  onClick={(e) => handleDelete(e, book.id)}
-                  title="Usuń"
+                  className="book-menu-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCtxBookId(id => id === book.id ? null : book.id);
+                  }}
+                  title="Menu"
                 >
-                  ✕
+                  ⋮
                 </button>
+                {/* Inline context menu */}
+                {ctxBookId === book.id && (
+                  <div className="book-ctx-menu" onClick={e => e.stopPropagation()}>
+                    <button onClick={() => { onOpenBook(book.id); setCtxBookId(null); }}>
+                      📖 Otwórz
+                    </button>
+                    {settings && (
+                      <button onClick={() => { setBatchBook(book); setCtxBookId(null); }}>
+                        {settings.targetLangFlag} Generuj tłumaczenia
+                      </button>
+                    )}
+                    <button
+                      className="book-ctx-delete"
+                      onClick={(e) => { handleDelete(e, book.id); setCtxBookId(null); }}
+                    >
+                      ✕ Usuń
+                    </button>
+                  </div>
+                )}
                 <div className="book-title">{book.title}</div>
                 {book.author && (
                   <div className="book-author">{book.author}</div>
@@ -209,18 +241,6 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                   <div className="book-progress">
                     {progressLabel(book.id, book.chapterCount)}
                   </div>
-                )}
-                {settings && (
-                  <button
-                    className="book-poly-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setBatchBook(book);
-                    }}
-                    title="Generuj teksty Poligloty"
-                  >
-                    {settings.targetLangFlag} Poliglota
-                  </button>
                 )}
               </div>
             ))}

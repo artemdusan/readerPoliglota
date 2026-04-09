@@ -4,6 +4,7 @@ import {
   getBook, getChapter, getPolyglotCache, savePolyglotCache,
   getChapterCachedLangs, getReadingPosition, saveReadingPosition,
   getAudioCache, saveAudioCache,
+  saveChapterLang, getChapterStatusMap,
 } from '../db';
 import { LANGUAGES } from '../hooks/useSettings';
 import { generatePolyglot } from '../lib/polyglotApi';
@@ -84,11 +85,21 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [toolbarVisible, setToolbarVisible] = useState(true);
   const [fs, setFs]                   = useState(settings.fontSize ?? 19);
 
   // Page state
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages]   = useState(1);
+
+  // Missing translation banner
+  const [missingLangBanner, setMissingLangBanner] = useState(null); // langCode | null
+
+  // Chapter status map (index → { hasTranslation, hasAudio })
+  const [chapterStatusMap, setChapterStatusMap] = useState({});
+
+  // href → chapterIndex map for TOC badges
+  const [hrefToIndex, setHrefToIndex] = useState({});
 
   // Refs
   const chScrollRef    = useRef(null);
@@ -104,6 +115,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const currentPageRef = useRef(0);
   const totalPagesRef  = useRef(1);
   const flippingRef    = useRef(false);
+  const desiredLangRef = useRef(null);  // lang to carry over when changing chapter
+  const touchStartXRef = useRef(null);
+  const touchStartYRef = useRef(null);
+  const sidToMarkRef   = useRef(new Map()); // sid → mark for O(1) click-to-seek
 
   /* ── Load book metadata + restore starting chapter ── */
   useEffect(() => {
@@ -115,6 +130,11 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       setChapterCount(b.chapterCount || 0);
       const pos = await getReadingPosition(bookId);
       setChapterIdx(pos?.chapterIndex ?? 0);
+      // Build href → chapterIndex map for TOC badges
+      const chs = await db.chapters.where('bookId').equals(bookId).toArray();
+      const map = {};
+      for (const ch of chs) map[ch.href.split('#')[0]] = ch.chapterIndex;
+      setHrefToIndex(map);
     });
   }, [bookId]);
 
@@ -136,6 +156,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     currentPageRef.current = 0;
     totalPagesRef.current = 1;
     flippingRef.current = false;
+    setMissingLangBanner(null);
     // Reset audio
     stopAudio();
     setAudioState('idle');
@@ -161,11 +182,28 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         const langs = cached_codes.map(c => LANGUAGES.find(l => l.code === c)).filter(Boolean);
         setCachedLangs(langs);
 
-        // Restore saved version (if still cached), else prefer first cached lang
+        // Language carry logic:
+        // 1. Exact saved lang for this chapter position → use it
+        // 2. Language carried from previous chapter → check if cached
+        //    - YES → auto-load
+        //    - NO  → show missing banner, show original
+        // 3. No preference → use first cached if available
         const savedLang = (pos?.chapterIndex === chapterIdx && pos?.activeLang) ? pos.activeLang : null;
-        const langToLoad = (savedLang && cached_codes.includes(savedLang))
-          ? savedLang
-          : cached_codes[0] ?? null;
+        const desiredLang = desiredLangRef.current;
+        desiredLangRef.current = null;
+
+        let langToLoad = null;
+        if (savedLang && cached_codes.includes(savedLang)) {
+          langToLoad = savedLang;
+        } else if (desiredLang) {
+          if (cached_codes.includes(desiredLang)) {
+            langToLoad = desiredLang;
+          } else {
+            setMissingLangBanner(desiredLang);
+          }
+        } else {
+          langToLoad = cached_codes[0] ?? null;
+        }
 
         if (langToLoad) {
           const entry = await getPolyglotCache(ch.id, langToLoad);
@@ -192,6 +230,63 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     window.addEventListener('polyglot-saved', onPolyglotSaved);
     return () => window.removeEventListener('polyglot-saved', onPolyglotSaved);
   }, [chapter?.id]);
+
+  /* ── Chapter status map (translation + audio badges in TOC) ── */
+  useEffect(() => {
+    if (!bookId) return;
+    getChapterStatusMap(bookId, activeLang).then(setChapterStatusMap);
+  }, [bookId, activeLang]);
+
+  /* ── Touch swipe + tap zones for mobile page flip ── */
+  useEffect(() => {
+    const el = chScrollRef.current;
+    if (!el) return;
+
+    function onTouchStart(e) {
+      touchStartXRef.current = e.touches[0].clientX;
+      touchStartYRef.current = e.touches[0].clientY;
+    }
+
+    function onTouchEnd(e) {
+      const startX = touchStartXRef.current;
+      const startY = touchStartYRef.current;
+      touchStartXRef.current = null;
+      touchStartYRef.current = null;
+      if (startX === null) return;
+
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+
+      // Horizontal swipe → page flip
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+        if (dx < 0) nextPage(); else prevPage();
+        return;
+      }
+
+      // Short tap → check zone
+      if (Math.abs(dx) < 15 && Math.abs(dy) < 15) {
+        const tapX = e.changedTouches[0].clientX;
+        const tapY = e.changedTouches[0].clientY;
+        const target = document.elementFromPoint(tapX, tapY);
+        // Don't intercept interactive content
+        if (target?.closest('.pw') || target?.closest('a[href]') || target?.closest('button') || target?.closest('select')) return;
+        const containerW = el.clientWidth;
+        const relX = tapX / containerW;
+        if (relX < 0.28) { prevPage(); return; }
+        if (relX > 0.72) { nextPage(); return; }
+        // Centre tap → toggle toolbar
+        setToolbarVisible(v => !v);
+      }
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ── Page break calculation + position restore ── */
   useEffect(() => {
@@ -303,6 +398,12 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   function navigate(idx) {
     if (chapterIdx === null) return;
     persistPosition();
+    // Carry current language to next chapter
+    desiredLangRef.current = activeLangRef.current;
+    // Save per-chapter lang before leaving
+    if (activeLangRef.current && bookId) {
+      saveChapterLang(bookId, chapterIdx, activeLangRef.current);
+    }
     setChapterIdx(Math.max(0, Math.min(idx, chapterCount - 1)));
   }
 
@@ -433,6 +534,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
       audioVoiceRef.current = voice;
       audioMarksRef.current = marks;
+      // Build sid → mark map for O(1) click-to-seek
+      const markMap = new Map();
+      for (const m of marks) markMap.set(m.sid, m);
+      sidToMarkRef.current = markMap;
 
       // Pre-fetch all audio chunks as blobs
       const blobs = await Promise.all(
@@ -491,20 +596,22 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   function highlightSentence(sid) {
     const body = chapterBodyRef.current;
     if (!body) return;
-    // Remove previous highlight
     body.querySelectorAll('.sentence-active').forEach(el => el.classList.remove('sentence-active'));
     if (sid < 0) return;
     const el = body.querySelector(`[data-sid="${sid}"]`);
     if (el) {
       el.classList.add('sentence-active');
-      // Scroll to sentence if not on current page (column layout)
-      // The element's offsetLeft tells us which column it's in
       const scrollEl = chScrollRef.current;
       const innerEl  = chInnerRef.current;
       if (scrollEl && innerEl) {
         const pw = scrollEl.clientWidth;
-        const targetPage = Math.floor(el.offsetLeft / pw);
-        if (targetPage !== currentPageRef.current) {
+        // Use getBoundingClientRect relative to container, compensating for current translateX
+        const containerRect = scrollEl.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const currentOffset = currentPageRef.current * pw;
+        const elAbsLeft = elRect.left - containerRect.left + currentOffset;
+        const targetPage = Math.floor(elAbsLeft / pw);
+        if (targetPage !== currentPageRef.current && targetPage >= 0 && targetPage < totalPagesRef.current) {
           goToPage(targetPage, false);
         }
       }
@@ -582,7 +689,18 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   }
 
   /* ─────────────────────────────────────────
-     CONTENT CLICK — tooltip + internal links
+     REGENERATE TRANSLATION
+  ───────────────────────────────────────── */
+
+  function handleRegenerate() {
+    if (!chapter?.id || !activeLang) return;
+    userChangedLangRef.current = true;
+    setConfirmLang(activeLang);
+    setPolyState('confirm');
+  }
+
+  /* ─────────────────────────────────────────
+     CONTENT CLICK — tooltip + internal links + click-to-seek
   ───────────────────────────────────────── */
 
   function handleContentClick(e) {
@@ -599,6 +717,31 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     const pw = e.target.closest('.pw');
     if (pw) {
       openTooltip(pw);
+      return;
+    }
+
+    // Click on sentence span → seek audio to that sentence
+    const sidEl = e.target.closest('[data-sid]');
+    if (sidEl && audioState === 'ready') {
+      const sid = parseInt(sidEl.dataset.sid, 10);
+      const mark = sidToMarkRef.current.get(sid);
+      if (mark && audioRef.current && audioBlobsRef.current.length > 0) {
+        const chunkIdx = mark.chunkIndex ?? 0;
+        audioChunkRef.current = chunkIdx;
+        audioRef.current.src = audioBlobsRef.current[chunkIdx];
+        const seekTime = (mark.localTime ?? 0) / 1000;
+        audioRef.current.currentTime = seekTime;
+        audioRef.current.play().catch(() => {});
+        setIsPlaying(true);
+        setActiveSid(sid);
+        activeSidRef.current = sid;
+        // Highlight immediately
+        const body = chapterBodyRef.current;
+        if (body) {
+          body.querySelectorAll('.sentence-active').forEach(el => el.classList.remove('sentence-active'));
+          sidEl.classList.add('sentence-active');
+        }
+      }
     }
   }
 
@@ -637,7 +780,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   }
 
   return (
-    <div className="reader-layout">
+    <div className={`reader-layout ${toolbarVisible ? '' : 'toolbar-hidden'}`}>
 
       {/* ── Sidebar ── */}
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
@@ -658,17 +801,27 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         <div className="toc-label">Spis treści</div>
         <div className="toc-scroll">
           <ul className="toc-list">
-            {navigableTocItems(toc).map((item, i) => (
-              <li
-                key={i}
-                className={`toc-entry${
-                  chapter?.href?.split('#')[0] === item.href ? ' active' : ''
-                }`}
-                onClick={() => goToHref(item.href)}
-              >
-                {item.title || '—'}
-              </li>
-            ))}
+            {navigableTocItems(toc).map((item, i) => {
+              const chIdx = hrefToIndex[item.href] ?? -1;
+              const status = chapterStatusMap[chIdx];
+              return (
+                <li
+                  key={i}
+                  className={`toc-entry${
+                    chapter?.href?.split('#')[0] === item.href ? ' active' : ''
+                  }`}
+                  onClick={() => goToHref(item.href)}
+                >
+                  <span className="toc-entry-title">{item.title || '—'}</span>
+                  {(status?.hasTranslation || status?.hasAudio) && (
+                    <span className="toc-badges">
+                      {status.hasTranslation && <span className="toc-bdg toc-bdg-tr" title="Tłumaczenie">⊙</span>}
+                      {status.hasAudio && <span className="toc-bdg toc-bdg-au" title="Audio">◉</span>}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       </aside>
@@ -729,10 +882,44 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 ⚠
               </button>
             )}
+            {polyMode && polyState === 'done' && (
+              <>
+                <div className="tb-sep" />
+                <button className="ctl ctl-icon" onClick={handleRegenerate} title="Regeneruj tłumaczenie">↻</button>
+              </>
+            )}
             <div className="tb-sep" />
             <button className="ctl ctl-icon" onClick={onOpenSettings} title="Ustawienia">⚙</button>
           </div>
         </div>
+
+        {/* Missing translation banner */}
+        {missingLangBanner && (() => {
+          const langObj = LANGUAGES.find(l => l.code === missingLangBanner);
+          return (
+            <div className="missing-lang-banner">
+              <span>Brak tłumaczenia {langObj?.flag} {langObj?.label || missingLangBanner}</span>
+              <div className="missing-lang-actions">
+                <button
+                  className="btn-primary"
+                  style={{ fontSize: 11, padding: '7px 16px' }}
+                  onClick={() => {
+                    setMissingLangBanner(null);
+                    userChangedLangRef.current = true;
+                    setConfirmLang(missingLangBanner);
+                    setActiveLang(missingLangBanner);
+                    setPolyState('confirm');
+                  }}
+                >
+                  Wygeneruj
+                </button>
+                <button className="btn-ghost" style={{ fontSize: 11, padding: '7px 16px' }} onClick={() => setMissingLangBanner(null)}>
+                  Oryginał
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Chapter page area */}
         <div className="ch-scroll" ref={chScrollRef}>
@@ -824,7 +1011,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 {!polyMode && (
                   <div
                     ref={chapterBodyRef}
-                    className="ch-body ch-anim"
+                    className={`ch-body ch-anim${audioState === 'ready' ? ' audio-ready' : ''}`}
                     dangerouslySetInnerHTML={{
                       __html: audioState === 'ready' && htmlWithSids
                         ? htmlWithSids
