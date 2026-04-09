@@ -41,7 +41,7 @@ function toRemoteData(local) {
   return {
     bookId:       local.bookId,
     chapterIndex: local.chapterIndex,
-    scrollTop:    local.scrollTop  ?? 0,
+    scrollTop:    local.progress   ?? 0,
     activeLang:   local.activeLang ?? null,
     sentenceIdx:  local.sentenceIdx ?? -1,
     updatedAt:    local.updatedAt  ?? Date.now(),

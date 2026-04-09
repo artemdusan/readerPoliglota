@@ -186,8 +186,8 @@ export async function getReadingPosition(bookId) {
   return db.readingPositions.get(bookId);
 }
 
-export async function saveReadingPosition(bookId, chapterIndex, page = 0, activeLang = null) {
-  await db.readingPositions.put({ bookId, chapterIndex, page, activeLang, updatedAt: Date.now() });
+export async function saveReadingPosition(bookId, chapterIndex, progress = 0, activeLang = null) {
+  await db.readingPositions.put({ bookId, chapterIndex, progress, activeLang, updatedAt: Date.now() });
 }
 
 export async function getBookWithChapters(bookId) {

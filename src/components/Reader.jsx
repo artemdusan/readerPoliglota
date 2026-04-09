@@ -78,7 +78,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const tooltipTimerRef = useRef(null);
   const openPwRef      = useRef(null);
   const activeLangRef  = useRef(null);
-  const pendingPageRef     = useRef(null);  // page to restore after layout (null = no pending restore)
+  const pendingProgressRef = useRef(null);  // progress (0-1) to restore after layout (null = no pending restore)
   const userChangedLangRef = useRef(false); // true only when user explicitly switched lang
   const currentPageRef = useRef(0);
   const totalPagesRef  = useRef(1);
@@ -118,8 +118,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
     getChapter(bookId, chapterIdx).then(async ch => {
       const pos = await getReadingPosition(bookId);
-      pendingPageRef.current = (pos && pos.chapterIndex === chapterIdx)
-        ? (pos.page ?? 0)
+      pendingProgressRef.current = (pos && pos.chapterIndex === chapterIdx)
+        ? (pos.progress ?? 0)
         : 0;
 
       setChapter(ch || null);
@@ -184,10 +184,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         totalPagesRef.current = total;
         setTotalPages(total);
 
-        if (pendingPageRef.current !== null) {
-          // Initial load or chapter navigation — restore saved page
-          const targetPage = Math.max(0, Math.min(pendingPageRef.current, total - 1));
-          pendingPageRef.current = null;
+        if (pendingProgressRef.current !== null) {
+          // Initial load or chapter navigation — restore saved progress (device-independent)
+          const targetPage = Math.min(Math.round(pendingProgressRef.current * (total - 1)), total - 1);
+          pendingProgressRef.current = null;
           setCurrentPage(targetPage);
           currentPageRef.current = targetPage;
           inner.style.transition = '';
@@ -208,14 +208,14 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     activeLangRef.current = activeLang;
     if (!bookId || !userChangedLangRef.current) return;
     userChangedLangRef.current = false;
-    saveReadingPosition(bookId, chapterIdx, currentPageRef.current, activeLang);
+    saveReadingPosition(bookId, chapterIdx, currentPageRef.current / Math.max(1, totalPagesRef.current - 1), activeLang);
   }, [bookId, chapterIdx, activeLang]);
 
   /* ── Save reading position (debounced) ── */
   const persistPosition = useCallback(() => {
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveReadingPosition(bookId, chapterIdx, currentPageRef.current, activeLangRef.current);
+      saveReadingPosition(bookId, chapterIdx, currentPageRef.current / Math.max(1, totalPagesRef.current - 1), activeLangRef.current);
     }, 800);
   }, [bookId, chapterIdx]);
 
@@ -283,7 +283,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   function switchToLang(lang) {
     if (lang === activeLang) return;
     userChangedLangRef.current = true;
-    pendingPageRef.current = 0;
+    pendingProgressRef.current = 0;
     if (lang === null) {
       setActiveLang(null);
       setPolyState('idle');
