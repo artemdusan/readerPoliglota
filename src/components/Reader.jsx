@@ -3,13 +3,17 @@ import {
   db,
   getBook, getChapter, getPolyglotCache, savePolyglotCache,
   getChapterCachedLangs, getReadingPosition, saveReadingPosition,
+  getAudioCache, saveAudioCache,
 } from '../db';
 import { LANGUAGES } from '../hooks/useSettings';
 import { generatePolyglot } from '../lib/polyglotApi';
-import { isLoggedIn } from '../sync/cfAuth';
+import { isLoggedIn, getToken } from '../sync/cfAuth';
 import { triggerSync } from '../sync/cfSync';
 import { parsePolyglotHtml } from '../lib/polyglotParser';
 import { MODEL_PRICING } from '../lib/polyglotApi';
+import { wrapSentencesInHtml } from '../lib/sentenceWrapper';
+
+const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 
 /* ═══════════════════════════════════════════
    Helpers
@@ -60,6 +64,23 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const [confirmLang, setConfirmLang]     = useState('');
   // derived
   const polyMode = activeLang !== null;
+
+  // Audio state
+  const [audioState, setAudioState]   = useState('idle'); // 'idle'|'loading'|'ready'|'error'
+  const [audioError, setAudioError]   = useState('');
+  const [audioMarks, setAudioMarks]   = useState(null);   // flat Polly sentence marks array
+  const [audioVoiceId, setAudioVoiceId] = useState('');
+  const [audioChunkCount, setAudioChunkCount] = useState(1);
+  const [activeSid, setActiveSid]     = useState(-1);
+  const [isPlaying, setIsPlaying]     = useState(false);
+  const [htmlWithSids, setHtmlWithSids] = useState('');   // chapter.html with <span data-sid>
+  const audioRef       = useRef(null);
+  const audioBlobsRef  = useRef([]);   // ObjectURLs per chunk
+  const audioChunkRef  = useRef(0);    // current chunk index
+  const audioVoiceRef  = useRef('');
+  const audioMarksRef  = useRef(null);
+  const activeSidRef   = useRef(-1);
+  const chapterBodyRef = useRef(null);
 
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -115,6 +136,15 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     currentPageRef.current = 0;
     totalPagesRef.current = 1;
     flippingRef.current = false;
+    // Reset audio
+    stopAudio();
+    setAudioState('idle');
+    setAudioError('');
+    setAudioMarks(null);
+    setAudioVoiceId('');
+    setHtmlWithSids('');
+    setActiveSid(-1);
+    activeSidRef.current = -1;
 
     getChapter(bookId, chapterIdx).then(async ch => {
       const pos = await getReadingPosition(bookId);
@@ -352,6 +382,158 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   }
 
   /* ─────────────────────────────────────────
+     AUDIO — generate, play, highlight
+  ───────────────────────────────────────── */
+
+  function stopAudio() {
+    const el = audioRef.current;
+    if (el) { el.pause(); el.src = ''; }
+    audioBlobsRef.current.forEach(u => URL.revokeObjectURL(u));
+    audioBlobsRef.current = [];
+    audioChunkRef.current = 0;
+    audioVoiceRef.current = '';
+    setIsPlaying(false);
+    setActiveSid(-1);
+    activeSidRef.current = -1;
+  }
+
+  async function generateAudio() {
+    if (!isLoggedIn()) { onOpenSettings(); return; }
+    if (!chapter?.text) return;
+    setAudioState('loading');
+    setAudioError('');
+    try {
+      // Check local cache
+      const lang = book?.lang || 'pl';
+      const voice = lang.startsWith('pl') ? 'Ola' : lang.startsWith('es') ? 'Lupe' : 'Joanna';
+      const cached = await getAudioCache(chapter.id, voice);
+      let marks, chunkCount;
+
+      if (cached) {
+        marks = cached.marks;
+        chunkCount = cached.chunkCount || 1;
+      } else {
+        const resp = await fetch(
+          `${WORKER_URL}/books/${bookId}/chapters/${chapter.id}/audio`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+            body: JSON.stringify({ text: chapter.text, lang }),
+          }
+        );
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          throw new Error(body.error || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        marks = data.marks;
+        chunkCount = data.chunkCount || 1;
+        await saveAudioCache(chapter.id, voice, marks, chunkCount);
+      }
+
+      audioVoiceRef.current = voice;
+      audioMarksRef.current = marks;
+
+      // Pre-fetch all audio chunks as blobs
+      const blobs = await Promise.all(
+        Array.from({ length: chunkCount }, (_, ci) =>
+          fetch(`${WORKER_URL}/books/${bookId}/chapters/${chapter.id}/audio?voiceId=${voice}&chunk=${ci}`, {
+            headers: { Authorization: `Bearer ${getToken()}` },
+          }).then(r => r.blob()).then(b => URL.createObjectURL(b))
+        )
+      );
+      audioBlobsRef.current = blobs;
+      audioChunkRef.current = 0;
+
+      // Process HTML with sentence spans
+      const processed = wrapSentencesInHtml(chapter.html, marks);
+      setHtmlWithSids(processed);
+      setAudioMarks(marks);
+      setAudioVoiceId(voice);
+      setAudioChunkCount(chunkCount);
+      setAudioState('ready');
+
+      // Auto-start playback
+      if (audioRef.current) {
+        audioRef.current.src = blobs[0];
+        audioRef.current.play().catch(() => {});
+        setIsPlaying(true);
+      }
+    } catch (e) {
+      setAudioError(e.message || 'Błąd generowania audio');
+      setAudioState('error');
+    }
+  }
+
+  function handleTimeUpdate() {
+    const el = audioRef.current;
+    const marks = audioMarksRef.current;
+    if (!el || !marks) return;
+
+    const chunkIdx = audioChunkRef.current;
+    const localMs  = el.currentTime * 1000;
+
+    // Use localTime (ms within this chunk's audio) to find current sentence
+    const chunkMarks = marks.filter(m => (m.chunkIndex ?? 0) === chunkIdx);
+    let active = null;
+    for (let i = chunkMarks.length - 1; i >= 0; i--) {
+      if (chunkMarks[i].localTime <= localMs) { active = chunkMarks[i]; break; }
+    }
+    const sid = active?.sid ?? -1;
+
+    if (sid !== activeSidRef.current) {
+      activeSidRef.current = sid;
+      setActiveSid(sid);
+      highlightSentence(sid);
+    }
+  }
+
+  function highlightSentence(sid) {
+    const body = chapterBodyRef.current;
+    if (!body) return;
+    // Remove previous highlight
+    body.querySelectorAll('.sentence-active').forEach(el => el.classList.remove('sentence-active'));
+    if (sid < 0) return;
+    const el = body.querySelector(`[data-sid="${sid}"]`);
+    if (el) {
+      el.classList.add('sentence-active');
+      // Scroll to sentence if not on current page (column layout)
+      // The element's offsetLeft tells us which column it's in
+      const scrollEl = chScrollRef.current;
+      const innerEl  = chInnerRef.current;
+      if (scrollEl && innerEl) {
+        const pw = scrollEl.clientWidth;
+        const targetPage = Math.floor(el.offsetLeft / pw);
+        if (targetPage !== currentPageRef.current) {
+          goToPage(targetPage, false);
+        }
+      }
+    }
+  }
+
+  function handleAudioEnded() {
+    const nextChunk = audioChunkRef.current + 1;
+    if (nextChunk < audioBlobsRef.current.length) {
+      audioChunkRef.current = nextChunk;
+      audioRef.current.src = audioBlobsRef.current[nextChunk];
+      audioRef.current.play().catch(() => {});
+    } else {
+      setIsPlaying(false);
+      setActiveSid(-1);
+      activeSidRef.current = -1;
+      if (chapterBodyRef.current)
+        chapterBodyRef.current.querySelectorAll('.sentence-active').forEach(el => el.classList.remove('sentence-active'));
+    }
+  }
+
+  function togglePlayPause() {
+    const el = audioRef.current;
+    if (!el) return;
+    if (el.paused) { el.play().catch(() => {}); setIsPlaying(true); }
+    else           { el.pause(); setIsPlaying(false); }
+  }
+
+  /* ─────────────────────────────────────────
      TOOLTIP — auto-close after 2s
   ───────────────────────────────────────── */
 
@@ -527,6 +709,27 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
             <span className="fs-val">{fs}</span>
             <button className="ctl" onClick={() => setFs(f => Math.min(30, f + 1))}>A+</button>
             <div className="tb-sep" />
+            {audioState === 'idle' && (
+              <button className="ctl ctl-icon" onClick={generateAudio} title="Generuj audio" disabled={!chapter?.text}>
+                ▶
+              </button>
+            )}
+            {audioState === 'loading' && (
+              <span className="ctl ctl-icon audio-loading" title="Generowanie audio…">
+                <span className="spin-ring spin-ring--sm" />
+              </span>
+            )}
+            {audioState === 'ready' && (
+              <button className="ctl ctl-icon" onClick={togglePlayPause} title={isPlaying ? 'Pauza' : 'Odtwórz'}>
+                {isPlaying ? '⏸' : '▶'}
+              </button>
+            )}
+            {audioState === 'error' && (
+              <button className="ctl ctl-icon audio-err" onClick={() => setAudioState('idle')} title={`Błąd: ${audioError}. Kliknij aby spróbować ponownie.`}>
+                ⚠
+              </button>
+            )}
+            <div className="tb-sep" />
             <button className="ctl ctl-icon" onClick={onOpenSettings} title="Ustawienia">⚙</button>
           </div>
         </div>
@@ -611,6 +814,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 {polyMode && polyState === 'done' && (
                   <div
                     key={activeLang}
+                    ref={chapterBodyRef}
                     className="ch-body ch-anim"
                     dangerouslySetInnerHTML={{ __html: polyHtml }}
                     onClick={handleContentClick}
@@ -619,10 +823,13 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
                 {!polyMode && (
                   <div
+                    ref={chapterBodyRef}
                     className="ch-body ch-anim"
                     dangerouslySetInnerHTML={{
-                      __html: chapter.html ||
-                        '<p style="color:var(--txt-3);font-style:italic">Ten rozdział nie zawiera tekstu.</p>',
+                      __html: audioState === 'ready' && htmlWithSids
+                        ? htmlWithSids
+                        : (chapter.html ||
+                            '<p style="color:var(--txt-3);font-style:italic">Ten rozdział nie zawiera tekstu.</p>'),
                     }}
                     onClick={handleContentClick}
                   />
@@ -659,6 +866,16 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
           </button>
         </div>
       </div>
+
+      {/* Hidden audio element */}
+      <audio
+        ref={audioRef}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleAudioEnded}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        style={{ display: 'none' }}
+      />
 
     </div>
   );

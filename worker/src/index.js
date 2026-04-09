@@ -1,10 +1,12 @@
 // VocabApp Worker — single-file backend
-// Handles: auth (JWT + PBKDF2), translation proxy (DeepSeek), book sync (D1 + R2)
+// Handles: auth (JWT + PBKDF2), translation proxy (DeepSeek), book sync (D1 + R2), TTS (Polly)
 //
 // R2 structure per book:
 //   {userId}/{bookId}/meta.json
 //   {userId}/{bookId}/{chapterUUID}/metadata.json
 //   {userId}/{bookId}/{chapterUUID}/{lang}.json
+//   {userId}/{bookId}/{chapterUUID}/audio_{voiceId}.ogg
+//   {userId}/{bookId}/{chapterUUID}/marks_{voiceId}.json
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 
@@ -102,6 +104,204 @@ async function requireAuth(request, env) {
   } catch {
     return null;
   }
+}
+
+// ─── AWS SIGV4 (for Amazon Polly) ────────────────────────────────────────────
+
+async function hmacSha256(key, data) {
+  const k = typeof key === 'string' ? new TextEncoder().encode(key) : key;
+  const cryptoKey = await crypto.subtle.importKey('raw', k, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(data)));
+}
+
+async function sha256hex(data) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
+  return toHex(buf);
+}
+
+async function sigV4Sign(method, url, body, service, env) {
+  const region = env.AWS_REGION || 'eu-central-1';
+  const accessKey = env.AWS_ACCESS_KEY_ID;
+  const secretKey = env.AWS_SECRET_ACCESS_KEY;
+
+  const parsed = new URL(url);
+  const now = new Date();
+  const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const amzDate  = now.toISOString().replace(/[:-]/g, '').replace(/\.\d+/, '');
+
+  const bodyHash = await sha256hex(body);
+
+  const headers = {
+    'content-type': 'application/json',
+    'host': parsed.host,
+    'x-amz-date': amzDate,
+    'x-amz-content-sha256': bodyHash,
+  };
+
+  const signedHeaders = Object.keys(headers).sort().join(';');
+  const canonicalHeaders = Object.keys(headers).sort().map(k => `${k}:${headers[k]}\n`).join('');
+  const canonicalRequest = [method, parsed.pathname, parsed.search.slice(1), canonicalHeaders, signedHeaders, bodyHash].join('\n');
+
+  const credScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const strToSign = ['AWS4-HMAC-SHA256', amzDate, credScope, await sha256hex(canonicalRequest)].join('\n');
+
+  let sigKey = await hmacSha256(`AWS4${secretKey}`, dateStamp);
+  sigKey = await hmacSha256(sigKey, region);
+  sigKey = await hmacSha256(sigKey, service);
+  sigKey = await hmacSha256(sigKey, 'aws4_request');
+
+  const sig = toHex((await hmacSha256(sigKey, strToSign)).buffer);
+  const auth = `AWS4-HMAC-SHA256 Credential=${accessKey}/${credScope}, SignedHeaders=${signedHeaders}, Signature=${sig}`;
+
+  return { ...headers, 'authorization': auth };
+}
+
+// ─── POLLY HELPERS ────────────────────────────────────────────────────────────
+
+const POLLY_VOICES = { pl: 'Ola', en: 'Joanna', es: 'Lupe' };
+const POLLY_LANGS  = { pl: 'pl-PL', en: 'en-US', es: 'es-US' };
+const POLLY_CHUNK  = 5500; // chars per request (Polly neural limit: 6000)
+// Approximate ms per char for timing offset between chunks (neural voices ~150 wpm)
+const MS_PER_CHAR  = 75;
+
+function pollyVoiceForLang(lang) {
+  const code = (lang || '').toLowerCase().slice(0, 2);
+  return POLLY_VOICES[code] || 'Joanna';
+}
+
+function pollyLangCode(lang) {
+  const code = (lang || '').toLowerCase().slice(0, 2);
+  return POLLY_LANGS[code] || 'en-US';
+}
+
+/** Split text at sentence boundaries, max maxLen chars per chunk. */
+function splitChunks(text, maxLen = POLLY_CHUNK) {
+  const chunks = [];
+  let rem = text.trim();
+  while (rem.length > 0) {
+    if (rem.length <= maxLen) { chunks.push(rem); break; }
+    // Find last sentence end (.!?) before maxLen
+    const slice = rem.slice(0, maxLen);
+    const lastEnd = Math.max(
+      slice.lastIndexOf('. '), slice.lastIndexOf('! '), slice.lastIndexOf('? '),
+      slice.lastIndexOf('.\n'), slice.lastIndexOf('!\n'), slice.lastIndexOf('?\n'),
+    );
+    const cut = lastEnd > 0 ? lastEnd + 1 : maxLen;
+    chunks.push(rem.slice(0, cut));
+    rem = rem.slice(cut).replace(/^\s+/, '');
+  }
+  return chunks;
+}
+
+async function callPolly(body, env) {
+  const region = env.AWS_REGION || 'eu-central-1';
+  const url = `https://polly.${region}.amazonaws.com/v1/speech`;
+  const bodyStr = JSON.stringify(body);
+  const headers = await sigV4Sign('POST', url, bodyStr, 'polly', env);
+  return fetch(url, { method: 'POST', headers, body: bodyStr, signal: AbortSignal.timeout(30_000) });
+}
+
+async function pollyMarks(text, voiceId, langCode, env) {
+  const resp = await callPolly({
+    Text: text, OutputFormat: 'json', SpeechMarkTypes: ['sentence'],
+    VoiceId: voiceId, LanguageCode: langCode, Engine: 'neural',
+  }, env);
+  if (!resp.ok) throw new Error(`Polly marks HTTP ${resp.status}: ${await resp.text()}`);
+  const lines = (await resp.text()).trim().split('\n');
+  return lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+}
+
+async function pollyAudio(text, voiceId, langCode, env) {
+  const resp = await callPolly({
+    Text: text, OutputFormat: 'ogg_vorbis',
+    VoiceId: voiceId, LanguageCode: langCode, Engine: 'neural',
+  }, env);
+  if (!resp.ok) throw new Error(`Polly audio HTTP ${resp.status}: ${await resp.text()}`);
+  return resp.arrayBuffer();
+}
+
+const audioChunkKey = (u, b, chId, vId, ci) => `${u}/${b}/${chId}/audio_${vId}_${ci}.ogg`;
+const marksKey      = (u, b, chId, vId)      => `${u}/${b}/${chId}/marks_${vId}.json`;
+
+/** POST /books/:bookId/chapters/:chapterId/audio  { text, lang } */
+async function handleGenerateAudio(request, env, userId, bookId, chapterId) {
+  if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY)
+    return err('AWS credentials nie są ustawione', 500);
+
+  const { text, lang } = await request.json().catch(() => ({}));
+  if (!text) return err('text jest wymagany');
+
+  const voiceId  = pollyVoiceForLang(lang);
+  const langCode = pollyLangCode(lang);
+
+  // Return cached if exists
+  const cachedMarksObj = await env.reader_books.get(marksKey(userId, bookId, chapterId, voiceId));
+  if (cachedMarksObj) {
+    const marks = await cachedMarksObj.json();
+    return json({ ok: true, voiceId, marks, chunkCount: marks._chunkCount ?? 1, cached: true });
+  }
+
+  const chunks = splitChunks(text);
+  const allMarks = [];
+  let timeOffset = 0;
+  let charOffset = 0;
+
+  for (let ci = 0; ci < chunks.length; ci++) {
+    const chunk = chunks[ci];
+
+    // Get marks and audio in parallel for this chunk
+    const [chunkMarks, audioBytes] = await Promise.all([
+      pollyMarks(chunk, voiceId, langCode, env),
+      pollyAudio(chunk, voiceId, langCode, env),
+    ]);
+
+    // Store audio chunk in R2
+    await env.reader_books.put(audioChunkKey(userId, bookId, chapterId, voiceId, ci), audioBytes, {
+      httpMetadata: { contentType: 'audio/ogg' },
+    });
+
+    // Adjust mark times and char offsets for global position
+    for (const m of chunkMarks) {
+      allMarks.push({
+        sid:        allMarks.length,           // global sentence index
+        localTime:  m.time,                    // ms from start of THIS chunk's audio
+        time:       m.time + timeOffset,       // estimated absolute ms (for reference)
+        start:      m.start + charOffset,      // char offset in full chapter text
+        end:        m.end   + charOffset,
+        value:      m.value,
+        chunkIndex: ci,
+      });
+    }
+
+    charOffset += chunk.length + 1; // +1 for the space/newline between chunks
+
+    // Estimate chunk duration for next chunk's time offset
+    const lastMark = chunkMarks[chunkMarks.length - 1];
+    const charsAfterLast = chunk.length - (lastMark?.start ?? chunk.length);
+    timeOffset += (lastMark?.time ?? 0) + charsAfterLast * MS_PER_CHAR;
+  }
+
+  // Store combined marks (with chunk count metadata)
+  allMarks._chunkCount = chunks.length;
+  await r2PutJson(env, marksKey(userId, bookId, chapterId, voiceId), allMarks);
+
+  return json({ ok: true, voiceId, marks: allMarks, chunkCount: chunks.length, cached: false });
+}
+
+/** GET /books/:bookId/chapters/:chapterId/audio?voiceId=Ola&chunk=0 */
+async function handleGetAudio(request, env, userId, bookId, chapterId) {
+  const url     = new URL(request.url);
+  const voiceId = url.searchParams.get('voiceId') || 'Ola';
+  const chunk   = parseInt(url.searchParams.get('chunk') || '0', 10);
+  const obj = await env.reader_books.get(audioChunkKey(userId, bookId, chapterId, voiceId, chunk));
+  if (!obj) return err('nie znaleziono', 404);
+  return new Response(obj.body, {
+    headers: {
+      ...CORS_HEADERS,
+      'Content-Type': 'audio/ogg',
+      'Cache-Control': 'public, max-age=86400',
+    },
+  });
 }
 
 // ─── R2 KEY HELPERS ──────────────────────────────────────────────────────────
@@ -469,6 +669,14 @@ export default {
       const [, bookId, chapterId, lang] = trV2Match;
       if (method === 'POST') return handleUpsertPolyV2(request, env, userId, bookId, chapterId, lang);
       if (method === 'GET')  return handleGetPolyV2(env, userId, bookId, chapterId, lang);
+    }
+
+    // /books/{bookId}/chapters/{chapterId}/audio
+    const audioMatch = path.match(/^\/books\/([^/]+)\/chapters\/([^/]+)\/audio$/);
+    if (audioMatch) {
+      const [, bookId, chapterId] = audioMatch;
+      if (method === 'POST') return handleGenerateAudio(request, env, userId, bookId, chapterId);
+      if (method === 'GET')  return handleGetAudio(request, env, userId, bookId, chapterId);
     }
 
     // /books/{bookId}/chapters/{chapterId}

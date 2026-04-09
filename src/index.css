@@ -496,6 +496,23 @@ html, body, #root {
   gap: 16px; padding: 48px; text-align: center; color: var(--red); font-size: 14px; line-height: 1.7;
 }
 
+/* ════════════════ AUDIO / SENTENCE HIGHLIGHT ════════════════ */
+
+.spin-ring--sm {
+  width: 14px; height: 14px;
+  border-width: 1.5px;
+}
+
+.audio-err { color: var(--red) !important; }
+
+/* Active sentence highlight */
+span[data-sid].sentence-active {
+  background: rgba(192, 144, 80, 0.18);
+  border-radius: 2px;
+  outline: 1px solid rgba(192, 144, 80, 0.25);
+  transition: background .1s;
+}
+
 /* ════════════════ SETTINGS MODAL ════════════════ */
 
 .modal-overlay {

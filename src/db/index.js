@@ -38,6 +38,16 @@ db.version(2).stores({
   }
 });
 
+// v3: add audioCache for Polly TTS (marks stored locally, audio streamed from R2)
+db.version(3).stores({
+  books:            'id, title, createdAt, deletedAt',
+  chapters:         'id, bookId, chapterIndex, [bookId+chapterIndex], pendingSyncFlag',
+  polyglotCache:    'id, chapterId, targetLang, [chapterId+targetLang]',
+  readingPositions: 'bookId',
+  settings:         'key',
+  audioCache:       '[chapterId+voiceId], chapterId',
+});
+
 // ─── Pending sync helpers ─────────────────────────────────────────────────────
 
 export async function markChapterMetaPending(chapterId) {
@@ -221,6 +231,16 @@ export async function restorePolyglotCache(chapterId, targetLang, rawText) {
   if (exists) return;
   const { v4: uuid } = await import('uuid');
   await db.polyglotCache.put({ id: uuid(), chapterId, targetLang, rawText, createdAt: Date.now() });
+}
+
+// ─── Audio cache ──────────────────────────────────────────────────────────────
+
+export async function getAudioCache(chapterId, voiceId) {
+  return db.audioCache.get([chapterId, voiceId]);
+}
+
+export async function saveAudioCache(chapterId, voiceId, marks, chunkCount = 1) {
+  await db.audioCache.put({ chapterId, voiceId, marks, chunkCount, createdAt: Date.now() });
 }
 
 /** Returns chapters sorted by index, each with hasPoly flag for given targetLang. */
