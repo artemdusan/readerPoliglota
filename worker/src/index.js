@@ -619,6 +619,15 @@ async function handleHealth(env) {
 
 export default {
   async fetch(request, env) {
+    try {
+      return await handleRequest(request, env);
+    } catch (e) {
+      return err(`Nieoczekiwany błąd: ${e.message}`, 500);
+    }
+  },
+};
+
+async function handleRequest(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
@@ -694,5 +703,4 @@ export default {
     }
 
     return err('Not found', 404);
-  },
-};
+}
