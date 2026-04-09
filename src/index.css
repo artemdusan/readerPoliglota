@@ -505,6 +505,36 @@ html, body, #root {
 
 .audio-err { color: var(--red) !important; }
 
+.audio-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 90px;
+  height: 3px;
+  background: rgba(192,144,80,.35);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.audio-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--gold, #c09050);
+  cursor: pointer;
+}
+.audio-slider::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: none;
+  border-radius: 50%;
+  background: var(--gold, #c09050);
+  cursor: pointer;
+}
+
 /* Active sentence highlight */
 span[data-sid].sentence-active {
   background: rgba(192, 144, 80, 0.18);

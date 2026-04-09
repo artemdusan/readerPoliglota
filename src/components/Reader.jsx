@@ -75,6 +75,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const [activeSid, setActiveSid]     = useState(-1);
   const [isPlaying, setIsPlaying]     = useState(false);
   const [htmlWithSids, setHtmlWithSids] = useState('');   // chapter.html with <span data-sid>
+  const [polyHtmlWithSids, setPolyHtmlWithSids] = useState(''); // polyHtml with <span data-sid>
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
   const audioRef       = useRef(null);
   const audioBlobsRef  = useRef([]);   // ObjectURLs per chunk
   const audioChunkRef  = useRef(0);    // current chunk index
@@ -164,6 +167,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     setAudioMarks(null);
     setAudioVoiceId('');
     setHtmlWithSids('');
+    setPolyHtmlWithSids('');
+    setAudioCurrentTime(0);
+    setAudioDuration(0);
     setActiveSid(-1);
     activeSidRef.current = -1;
 
@@ -496,6 +502,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     setIsPlaying(false);
     setActiveSid(-1);
     activeSidRef.current = -1;
+    setAudioCurrentTime(0);
+    setAudioDuration(0);
   }
 
   async function generateAudio() {
@@ -504,10 +512,19 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     setAudioState('loading');
     setAudioError('');
     try {
-      // Check local cache
       const lang = book?.lang || 'pl';
       const voice = lang.startsWith('pl') ? 'Ola' : lang.startsWith('es') ? 'Lupe' : 'Joanna';
-      const cached = await getAudioCache(chapter.id, voice);
+
+      // In polyglot mode use the polyglot text (Spanish words + English context);
+      // strip [target::original] markers → keep only target (the foreign word).
+      const isPolyAudio = polyMode && !!polyRawText;
+      const textForAudio = isPolyAudio
+        ? polyRawText.replace(/\[([^\]]+?)::([^\]]+?)\]/g, (_, target) => target)
+        : chapter.text;
+
+      // Separate cache key so polyglot audio doesn't collide with original audio
+      const cacheKey = isPolyAudio ? `${voice}_poly_${activeLang}` : voice;
+      const cached = await getAudioCache(chapter.id, cacheKey);
       let marks, chunkCount;
 
       if (cached) {
@@ -519,7 +536,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-            body: JSON.stringify({ text: chapter.text, lang }),
+            body: JSON.stringify({ text: textForAudio, lang }),
           }
         );
         if (!resp.ok) {
@@ -529,7 +546,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         const data = await resp.json();
         marks = data.marks;
         chunkCount = data.chunkCount || 1;
-        await saveAudioCache(chapter.id, voice, marks, chunkCount);
+        await saveAudioCache(chapter.id, cacheKey, marks, chunkCount);
       }
 
       audioVoiceRef.current = voice;
@@ -550,9 +567,13 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       audioBlobsRef.current = blobs;
       audioChunkRef.current = 0;
 
-      // Process HTML with sentence spans
-      const processed = wrapSentencesInHtml(chapter.html, marks);
-      setHtmlWithSids(processed);
+      // Wrap HTML with sentence spans.
+      // In polyglot mode: wrap polyHtml but skip <i class="pw-original"> so offsets match textForAudio.
+      if (isPolyAudio) {
+        setPolyHtmlWithSids(wrapSentencesInHtml(polyHtml, marks, '.pw-original'));
+      } else {
+        setHtmlWithSids(wrapSentencesInHtml(chapter.html, marks));
+      }
       setAudioMarks(marks);
       setAudioVoiceId(voice);
       setAudioChunkCount(chunkCount);
@@ -570,10 +591,17 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     }
   }
 
+  function handleDurationChange() {
+    const el = audioRef.current;
+    if (el && isFinite(el.duration)) setAudioDuration(el.duration);
+  }
+
   function handleTimeUpdate() {
     const el = audioRef.current;
     const marks = audioMarksRef.current;
     if (!el || !marks) return;
+
+    setAudioCurrentTime(el.currentTime);
 
     const chunkIdx = audioChunkRef.current;
     const localMs  = el.currentTime * 1000;
@@ -873,9 +901,27 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
               </span>
             )}
             {audioState === 'ready' && (
-              <button className="ctl ctl-icon" onClick={togglePlayPause} title={isPlaying ? 'Pauza' : 'Odtwórz'}>
-                {isPlaying ? '⏸' : '▶'}
-              </button>
+              <>
+                <button className="ctl ctl-icon" onClick={togglePlayPause} title={isPlaying ? 'Pauza' : 'Odtwórz'}>
+                  {isPlaying ? '⏸' : '▶'}
+                </button>
+                <input
+                  type="range"
+                  className="audio-slider"
+                  min={0}
+                  max={audioDuration || 100}
+                  step={0.1}
+                  value={audioCurrentTime}
+                  onChange={e => {
+                    const t = parseFloat(e.target.value);
+                    if (audioRef.current) {
+                      audioRef.current.currentTime = t;
+                      setAudioCurrentTime(t);
+                    }
+                  }}
+                  title="Pozycja audio"
+                />
+              </>
             )}
             {audioState === 'error' && (
               <button className="ctl ctl-icon audio-err" onClick={() => setAudioState('idle')} title={`Błąd: ${audioError}. Kliknij aby spróbować ponownie.`}>
@@ -1002,8 +1048,12 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                   <div
                     key={activeLang}
                     ref={chapterBodyRef}
-                    className="ch-body ch-anim"
-                    dangerouslySetInnerHTML={{ __html: polyHtml }}
+                    className={`ch-body ch-anim${audioState === 'ready' ? ' audio-ready' : ''}`}
+                    dangerouslySetInnerHTML={{
+                      __html: audioState === 'ready' && polyHtmlWithSids
+                        ? polyHtmlWithSids
+                        : polyHtml,
+                    }}
                     onClick={handleContentClick}
                   />
                 )}
@@ -1058,6 +1108,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       <audio
         ref={audioRef}
         onTimeUpdate={handleTimeUpdate}
+        onDurationChange={handleDurationChange}
         onEnded={handleAudioEnded}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
