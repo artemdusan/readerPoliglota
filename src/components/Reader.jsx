@@ -13,6 +13,7 @@ import { triggerSync } from '../sync/cfSync';
 import { parsePolyglotHtml } from '../lib/polyglotParser';
 import { MODEL_PRICING } from '../lib/polyglotApi';
 import { wrapSentencesInHtml } from '../lib/sentenceWrapper';
+import { extractFragments, TtsPlayer } from '../lib/ttsFragments';
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || '';
 
@@ -123,6 +124,13 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const touchStartYRef = useRef(null);
   const sidToMarkRef   = useRef(new Map()); // sid → mark for O(1) click-to-seek
 
+  // Hybrid TTS state (polyglot mode — Web Speech API, no Polly)
+  const [ttsPlaying, setTtsPlaying]           = useState(false);
+  const [activeFid, setActiveFid]             = useState(-1);
+  const [polyHtmlAnnotated, setPolyHtmlAnnotated] = useState('');
+  const [ttsFragments, setTtsFragments]       = useState([]);
+  const ttsPlayerRef = useRef(null);
+
   /* ── Load book metadata + restore starting chapter ── */
   useEffect(() => {
     if (!bookId) return;
@@ -172,6 +180,13 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     setAudioDuration(0);
     setActiveSid(-1);
     activeSidRef.current = -1;
+    // Reset hybrid TTS
+    ttsPlayerRef.current?.stop();
+    ttsPlayerRef.current = null;
+    setTtsPlaying(false);
+    setActiveFid(-1);
+    setPolyHtmlAnnotated('');
+    setTtsFragments([]);
 
     getChapter(bookId, chapterIdx).then(async ch => {
       const pos = await getReadingPosition(bookId);
@@ -215,7 +230,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
           const entry = await getPolyglotCache(ch.id, langToLoad);
           if (entry) {
             const { html } = parsePolyglotHtml(entry.rawText);
+            const { html: annotated, fragments } = extractFragments(html);
             setPolyHtml(html);
+            setPolyHtmlAnnotated(annotated);
+            setTtsFragments(fragments);
             setPolyRawText(entry.rawText);
             setPolyState('done');
             setActiveLang(langToLoad);
@@ -428,6 +446,13 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     setAudioMarks(null);
     setHtmlWithSids('');
     setPolyHtmlWithSids('');
+    // Reset hybrid TTS
+    ttsPlayerRef.current?.stop();
+    ttsPlayerRef.current = null;
+    setTtsPlaying(false);
+    setActiveFid(-1);
+    setPolyHtmlAnnotated('');
+    setTtsFragments([]);
     if (lang === null) {
       setActiveLang(null);
       setPolyState('idle');
@@ -437,7 +462,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     getPolyglotCache(chapter.id, lang).then(entry => {
       if (entry) {
         const { html } = parsePolyglotHtml(entry.rawText);
+        const { html: annotated, fragments } = extractFragments(html);
         setPolyHtml(html);
+        setPolyHtmlAnnotated(annotated);
+        setTtsFragments(fragments);
         setPolyRawText(entry.rawText);
         setPolyState('done');
         setActiveLang(lang);
@@ -481,7 +509,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       triggerSync();
 
       const { html } = parsePolyglotHtml(rawText);
+      const { html: annotated, fragments } = extractFragments(html);
       setPolyHtml(html);
+      setPolyHtmlAnnotated(annotated);
+      setTtsFragments(fragments);
       setPolyRawText(rawText);
       setPolyState('done');
 
@@ -492,6 +523,67 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       if (token !== genTokenRef.current) return;
       setPolyError(err.message || 'Błąd API.');
       setPolyState('error');
+    }
+  }
+
+  /* ─────────────────────────────────────────
+     HYBRID TTS — Web Speech API, polyglot mode
+  ───────────────────────────────────────── */
+
+  function highlightFragment(fid) {
+    const body = chapterBodyRef.current;
+    if (!body) return;
+    body.querySelectorAll('.tts-active').forEach(el => el.classList.remove('tts-active'));
+    if (fid < 0) return;
+    const el = body.querySelector(`[data-fid="${fid}"]`);
+    if (!el) return;
+    el.classList.add('tts-active');
+    if (el.classList.contains('pw')) openTooltip(el, true);
+    // Auto-scroll page to keep fragment visible
+    const scrollEl = chScrollRef.current;
+    if (scrollEl) {
+      const pw = scrollEl.clientWidth;
+      const containerRect = scrollEl.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const currentOffset = currentPageRef.current * pw;
+      const elAbsLeft = elRect.left - containerRect.left + currentOffset;
+      const targetPage = Math.floor(elAbsLeft / pw);
+      if (targetPage !== currentPageRef.current && targetPage >= 0 && targetPage < totalPagesRef.current) {
+        goToPage(targetPage, false);
+      }
+    }
+  }
+
+  function startHybridTts(fromFid = 0) {
+    if (!ttsFragments.length) return;
+    ttsPlayerRef.current?.stop();
+    const player = new TtsPlayer({
+      fragments: ttsFragments,
+      sourceLang: book?.lang || 'en',
+      targetLang: activeLang || 'es',
+      onFragment: (fid) => { setActiveFid(fid); highlightFragment(fid); },
+      onDone: () => {
+        setTtsPlaying(false);
+        setActiveFid(-1);
+        const body = chapterBodyRef.current;
+        if (body) body.querySelectorAll('.tts-active').forEach(el => el.classList.remove('tts-active'));
+      },
+    });
+    ttsPlayerRef.current = player;
+    player.play(fromFid);
+    setTtsPlaying(true);
+  }
+
+  function toggleHybridTts() {
+    if (ttsPlaying) {
+      ttsPlayerRef.current?.stop();
+      ttsPlayerRef.current = null;
+      setTtsPlaying(false);
+      setActiveFid(-1);
+      const body = chapterBodyRef.current;
+      if (body) body.querySelectorAll('.tts-active').forEach(el => el.classList.remove('tts-active'));
+    } else {
+      startHybridTts(0);
     }
   }
 
@@ -679,13 +771,13 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
      TOOLTIP — auto-close after 2s
   ───────────────────────────────────────── */
 
-  function openTooltip(pw) {
+  function openTooltip(pw, force = false) {
     if (openPwRef.current && openPwRef.current !== pw) {
       openPwRef.current.classList.remove('open');
     }
     clearTimeout(tooltipTimerRef.current);
 
-    if (pw.classList.contains('open') && openPwRef.current === pw) {
+    if (!force && pw.classList.contains('open') && openPwRef.current === pw) {
       pw.classList.remove('open');
       openPwRef.current = null;
       return;
@@ -747,6 +839,16 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         goToHref(target);
       }
       return;
+    }
+
+    // In polyglot TTS mode: click any [data-fid] to play from that fragment
+    if (ttsFragments.length > 0) {
+      const fidEl = e.target.closest('[data-fid]');
+      if (fidEl) {
+        const fid = parseInt(fidEl.dataset.fid, 10);
+        startHybridTts(fid);
+        return;
+      }
     }
 
     const pw = e.target.closest('.pw');
@@ -897,43 +999,51 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
             <span className="fs-val">{fs}</span>
             <button className="ctl" onClick={() => setFs(f => Math.min(30, f + 1))}>A+</button>
             <div className="tb-sep" />
-            {audioState === 'idle' && (
-              <button className="ctl ctl-icon" onClick={generateAudio} title="Generuj audio" disabled={!chapter?.text}>
-                ▶
+            {polyMode && polyState === 'done' ? (
+              <button className="ctl ctl-icon" onClick={toggleHybridTts} title={ttsPlaying ? 'Stop' : 'Odtwórz'} disabled={!ttsFragments.length}>
+                {ttsPlaying ? '⏸' : '▶'}
               </button>
-            )}
-            {audioState === 'loading' && (
-              <span className="ctl ctl-icon audio-loading" title="Generowanie audio…">
-                <span className="spin-ring spin-ring--sm" />
-              </span>
-            )}
-            {audioState === 'ready' && (
+            ) : (
               <>
-                <button className="ctl ctl-icon" onClick={togglePlayPause} title={isPlaying ? 'Pauza' : 'Odtwórz'}>
-                  {isPlaying ? '⏸' : '▶'}
-                </button>
-                <input
-                  type="range"
-                  className="audio-slider"
-                  min={0}
-                  max={audioDuration || 100}
-                  step={0.1}
-                  value={audioCurrentTime}
-                  onChange={e => {
-                    const t = parseFloat(e.target.value);
-                    if (audioRef.current) {
-                      audioRef.current.currentTime = t;
-                      setAudioCurrentTime(t);
-                    }
-                  }}
-                  title="Pozycja audio"
-                />
+                {audioState === 'idle' && (
+                  <button className="ctl ctl-icon" onClick={generateAudio} title="Generuj audio" disabled={!chapter?.text}>
+                    ▶
+                  </button>
+                )}
+                {audioState === 'loading' && (
+                  <span className="ctl ctl-icon audio-loading" title="Generowanie audio…">
+                    <span className="spin-ring spin-ring--sm" />
+                  </span>
+                )}
+                {audioState === 'ready' && (
+                  <>
+                    <button className="ctl ctl-icon" onClick={togglePlayPause} title={isPlaying ? 'Pauza' : 'Odtwórz'}>
+                      {isPlaying ? '⏸' : '▶'}
+                    </button>
+                    <input
+                      type="range"
+                      className="audio-slider"
+                      min={0}
+                      max={audioDuration || 100}
+                      step={0.1}
+                      value={audioCurrentTime}
+                      onChange={e => {
+                        const t = parseFloat(e.target.value);
+                        if (audioRef.current) {
+                          audioRef.current.currentTime = t;
+                          setAudioCurrentTime(t);
+                        }
+                      }}
+                      title="Pozycja audio"
+                    />
+                  </>
+                )}
+                {audioState === 'error' && (
+                  <button className="ctl ctl-icon audio-err" onClick={() => setAudioState('idle')} title={`Błąd: ${audioError}. Kliknij aby spróbować ponownie.`}>
+                    ⚠
+                  </button>
+                )}
               </>
-            )}
-            {audioState === 'error' && (
-              <button className="ctl ctl-icon audio-err" onClick={() => setAudioState('idle')} title={`Błąd: ${audioError}. Kliknij aby spróbować ponownie.`}>
-                ⚠
-              </button>
             )}
             {polyMode && polyState === 'done' && (
               <>
@@ -1055,11 +1165,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                   <div
                     key={activeLang}
                     ref={chapterBodyRef}
-                    className={`ch-body ch-anim${audioState === 'ready' ? ' audio-ready' : ''}`}
+                    className={`ch-body ch-anim${ttsFragments.length ? ' tts-ready' : ''}`}
                     dangerouslySetInnerHTML={{
-                      __html: audioState === 'ready' && polyHtmlWithSids
-                        ? polyHtmlWithSids
-                        : polyHtml,
+                      __html: polyHtmlAnnotated || polyHtml,
                     }}
                     onClick={handleContentClick}
                   />

@@ -543,6 +543,26 @@ span[data-sid].sentence-active {
   transition: background .1s;
 }
 
+/* ════════════════ HYBRID TTS ════════════════ */
+
+/* Active TTS fragment (text span or .pw word) */
+.tts-active {
+  background: rgba(192, 144, 80, 0.18) !important;
+  border-radius: 2px;
+  outline: 1px solid rgba(192, 144, 80, 0.25);
+  transition: background .1s;
+}
+
+/* Clickable fragments when TTS is ready */
+.ch-body.tts-ready [data-fid] {
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background .08s;
+}
+.ch-body.tts-ready [data-fid]:hover {
+  background: rgba(192, 144, 80, .08);
+}
+
 /* ════════════════ SETTINGS MODAL ════════════════ */
 
 .modal-overlay {
