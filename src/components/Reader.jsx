@@ -421,6 +421,13 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     if (lang === activeLang) return;
     userChangedLangRef.current = true;
     pendingProgressRef.current = 0;
+    // Reset audio when switching language — old audio/marks belong to the previous version
+    stopAudio();
+    setAudioState('idle');
+    setAudioError('');
+    setAudioMarks(null);
+    setHtmlWithSids('');
+    setPolyHtmlWithSids('');
     if (lang === null) {
       setActiveLang(null);
       setPolyState('idle');
