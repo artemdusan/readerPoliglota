@@ -67,6 +67,14 @@ function getVoicesForLang(voices, lang) {
   );
 }
 
+function resetTooltipPosition(pw) {
+  if (!pw) return;
+  pw.style.removeProperty("--pw-tooltip-left");
+  pw.style.removeProperty("--pw-tooltip-top");
+  pw.style.removeProperty("--pw-tooltip-arrow-left");
+  delete pw.dataset.tooltipPlacement;
+}
+
 /* ═══════════════════════════════════════════
    Reader component
 ═══════════════════════════════════════════ */
@@ -313,6 +321,7 @@ export default function Reader({
     setPolyError("");
     setPolyAudioText("");
     clearTimeout(tooltipTimerRef.current);
+    resetTooltipPosition(openPwRef.current);
     openPwRef.current = null;
     setCurrentPage(0);
     currentPageRef.current = 0;
@@ -1212,21 +1221,76 @@ export default function Reader({
   function openTooltip(pw, force = false) {
     if (openPwRef.current && openPwRef.current !== pw) {
       openPwRef.current.classList.remove("open");
+      resetTooltipPosition(openPwRef.current);
     }
     clearTimeout(tooltipTimerRef.current);
 
     if (!force && pw.classList.contains("open") && openPwRef.current === pw) {
       pw.classList.remove("open");
+      resetTooltipPosition(pw);
       openPwRef.current = null;
       return;
     }
 
     pw.classList.add("open");
+    positionTooltip(pw);
     openPwRef.current = pw;
     tooltipTimerRef.current = setTimeout(() => {
       pw.classList.remove("open");
+      resetTooltipPosition(pw);
       if (openPwRef.current === pw) openPwRef.current = null;
     }, 2000);
+  }
+
+  function positionTooltip(pw) {
+    const tooltip = pw?.querySelector(".pw-original");
+    const scrollEl = chScrollRef.current;
+    if (!tooltip || !scrollEl) return;
+
+    resetTooltipPosition(pw);
+
+    window.requestAnimationFrame(() => {
+      if (!pw.isConnected || !pw.classList.contains("open")) return;
+
+      const viewportRect = scrollEl.getBoundingClientRect();
+      const pwRect = pw.getBoundingClientRect();
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const viewportPadding = 10;
+      const gap = 7;
+
+      const centerX = pwRect.left + pwRect.width / 2;
+      const minLeft = viewportRect.left + viewportPadding;
+      const maxLeft = viewportRect.right - viewportPadding - tooltipRect.width;
+      const preferredLeft = centerX - tooltipRect.width / 2;
+      const clampedLeft =
+        maxLeft >= minLeft
+          ? Math.min(Math.max(preferredLeft, minLeft), maxLeft)
+          : minLeft;
+
+      const fitsAbove =
+        pwRect.top - gap - tooltipRect.height >=
+        viewportRect.top + viewportPadding;
+      const preferredTop = fitsAbove
+        ? pwRect.top - gap - tooltipRect.height
+        : pwRect.bottom + gap;
+      const minTop = viewportRect.top + viewportPadding;
+      const maxTop = viewportRect.bottom - viewportPadding - tooltipRect.height;
+      const clampedTop =
+        maxTop >= minTop
+          ? Math.min(Math.max(preferredTop, minTop), maxTop)
+          : minTop;
+
+      const arrowLeft = Math.min(
+        Math.max(centerX - clampedLeft, 10),
+        tooltipRect.width - 10,
+      );
+
+      pw.style.setProperty("--pw-tooltip-left", `${clampedLeft - pwRect.left}px`);
+      pw.style.setProperty("--pw-tooltip-top", `${clampedTop - pwRect.top}px`);
+      pw.style.setProperty("--pw-tooltip-arrow-left", `${arrowLeft}px`);
+      pw.dataset.tooltipPlacement =
+        clampedTop >= pwRect.bottom ? "bottom" : "top";
+    });
   }
 
   /* ─────────────────────────────────────────

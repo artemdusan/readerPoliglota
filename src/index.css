@@ -775,22 +775,40 @@ html, body, #root {
   font-style: normal;
   font-family: 'DM Sans', sans-serif;
   color: var(--txt-1);
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
+  max-width: min(32ch, calc(100vw - 32px));
   z-index: 30;
   pointer-events: none;
   box-shadow: 0 6px 20px rgba(0,0,0,.6);
   line-height: 1.5;
   letter-spacing: .01em;
 }
+
+.pw[data-tooltip-placement] .pw-original {
+  top: var(--pw-tooltip-top);
+  bottom: auto;
+  left: var(--pw-tooltip-left);
+  transform: none;
+}
 /* Triangle arrow */
 .pw-original::after {
   content: '';
   position: absolute;
-  top: 100%;
-  left: 50%;
+  left: var(--pw-tooltip-arrow-left, 50%);
   transform: translateX(-50%);
   border: 5px solid transparent;
   border-top-color: rgba(192,144,80,.45);
+}
+
+.pw[data-tooltip-placement="top"] .pw-original::after {
+  top: 100%;
+}
+
+.pw[data-tooltip-placement="bottom"] .pw-original::after {
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: rgba(192,144,80,.45);
 }
 
 .pw.open .pw-original { display: block; }
