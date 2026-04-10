@@ -3,7 +3,7 @@
 //               {userId}/{bookId}/{chapterUUID}/metadata.json
 //               {userId}/{bookId}/{chapterUUID}/{lang}.json
 
-import { db, saveReadingPosition, getBookWithChapters, restoreBook, restoreChapter, restorePolyglotCache, getPendingChapters, clearChapterPending, clearPolyPending } from '../db';
+import { db, saveReadingPosition, getBookWithChapters, restoreBook, restoreChapter, restorePolyglotCache, getPendingChapters, clearChapterPending, clearPolyPending, purgeBookData } from '../db';
 import { getToken } from './cfAuth';
 import { getWorkerUrl } from '../config/workerUrl';
 
@@ -174,6 +174,25 @@ export async function uploadBook(bookId) {
 }
 
 /**
+ * Delete a book remotely and free local storage if the delete reaches the server.
+ * If remote delete fails, the local tombstone should stay so syncAll can retry later.
+ */
+export async function deleteRemoteBook(bookId, deletedAt) {
+  if (!getToken()) return { ok: false, error: 'Brak autoryzacji' };
+  try {
+    await apiFetch(`/books/${bookId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ deletedAt: deletedAt ?? Date.now() }),
+    });
+    await purgeBookData(bookId, { keepBookRecord: false });
+    return { ok: true, error: null };
+  } catch (err) {
+    console.warn('[CF sync] deleteRemoteBook failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
  * Sync a single book's reading position — call after saving local position.
  * No-op if not logged in.
  */
@@ -274,13 +293,17 @@ export async function syncAll(onProgress) {
     for (const entry of remoteManifest) {
       const local = localBookMap[entry.book_id];
       if (!local) continue;
-      if (entry.deleted_at && !local.deletedAt) {
-        await db.books.update(entry.book_id, { deletedAt: entry.deleted_at });
-      } else if (!entry.deleted_at && local.deletedAt) {
+      if (entry.deleted_at) {
+        if (!local.deletedAt) {
+          await db.books.update(entry.book_id, { deletedAt: entry.deleted_at });
+        }
+        await purgeBookData(entry.book_id, { keepBookRecord: false });
+      } else if (local.deletedAt) {
         await apiFetch(`/books/${entry.book_id}`, {
           method: 'DELETE',
           body: JSON.stringify({ deletedAt: local.deletedAt }),
         }, stats);
+        await purgeBookData(entry.book_id, { keepBookRecord: false });
       }
     }
 

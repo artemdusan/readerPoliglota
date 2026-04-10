@@ -159,7 +159,25 @@ export async function saveBook(bookData, chaptersData) {
 }
 
 export async function softDeleteBook(bookId) {
-  await db.books.update(bookId, { deletedAt: Date.now() });
+  const deletedAt = Date.now();
+  await db.books.update(bookId, { deletedAt });
+  return deletedAt;
+}
+
+export async function purgeBookData(bookId, { keepBookRecord = true } = {}) {
+  const chapters = await db.chapters.where('bookId').equals(bookId).toArray();
+  const chapterIds = chapters.map(ch => ch.id);
+
+  await db.transaction('rw', db.books, db.chapters, db.polyglotCache, db.readingPositions, async () => {
+    if (chapterIds.length) {
+      await db.polyglotCache.where('chapterId').anyOf(chapterIds).delete();
+    }
+    await db.chapters.where('bookId').equals(bookId).delete();
+    await db.readingPositions.delete(bookId);
+    if (!keepBookRecord) {
+      await db.books.delete(bookId);
+    }
+  });
 }
 
 export async function getActiveBooks() {

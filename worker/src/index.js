@@ -377,6 +377,10 @@ async function handleDeleteBook(request, env, userId, bookId) {
     'UPDATE book_manifest SET deleted_at = ? WHERE user_id = ? AND book_id = ?',
   ).bind(deletedAt || Date.now(), userId, bookId).run();
 
+  await env.DB.prepare(
+    'DELETE FROM reading_positions WHERE user_id = ? AND book_id = ?',
+  ).bind(userId, bookId).run();
+
   // Hard delete all R2 objects under this book prefix
   const keys = await r2ListKeys(env, bookPrefix(userId, bookId));
   await Promise.all(keys.map(k => env.reader_books.delete(k)));
@@ -388,9 +392,14 @@ async function handleDeleteBook(request, env, userId, bookId) {
 
 async function handleGetProgress(env, userId) {
   const { results } = await env.DB.prepare(
-    `SELECT book_id as bookId, chapter_idx as chapterIndex, scroll_top as scrollTop,
-            poly_mode as polyMode, sentence_idx as sentenceIdx, updated_at as updatedAt
-     FROM reading_positions WHERE user_id = ?`,
+    `SELECT rp.book_id as bookId, rp.chapter_idx as chapterIndex, rp.scroll_top as scrollTop,
+            rp.poly_mode as polyMode, rp.sentence_idx as sentenceIdx, rp.updated_at as updatedAt
+     FROM reading_positions rp
+     LEFT JOIN book_manifest bm
+       ON bm.user_id = rp.user_id
+      AND bm.book_id = rp.book_id
+     WHERE rp.user_id = ?
+       AND (bm.book_id IS NULL OR bm.deleted_at IS NULL)`,
   ).bind(userId).all();
   return json(results);
 }

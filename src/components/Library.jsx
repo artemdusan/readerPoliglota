@@ -4,13 +4,14 @@ import {
   getActiveBooks,
   saveBook,
   softDeleteBook,
+  purgeBookData,
   getReadingPosition,
 } from "../db";
 import BatchGenModal from "./BatchGenModal";
 import ImportDialog from "./ImportDialog";
 import { version } from "../../package.json";
 import { isLoggedIn, onAuthChange } from "../sync/cfAuth";
-import { syncAll, uploadBook } from "../sync/cfSync";
+import { syncAll, uploadBook, deleteRemoteBook } from "../sync/cfSync";
 
 function formatLastSync(ts) {
   if (!ts) return "Jeszcze nie synchronizowano";
@@ -185,8 +186,18 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
   async function handleDelete(e, bookId) {
     e.stopPropagation();
     if (!confirm("Usunąć tę książkę z biblioteki?")) return;
-    await softDeleteBook(bookId);
+    const deletedAt = await softDeleteBook(bookId);
+    await purgeBookData(bookId, { keepBookRecord: true });
     setBooks((prev) => prev.filter((book) => book.id !== bookId));
+    setPositions((prev) => {
+      const next = { ...prev };
+      delete next[bookId];
+      return next;
+    });
+
+    if (cfConnected) {
+      await deleteRemoteBook(bookId, deletedAt);
+    }
   }
 
   function progressLabel(bookId, chapterCount) {
