@@ -13,6 +13,9 @@ import { parsePolyglotHtml } from '../lib/polyglotParser';
 import { MODEL_PRICING } from '../lib/polyglotApi';
 import { annotateParagraphsInHtml } from '../lib/sentenceWrapper';
 import { extractPolyglotTtsData, SentenceTtsPlayer } from '../lib/ttsFragments';
+import { getWorkerUrl } from '../config/workerUrl';
+
+const WORKER_URL = getWorkerUrl();
 
 /* ═══════════════════════════════════════════
    Helpers
@@ -1091,6 +1094,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     return inputK * p.input + outputK * p.output;
   })();
   const estimatedSecs = estimatedBatches * (settings.polyglotModel?.includes('reasoner') ? 45 : 12);
+  const currentChapterHref = (chapter?.href || '').split('#')[0];
+  const tocItems = navigableTocItems(toc);
 
   if (!book && !chapterLoading) {
     return (
@@ -1123,23 +1128,26 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         <div className="toc-label">Spis treści</div>
         <div className="toc-scroll">
           <ul className="toc-list">
-            {navigableTocItems(toc).map((item, i) => {
-              const chIdx = hrefToIndex[item.href] ?? -1;
+            {tocItems.map((item, i) => {
+              const itemHref = (item.href || '').split('#')[0];
+              const chIdx = hrefToIndex[itemHref] ?? -1;
               const status = chapterStatusMap[chIdx];
               return (
-                <li
-                  key={i}
-                  className={`toc-entry${
-                    chapter?.href?.split('#')[0] === item.href ? ' active' : ''
-                  }`}
-                  onClick={() => goToHref(item.href)}
-                >
-                  <span className="toc-entry-title">{item.title || '—'}</span>
-                  {status?.hasTranslation && (
-                    <span className="toc-badges">
-                      {status.hasTranslation && <span className="toc-bdg toc-bdg-tr" title="Tłumaczenie">⊙</span>}
-                    </span>
-                  )}
+                <li key={itemHref || `${i}-${item.title || 'toc'}`} className="toc-item">
+                  <button
+                    type="button"
+                    className={`toc-entry toc-depth-${Math.min(item.depth ?? 0, 3)}${
+                      currentChapterHref === itemHref ? ' active' : ''
+                    }`}
+                    onClick={() => goToHref(itemHref)}
+                  >
+                    <span className="toc-entry-title">{item.title || '—'}</span>
+                    {status?.hasTranslation && (
+                      <span className="toc-badges">
+                        <span className="toc-bdg toc-bdg-tr" title="Tłumaczenie">⊙</span>
+                      </span>
+                    )}
+                  </button>
                 </li>
               );
             })}
@@ -1257,8 +1265,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 </>
               );
             })()}
-            <div className="settings-menu-divider" />
-            <button className="settings-menu-action" onClick={() => { onOpenSettings(); setSettingsMenuOpen(false); }}>Ustawienia aplikacji ⚙</button>
           </div>
         )}
 

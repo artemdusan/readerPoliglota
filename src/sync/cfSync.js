@@ -5,8 +5,9 @@
 
 import { db, saveReadingPosition, getBookWithChapters, restoreBook, restoreChapter, restorePolyglotCache, getPendingChapters, clearChapterPending, clearPolyPending } from '../db';
 import { getToken } from './cfAuth';
+import { getWorkerUrl } from '../config/workerUrl';
 
-const WORKER_URL = import.meta.env.VITE_WORKER_URL ?? '';
+const WORKER_URL = getWorkerUrl();
 
 // ─── Internal fetch wrapper ───────────────────────────────────────────────────
 

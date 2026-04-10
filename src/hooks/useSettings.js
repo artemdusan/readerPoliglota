@@ -10,46 +10,6 @@ export const LANGUAGES = [
   { code: 'en', name: 'angielski',  flag: '🇬🇧', label: 'English' },
 ];
 
-export const PROVIDERS = [
-  {
-    id: 'deepseek',
-    label: 'DeepSeek',
-    baseURL: 'https://api.deepseek.com/v1',
-    keyPlaceholder: 'sk-...',
-    models: [
-      { id: 'deepseek-chat',   label: 'DeepSeek Chat (szybki, tani)' },
-      { id: 'deepseek-reasoner', label: 'DeepSeek Reasoner (wyższa jakość)' },
-    ],
-    defaultModel: 'deepseek-chat',
-  },
-  {
-    id: 'openai',
-    label: 'OpenAI',
-    baseURL: 'https://api.openai.com/v1',
-    keyPlaceholder: 'sk-...',
-    models: [
-      { id: 'gpt-4o-mini', label: 'GPT-4o mini (szybki, tani)' },
-      { id: 'gpt-4o',      label: 'GPT-4o (najlepsza jakość)' },
-    ],
-    defaultModel: 'gpt-4o-mini',
-  },
-  {
-    id: 'openrouter',
-    label: 'OpenRouter',
-    baseURL: 'https://openrouter.ai/api/v1',
-    keyPlaceholder: 'sk-or-...',
-    models: [
-      { id: 'google/gemini-flash-1.5',        label: 'Gemini Flash 1.5 (szybki, tani)' },
-      { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B (darmowy)' },
-      { id: 'anthropic/claude-3.5-haiku',     label: 'Claude 3.5 Haiku' },
-    ],
-    defaultModel: 'google/gemini-flash-1.5',
-  },
-];
-
-// Legacy — kept so existing stored model IDs still render
-export const MODELS = PROVIDERS.flatMap(p => p.models);
-
 const DEFAULTS = {
   apiKey: '',
   provider: 'deepseek',
@@ -58,6 +18,7 @@ const DEFAULTS = {
   targetLangFlag: '🇪🇸',
   polyglotModel: 'deepseek-chat',
   fontSize: 19,
+  syncIntervalMinutes: 30,
   ttsMode: 'mixed',
   ttsVoiceName: '',        // SpeechSynthesisVoice.name for pl-PL, '' = auto
   ttsVoiceNameForeign: '', // SpeechSynthesisVoice.name for target lang, '' = auto
@@ -69,14 +30,20 @@ export function useSettings() {
 
   useEffect(() => {
     getAllSettings().then(stored => {
-      setSettings(prev => ({ ...prev, ...stored }));
+      setSettings(prev => ({
+        ...prev,
+        ...stored,
+        provider: 'deepseek',
+        polyglotModel: 'deepseek-chat',
+      }));
       setLoaded(true);
     });
   }, []);
 
   const updateSetting = useCallback(async (key, value) => {
-    await setSetting(key, value);
-    setSettings(prev => ({ ...prev, [key]: value }));
+    const nextValue = key === 'polyglotModel' ? 'deepseek-chat' : value;
+    await setSetting(key, nextValue);
+    setSettings(prev => ({ ...prev, [key]: nextValue }));
   }, []);
 
   const updateLanguage = useCallback(async (langCode) => {

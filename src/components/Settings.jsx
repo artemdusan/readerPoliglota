@@ -1,30 +1,32 @@
 import { useState, useEffect } from 'react';
-import { PROVIDERS } from '../hooks/useSettings';
 import { isLoggedIn, onAuthChange, login, register, logout } from '../sync/cfAuth';
 import { syncAll } from '../sync/cfSync';
 
-const WORKER_URL = import.meta.env.VITE_WORKER_URL ?? '';
-
-const deepseekProvider = PROVIDERS.find(p => p.id === 'deepseek') ?? PROVIDERS[0];
+const SYNC_INTERVAL_OPTIONS = [
+  { value: 5, label: 'Co 5 minut' },
+  { value: 15, label: 'Co 15 minut' },
+  { value: 30, label: 'Co 30 minut' },
+  { value: 60, label: 'Co 1 godzinę' },
+  { value: 180, label: 'Co 3 godziny' },
+  { value: 360, label: 'Co 6 godzin' },
+  { value: 720, label: 'Co 12 godzin' },
+];
 
 export default function Settings({ settings, onUpdateSetting, onClose }) {
-  const [cfConnected, setCfConnected]   = useState(isLoggedIn());
-  const [authMode, setAuthMode]         = useState('login'); // 'login' | 'register'
-  const [email, setEmail]               = useState('');
-  const [password, setPassword]         = useState('');
-  const [authError, setAuthError]       = useState('');
-  const [authWorking, setAuthWorking]   = useState(false);
-  const [syncStatus, setSyncStatus]     = useState(null); // null | 'syncing' | { synced, error }
-  const [syncProgress, setSyncProgress]   = useState(null); // null | { done, total }
-  const [apiTest, setApiTest]             = useState(null); // null | 'testing' | { ok, msg }
-  const [lastSync, setLastSync]         = useState(() => {
-    const v = localStorage.getItem('vocabapp:lastSync');
-    return v ? Number(v) : null;
+  const [cfConnected, setCfConnected] = useState(isLoggedIn());
+  const [authMode, setAuthMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authWorking, setAuthWorking] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(null);
+  const [syncProgress, setSyncProgress] = useState(null);
+  const [lastSync, setLastSync] = useState(() => {
+    const value = localStorage.getItem('vocabapp:lastSync');
+    return value ? Number(value) : null;
   });
 
-  useEffect(() => {
-    return onAuthChange(setCfConnected);
-  }, []);
+  useEffect(() => onAuthChange(setCfConnected), []);
 
   async function handleAuth(e) {
     e.preventDefault();
@@ -53,21 +55,11 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
   }
 
   function formatLastSync(ts) {
-    if (!ts) return null;
-    const d = new Date(ts);
-    return d.toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
-  }
-
-  async function handleApiTest() {
-    setApiTest('testing');
-    try {
-      const resp = await fetch(`${WORKER_URL}/health`);
-      const body = await resp.json().catch(() => ({}));
-      setApiTest({ ok: resp.ok, msg: resp.ok ? 'Połączono z DeepSeek ✓' : (body.error || `HTTP ${resp.status}`) });
-    } catch (e) {
-      setApiTest({ ok: false, msg: `Nie można połączyć z workerem: ${e.message}` });
-    }
-    setTimeout(() => setApiTest(null), 8000);
+    if (!ts) return 'Jeszcze nie synchronizowano';
+    return new Date(ts).toLocaleString('pl-PL', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
   }
 
   function handleOverlayClick(e) {
@@ -78,60 +70,61 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
     <div className="modal-overlay" onClick={handleOverlayClick}>
       <div className="modal" role="dialog" aria-modal="true">
         <div className="modal-head">
-          <div className="modal-title">Ustawienia</div>
+          <div className="modal-title">Konto</div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
         <div className="modal-body">
-
-          {/* Sync / Auth */}
           <div className="form-group">
-            <label className="form-label">Synchronizacja (Cloudflare)</label>
+            <label className="form-label">Konto</label>
 
             {cfConnected ? (
               <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 13, color: 'var(--gold)' }}>● Zalogowano</span>
+                <div className="settings-account-row">
+                  <span className="settings-account-badge">● Połączono</span>
                   <button className="btn-ghost" onClick={logout}>Wyloguj</button>
                   <button
                     className="btn-ghost"
                     onClick={handleManualSync}
                     disabled={syncStatus === 'syncing'}
                   >
-                    {syncStatus === 'syncing' ? '⟳ Synchronizuję…' : '↻ Synchronizuj teraz'}
+                    {syncStatus === 'syncing' ? 'Synchronizuję...' : 'Synchronizuj teraz'}
                   </button>
                 </div>
+
+                <p className="settings-inline-note">
+                  Ostatni sync: {formatLastSync(lastSync)}
+                </p>
+
                 {syncStatus === 'syncing' && syncProgress && (
-                  <div style={{ marginTop: 8 }}>
-                    <div style={{ height: 4, borderRadius: 2, background: 'var(--bg-2, #333)', overflow: 'hidden' }}>
-                      <div style={{
-                        height: '100%', borderRadius: 2, background: 'var(--gold)',
-                        width: syncProgress.total > 0 ? `${(syncProgress.done / syncProgress.total) * 100}%` : '0%',
-                        transition: 'width 0.2s ease',
-                      }} />
+                  <div className="settings-sync-progress">
+                    <div className="settings-sync-progress-track">
+                      <div
+                        className="settings-sync-progress-fill"
+                        style={{
+                          width: syncProgress.total > 0
+                            ? `${(syncProgress.done / syncProgress.total) * 100}%`
+                            : '0%',
+                        }}
+                      />
                     </div>
-                    <p style={{ fontSize: 11, color: 'var(--txt-2)', marginTop: 4 }}>
+                    <p className="settings-inline-note">
                       {syncProgress.done} / {syncProgress.total}
                     </p>
                   </div>
                 )}
+
                 {syncStatus && syncStatus !== 'syncing' && (
-                  <p style={{ fontSize: 12, marginTop: 6, color: syncStatus.error ? 'var(--err, #e55)' : 'var(--txt-2)' }}>
+                  <p className={`settings-inline-note ${syncStatus.error ? 'is-error' : ''}`}>
                     {syncStatus.error
                       ? `Błąd: ${syncStatus.error}`
-                      : `✓ Zsynchronizowano ${syncStatus.synced} ${syncStatus.synced === 1 ? 'plik' : 'pliki/plików'} · ↑ ${syncStatus.sentMB} MB · ↓ ${syncStatus.receivedMB} MB`
-                    }
-                  </p>
-                )}
-                {lastSync && (
-                  <p style={{ fontSize: 11, color: 'var(--txt-2)', marginTop: 4 }}>
-                    Ostatni sync: {formatLastSync(lastSync)}
+                      : `Zsynchronizowano ${syncStatus.synced} elementów · ↑ ${syncStatus.sentMB} MB · ↓ ${syncStatus.receivedMB} MB`}
                   </p>
                 )}
               </>
             ) : (
-              <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
+              <form onSubmit={handleAuth} className="settings-auth-form">
+                <div className="settings-auth-switch">
                   <button
                     type="button"
                     className={`ctl ${authMode === 'login' ? 'ctl-active' : ''}`}
@@ -147,28 +140,30 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                     Zarejestruj
                   </button>
                 </div>
+
                 <input
                   type="email"
                   className="form-input"
                   placeholder="Email"
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                   autoComplete="email"
                 />
+
                 <input
                   type="password"
                   className="form-input"
                   placeholder="Hasło (min. 8 znaków)"
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={8}
                   autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
                 />
-                {authError && (
-                  <p style={{ fontSize: 12, color: 'var(--err, #e55)', margin: 0 }}>{authError}</p>
-                )}
+
+                {authError && <p className="settings-inline-note is-error">{authError}</p>}
+
                 <button
                   type="submit"
                   className="btn-primary"
@@ -176,60 +171,28 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                   style={{ alignSelf: 'flex-start' }}
                 >
                   {authWorking
-                    ? (authMode === 'login' ? 'Logowanie…' : 'Rejestracja…')
-                    : (authMode === 'login' ? 'Zaloguj' : 'Zarejestruj')
-                  }
+                    ? (authMode === 'login' ? 'Logowanie...' : 'Rejestracja...')
+                    : (authMode === 'login' ? 'Zaloguj' : 'Zarejestruj')}
                 </button>
               </form>
             )}
           </div>
 
-          {/* Model */}
           <div className="form-group">
-            <label className="form-label">Model (DeepSeek)</label>
+            <label className="form-label">Synchronizacja w tle</label>
             <select
               className="form-select"
-              value={settings.polyglotModel}
-              onChange={e => onUpdateSetting('polyglotModel', e.target.value)}
+              value={settings.syncIntervalMinutes ?? 30}
+              onChange={(e) => onUpdateSetting('syncIntervalMinutes', Number(e.target.value))}
             >
-              {deepseekProvider.models.map(m => (
-                <option key={m.id} value={m.id}>{m.label}</option>
+              {SYNC_INTERVAL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-              <button
-                className="btn-ghost"
-                onClick={handleApiTest}
-                disabled={apiTest === 'testing'}
-              >
-                {apiTest === 'testing' ? '⟳ Sprawdzam…' : 'Sprawdź połączenie z DeepSeek'}
-              </button>
-              {apiTest && apiTest !== 'testing' && (
-                <span style={{ fontSize: 12, color: apiTest.ok ? 'var(--gold)' : 'var(--err, #e55)' }}>
-                  {apiTest.msg}
-                </span>
-              )}
+            <div className="form-hint">
+              Aplikacja będzie próbowała odświeżać dane w tle w wybranym odstępie czasu, gdy jesteś online i konto jest połączone.
             </div>
           </div>
-
-          {/* Font size */}
-          <div className="form-group">
-            <label className="form-label">Domyślna wielkość czcionki</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <input
-                type="range"
-                min={13}
-                max={30}
-                value={settings.fontSize}
-                onChange={e => onUpdateSetting('fontSize', Number(e.target.value))}
-                style={{ flex: 1, accentColor: 'var(--gold)' }}
-              />
-              <span style={{ fontSize: 13, color: 'var(--txt-2)', minWidth: 32 }}>
-                {settings.fontSize}px
-              </span>
-            </div>
-          </div>
-
         </div>
       </div>
     </div>

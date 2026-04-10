@@ -2,8 +2,9 @@
 // Token is stored in Dexie settings table (key: 'cfToken') and cached in memory.
 
 import { getSetting, setSetting } from '../db';
+import { getWorkerUrl } from '../config/workerUrl';
 
-const WORKER_URL = import.meta.env.VITE_WORKER_URL ?? '';
+const WORKER_URL = getWorkerUrl();
 
 let _token = null;
 let _listeners = [];
