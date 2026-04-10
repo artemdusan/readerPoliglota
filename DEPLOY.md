@@ -31,11 +31,21 @@ Settings → Environment variables → Production → Add variable:
 | Variable | Value |
 |---|---|
 | `VITE_GOOGLE_CLIENT_ID` | `123456789-abc.apps.googleusercontent.com` |
+| `VITE_WORKER_URL` | `https://reader-worker.artemdusan.workers.dev` |
 
 Jeśli chcesz też sync lokalnie, utwórz `.env.local` (nie commituj do repo):
 ```
 VITE_GOOGLE_CLIENT_ID=123456789-abc.apps.googleusercontent.com
+VITE_WORKER_URL=https://reader-worker.artemdusan.workers.dev
 ```
+
+## 3a. Cloudflare Worker - CORS
+
+W ustawieniach workera dodaj zmiennÄ…:
+
+| Variable | Value |
+|---|---|
+| `CORS_ALLOWED_ORIGINS` | `https://reader.stanley2025.uk,http://localhost:5173` |
 
 ## 4. Deploy
 

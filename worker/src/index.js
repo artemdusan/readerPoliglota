@@ -8,27 +8,45 @@
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 
-const DEFAULT_ALLOWED_ORIGIN = 'https://reader-worker.artemdusan.workers.dev';
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://reader.stanley2025.uk',
+  'https://reader-worker.artemdusan.workers.dev',
+];
 
-function isAllowedOrigin(origin) {
+function getAllowedOrigins(env) {
+  const raw = env.CORS_ALLOWED_ORIGINS?.trim();
+  if (!raw) return DEFAULT_ALLOWED_ORIGINS;
+
+  return raw
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+}
+
+function isAllowedOrigin(origin, env) {
   if (!origin) return false;
-  if (origin === DEFAULT_ALLOWED_ORIGIN) return true;
+  if (getAllowedOrigins(env).includes(origin)) return true;
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 }
 
-function corsHeaders(request) {
+function corsHeaders(request, env) {
   const origin = request.headers.get('Origin');
-  return {
-    'Access-Control-Allow-Origin': isAllowedOrigin(origin) ? origin : DEFAULT_ALLOWED_ORIGIN,
+  const headers = {
     'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type,Authorization',
     'Vary': 'Origin',
   };
+
+  if (isAllowedOrigin(origin, env)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+
+  return headers;
 }
 
-function withCors(response, request) {
+function withCors(response, request, env) {
   const headers = new Headers(response.headers);
-  for (const [key, value] of Object.entries(corsHeaders(request))) {
+  for (const [key, value] of Object.entries(corsHeaders(request, env))) {
     headers.set(key, value);
   }
   return new Response(response.body, {
@@ -454,9 +472,9 @@ export default {
   async fetch(request, env) {
     try {
       const response = await handleRequest(request, env);
-      return withCors(response, request);
+      return withCors(response, request, env);
     } catch (e) {
-      return withCors(err(`Nieoczekiwany błąd: ${e.message}`, 500), request);
+      return withCors(err(`Nieoczekiwany błąd: ${e.message}`, 500), request, env);
     }
   },
 };
