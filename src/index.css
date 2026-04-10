@@ -46,7 +46,9 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 22px 32px 18px;
+  width: min(1280px, calc(100% - 64px));
+  margin: 0 auto;
+  padding: 22px 0 18px;
   border-bottom: 1px solid var(--border-soft);
   flex-shrink: 0;
   gap: 16px;
@@ -54,20 +56,13 @@ html, body, #root {
 
 .wordmark {
   font-family: 'EB Garamond', serif;
-  font-size: 13px;
-  letter-spacing: .22em;
-  color: var(--txt-3);
+  font-size: 14px;
+  letter-spacing: .24em;
+  color: var(--txt-2);
   text-transform: uppercase;
   user-select: none;
 }
 .wordmark em { color: var(--gold); font-style: normal; }
-.lib-header-sub {
-  margin-top: 6px;
-  font-size: 11px;
-  color: var(--txt-3);
-  letter-spacing: .12em;
-  text-transform: uppercase;
-}
 
 .lib-header-actions { display: flex; gap: 10px; align-items: center; }
 .lib-header-icon {
@@ -81,11 +76,16 @@ html, body, #root {
   padding: 28px 32px 60px;
 }
 
+.lib-content {
+  width: min(100%, 1280px);
+  margin: 0 auto;
+}
+
 .lib-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 420px);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
   gap: 24px;
-  align-items: stretch;
+  align-items: center;
   margin-bottom: 28px;
 }
 
@@ -93,7 +93,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -106,20 +106,27 @@ html, body, #root {
 
 .lib-title {
   font-family: 'EB Garamond', serif;
-  font-size: clamp(26px, 3.4vw, 34px);
-  line-height: 1.06;
+  font-size: clamp(28px, 3vw, 40px);
+  line-height: 1;
   color: var(--txt-1);
 }
 
+.lib-toolbar-note {
+  max-width: 540px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--txt-2);
+}
+
 .lib-sync-strip {
-  background: rgba(23,20,17,.86);
-  border: 1px solid rgba(255,255,255,.06);
-  border-radius: 16px;
-  padding: 14px 16px;
-  box-shadow: 0 12px 30px rgba(0,0,0,.18);
+  background: linear-gradient(180deg, rgba(28,24,20,.92), rgba(20,17,14,.96));
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 18px;
+  padding: 16px 18px;
+  box-shadow: 0 18px 44px rgba(0,0,0,.18);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px 16px;
+  gap: 14px 16px;
   align-items: center;
 }
 
@@ -160,7 +167,7 @@ html, body, #root {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--txt-2);
 }
 
@@ -262,24 +269,25 @@ html, body, #root {
 
 .lib-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 22px;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 230px));
+  justify-content: start;
+  gap: 24px;
 }
 
 .book-card {
   position: relative;
   cursor: pointer;
-  border-radius: 18px;
+  border-radius: 22px;
   overflow: visible;
   transition: transform .18s ease, box-shadow .18s ease;
-  background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
-  border: 1px solid rgba(255,255,255,.04);
-  padding: 12px;
-  box-shadow: 0 10px 26px rgba(0,0,0,.14);
+  background: linear-gradient(180deg, rgba(31,27,23,.94), rgba(20,17,14,.98));
+  border: 1px solid rgba(255,255,255,.05);
+  padding: 14px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.16);
 }
 .book-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 18px 36px rgba(0,0,0,.24);
+  transform: translateY(-5px);
+  box-shadow: 0 24px 46px rgba(0,0,0,.24);
 }
 .book-card:hover .book-card-overlay { opacity: 1; }
 
@@ -290,10 +298,10 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 8px 28px rgba(0,0,0,.35);
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 .book-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .book-cover-ph { font-size: 36px; opacity: .2; }
@@ -302,7 +310,7 @@ html, body, #root {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .book-card-overlay {
@@ -340,7 +348,7 @@ html, body, #root {
 
 .book-title {
   font-family: 'EB Garamond', serif;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 600;
   line-height: 1.35;
   color: var(--txt-1);
@@ -351,7 +359,7 @@ html, body, #root {
   -webkit-box-orient: vertical;
 }
 .book-author {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--gold);
   white-space: nowrap;
   overflow: hidden;
@@ -368,7 +376,7 @@ html, body, #root {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .book-progress-pct {
@@ -946,13 +954,14 @@ html, body, #root {
   .ch-inner  { padding-left: 18px; padding-right: 18px; }
   .bottombar { padding: 0 12px; }
   .nav-btn span { display: none; }
-  .lib-header { padding: 14px 18px; }
+  .lib-header { width: calc(100% - 36px); padding: 14px 0; }
   .lib-body   { padding: 24px 18px 48px; }
   .lib-toolbar { grid-template-columns: 1fr; }
   .lib-title { font-size: 28px; }
+  .lib-toolbar-note { font-size: 13px; }
   .lib-sync-strip { grid-template-columns: 1fr auto; padding: 12px 14px; }
   .lib-grid   { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
-  .book-card { padding: 10px; border-radius: 14px; }
+  .book-card { padding: 10px; border-radius: 16px; }
   .book-menu-btn { top: 18px; right: 18px; }
   .book-ctx-menu { right: 10px; left: 10px; min-width: 0; }
 }

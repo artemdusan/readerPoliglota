@@ -21,14 +21,6 @@ function formatLastSync(ts) {
   });
 }
 
-function formatBookCount(count) {
-  if (count === 1) return "1 książka";
-  if ([2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100)) {
-    return `${count} książki`;
-  }
-  return `${count} książek`;
-}
-
 export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -218,11 +210,8 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
   return (
     <div className="lib-layout">
       <header className="lib-header">
-        <div>
-          <div className="wordmark">
-            <em>Reader</em>
-          </div>
-          <div className="lib-header-sub">Biblioteka i ustawienia aplikacji</div>
+        <div className="wordmark">
+          <em>Reader</em>
         </div>
 
         <div className="lib-header-actions">
@@ -258,186 +247,195 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
       />
 
       <div className="lib-body">
-        <section className="lib-toolbar">
-          <div className="lib-toolbar-copy">
-            <span className="lib-kicker">Biblioteka</span>
-            <h1 className="lib-title">{books.length ? formatBookCount(books.length) : "Dodaj książkę"}</h1>
-          </div>
-
-          <div className="lib-sync-strip">
-            <div className="lib-sync-main">
-              <div className="lib-sync-state">
-                <span
-                  className={`lib-sync-dot ${cfConnected ? "is-online" : "is-offline"}`}
-                  aria-hidden="true"
-                />
-                {cfConnected ? "Synchronizacja aktywna" : "Konto niepołączone"}
-              </div>
-              <div className="lib-sync-meta">
-                <span>Ostatni sync: {formatLastSync(lastSync)}</span>
-              </div>
+        <div className="lib-content">
+          <section className="lib-toolbar">
+            <div className="lib-toolbar-copy">
+              <span className="lib-kicker">Biblioteka</span>
+              <h1 className="lib-title">Twoje książki</h1>
+              <p className="lib-toolbar-note">
+                {books.length
+                  ? "Wróć do czytania albo dodaj kolejne pliki EPUB."
+                  : "Dodaj pierwszy plik EPUB, aby rozpocząć czytanie."}
+              </p>
             </div>
 
-            <div className="lib-sync-actions">
-              <button
-                className={`ctl ${syncStatus === "syncing" ? "ctl-active" : ""}`}
-                onClick={handleSyncButton}
-                disabled={syncStatus === "syncing"}
-              >
-                {cfConnected
-                  ? syncStatus === "syncing"
-                    ? "⟳"
-                    : "↻"
-                  : "Połącz konto"}
+            <div className="lib-sync-strip">
+              <div className="lib-sync-main">
+                <div className="lib-sync-state">
+                  <span
+                    className={`lib-sync-dot ${cfConnected ? "is-online" : "is-offline"}`}
+                    aria-hidden="true"
+                  />
+                  {cfConnected ? "Synchronizacja aktywna" : "Konto niepołączone"}
+                </div>
+                <div className="lib-sync-meta">
+                  <span>Ostatni sync: {formatLastSync(lastSync)}</span>
+                </div>
+              </div>
+
+              <div className="lib-sync-actions">
+                <button
+                  className={`ctl ${syncStatus === "syncing" ? "ctl-active" : ""}`}
+                  onClick={handleSyncButton}
+                  disabled={syncStatus === "syncing"}
+                >
+                  {cfConnected
+                    ? syncStatus === "syncing"
+                      ? "⟳"
+                      : "↻"
+                    : "Połącz konto"}
+                </button>
+              </div>
+
+              {syncStatus === "syncing" && syncProgress && (
+                <div className="lib-sync-progress">
+                  <div className="lib-sync-progress-track">
+                    <div
+                      className="lib-sync-progress-fill"
+                      style={{
+                        width: syncProgress.total > 0
+                          ? `${(syncProgress.done / syncProgress.total) * 100}%`
+                          : "0%",
+                      }}
+                    />
+                  </div>
+                  <div className="lib-sync-progress-label">
+                    {syncProgress.done} / {syncProgress.total}
+                  </div>
+                </div>
+              )}
+
+              {syncStatus && syncStatus !== "syncing" && (
+                <div
+                  className={`lib-sync-feedback ${syncStatus.error ? "is-error" : "is-success"}`}
+                >
+                  {syncStatus.error
+                    ? `Błąd synchronizacji: ${syncStatus.error}`
+                    : `Zsynchronizowano ${syncStatus.synced} elementów · ↑ ${syncStatus.sentMB} MB · ↓ ${syncStatus.receivedMB} MB`}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {addError && <div className="lib-error-banner">⚠ {addError}</div>}
+
+          {loading ? (
+            <div className="lib-loading">
+              <div className="spin-ring" />
+            </div>
+          ) : books.length === 0 ? (
+            <div
+              className={`dropzone ${dragging ? "over" : ""}`}
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+            >
+              <div className="dropzone-glyph">📚</div>
+              <div className="dropzone-title">Twoja biblioteka jest pusta</div>
+              <p className="dropzone-sub">
+                Przeciągnij plik <strong>.epub</strong> tutaj lub kliknij, aby go dodać.
+              </p>
+              <button className="btn-primary" disabled={adding}>
+                {adding ? "Ładowanie..." : "Wybierz plik EPUB"}
               </button>
             </div>
-
-            {syncStatus === "syncing" && syncProgress && (
-              <div className="lib-sync-progress">
-                <div className="lib-sync-progress-track">
-                  <div
-                    className="lib-sync-progress-fill"
-                    style={{
-                      width: syncProgress.total > 0
-                        ? `${(syncProgress.done / syncProgress.total) * 100}%`
-                        : "0%",
-                    }}
-                  />
-                </div>
-                <div className="lib-sync-progress-label">
-                  {syncProgress.done} / {syncProgress.total}
-                </div>
-              </div>
-            )}
-
-            {syncStatus && syncStatus !== "syncing" && (
-              <div
-                className={`lib-sync-feedback ${syncStatus.error ? "is-error" : "is-success"}`}
-              >
-                {syncStatus.error
-                  ? `Błąd synchronizacji: ${syncStatus.error}`
-                  : `Zsynchronizowano ${syncStatus.synced} elementów · ↑ ${syncStatus.sentMB} MB · ↓ ${syncStatus.receivedMB} MB`}
-              </div>
-            )}
-          </div>
-        </section>
-
-        {addError && <div className="lib-error-banner">⚠ {addError}</div>}
-
-        {loading ? (
-          <div className="lib-loading">
-            <div className="spin-ring" />
-          </div>
-        ) : books.length === 0 ? (
-          <div
-            className={`dropzone ${dragging ? "over" : ""}`}
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-          >
-            <div className="dropzone-glyph">📚</div>
-            <div className="dropzone-title">Twoja biblioteka jest pusta</div>
-            <p className="dropzone-sub">
-              Przeciągnij plik <strong>.epub</strong> tutaj lub kliknij, aby go dodać.
-            </p>
-            <button className="btn-primary" disabled={adding}>
-              {adding ? "Ładowanie..." : "Wybierz plik EPUB"}
-            </button>
-          </div>
-        ) : (
-          <div
-            className="lib-grid"
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-          >
-            {books.map((book) => (
-              <article
-                key={book.id}
-                className="book-card"
-                onClick={() => onOpenBook(book.id)}
-              >
-                <div className="book-cover">
-                  {book.cover ? (
-                    <img src={book.cover} alt="okładka" />
-                  ) : (
-                    <span className="book-cover-ph">📖</span>
-                  )}
-                </div>
-
-                <button
-                  className="book-menu-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCtxBookId((id) => (id === book.id ? null : book.id));
-                  }}
-                  title="Menu książki"
+          ) : (
+            <div
+              className="lib-grid"
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+            >
+              {books.map((book) => (
+                <article
+                  key={book.id}
+                  className="book-card"
+                  onClick={() => onOpenBook(book.id)}
                 >
-                  ⋯
-                </button>
+                  <div className="book-cover">
+                    {book.cover ? (
+                      <img src={book.cover} alt="okładka" />
+                    ) : (
+                      <span className="book-cover-ph">📖</span>
+                    )}
+                  </div>
 
-                {ctxBookId === book.id && (
-                  <div className="book-ctx-menu" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      className="book-ctx-primary"
-                      onClick={() => {
-                        onOpenBook(book.id);
-                        setCtxBookId(null);
-                      }}
-                    >
-                      Otwórz książkę
-                    </button>
-                    {settings && (
+                  <button
+                    className="book-menu-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCtxBookId((id) => (id === book.id ? null : book.id));
+                    }}
+                    title="Menu książki"
+                  >
+                    ⋯
+                  </button>
+
+                  {ctxBookId === book.id && (
+                    <div className="book-ctx-menu" onClick={(e) => e.stopPropagation()}>
                       <button
+                        className="book-ctx-primary"
                         onClick={() => {
-                          setBatchBook(book);
+                          onOpenBook(book.id);
                           setCtxBookId(null);
                         }}
                       >
-                        {settings.targetLangFlag} Generuj tłumaczenia
+                        Otwórz książkę
                       </button>
-                    )}
-                    <button
-                      className="book-ctx-delete"
-                      onClick={(e) => {
-                        handleDelete(e, book.id);
-                        setCtxBookId(null);
-                      }}
-                    >
-                      Usuń z biblioteki
-                    </button>
-                  </div>
-                )}
-
-                <div className="book-meta">
-                  <div className="book-title">{book.title}</div>
-                  {book.author && <div className="book-author">{book.author}</div>}
-                  <div className="book-progress-row">
-                    <div className="book-progress">{progressLabel(book.id, book.chapterCount)}</div>
-                    {positions[book.id] && (
-                      <div className="book-progress-pct">{progressPercent(book.id, book.chapterCount)}%</div>
-                    )}
-                  </div>
-                  {positions[book.id] && (
-                    <div className="book-progress-bar" aria-hidden="true">
-                      <div
-                        className="book-progress-fill"
-                        style={{ width: `${progressPercent(book.id, book.chapterCount)}%` }}
-                      />
+                      {settings && (
+                        <button
+                          onClick={() => {
+                            setBatchBook(book);
+                            setCtxBookId(null);
+                          }}
+                        >
+                          {settings.targetLangFlag} Generuj tłumaczenia
+                        </button>
+                      )}
+                      <button
+                        className="book-ctx-delete"
+                        onClick={(e) => {
+                          handleDelete(e, book.id);
+                          setCtxBookId(null);
+                        }}
+                      >
+                        Usuń z biblioteki
+                      </button>
                     </div>
                   )}
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
+
+                  <div className="book-meta">
+                    <div className="book-title">{book.title}</div>
+                    {book.author && <div className="book-author">{book.author}</div>}
+                    <div className="book-progress-row">
+                      <div className="book-progress">{progressLabel(book.id, book.chapterCount)}</div>
+                      {positions[book.id] && (
+                        <div className="book-progress-pct">
+                          {progressPercent(book.id, book.chapterCount)}%
+                        </div>
+                      )}
+                    </div>
+                    {positions[book.id] && (
+                      <div className="book-progress-bar" aria-hidden="true">
+                        <div
+                          className="book-progress-fill"
+                          style={{ width: `${progressPercent(book.id, book.chapterCount)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {importDraft && (
