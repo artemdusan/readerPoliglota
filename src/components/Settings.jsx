@@ -25,7 +25,7 @@ function formatTransfer(bytes, fallbackMB = 0) {
 export default function Settings({ settings, onUpdateSetting, onClose }) {
   const [cfConnected, setCfConnected] = useState(isLoggedIn());
   const [authMode, setAuthMode] = useState('login');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authWorking, setAuthWorking] = useState(false);
@@ -53,9 +53,9 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
     setAuthWorking(true);
     setAuthError('');
     try {
-      if (authMode === 'login') await login(email, password);
-      else await register(email, password);
-      setEmail('');
+      if (authMode === 'login') await login(username, password);
+      else await register(username, password);
+      setUsername('');
       setPassword('');
     } catch (err) {
       setAuthError(err.message);
@@ -162,13 +162,16 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                 </div>
 
                 <input
-                  type="email"
+                  type="text"
                   className="form-input"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Nazwa użytkownika"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   required
-                  autoComplete="email"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
 
                 <input

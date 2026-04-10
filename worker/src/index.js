@@ -67,6 +67,10 @@ function err(msg, status = 400) {
   return json({ error: msg }, status);
 }
 
+function normalizeAuthIdentifier(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 // ─── JWT (HMAC-SHA256, stateless) ────────────────────────────────────────────
 
 function b64url(buf) {
@@ -180,17 +184,20 @@ async function r2ListKeys(env, prefix) {
 // ─── ROUTE HANDLERS ──────────────────────────────────────────────────────────
 
 async function handleRegister(request, env) {
-  const { email, password } = await request.json().catch(() => ({}));
-  if (!email || !password) return err('email i hasło są wymagane');
+  const body = await request.json().catch(() => ({}));
+  const username = normalizeAuthIdentifier(body.username ?? body.email);
+  const password = typeof body.password === 'string' ? body.password : '';
+
+  if (!username || !password) return err('nazwa użytkownika i hasło są wymagane');
   if (password.length < 8) return err('hasło musi mieć co najmniej 8 znaków');
 
-  const existing = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
-  if (existing) return err('email już zarejestrowany', 409);
+  const existing = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(username).first();
+  if (existing) return err('nazwa użytkownika jest już zajęta', 409);
 
   const hash = await hashPassword(password);
   const result = await env.DB.prepare(
     'INSERT INTO users (email, hash, created_at) VALUES (?, ?, ?) RETURNING id',
-  ).bind(email, hash, Date.now()).first();
+  ).bind(username, hash, Date.now()).first();
 
   const token = await jwtSign(
     { sub: result.id, exp: Math.floor(Date.now() / 1000) + 30 * 24 * 3600 },
@@ -200,14 +207,17 @@ async function handleRegister(request, env) {
 }
 
 async function handleLogin(request, env) {
-  const { email, password } = await request.json().catch(() => ({}));
-  if (!email || !password) return err('email i hasło są wymagane');
+  const body = await request.json().catch(() => ({}));
+  const username = normalizeAuthIdentifier(body.username ?? body.email);
+  const password = typeof body.password === 'string' ? body.password : '';
 
-  const user = await env.DB.prepare('SELECT id, hash FROM users WHERE email = ?').bind(email).first();
-  if (!user) return err('nieprawidłowy email lub hasło', 401);
+  if (!username || !password) return err('nazwa użytkownika i hasło są wymagane');
+
+  const user = await env.DB.prepare('SELECT id, hash FROM users WHERE email = ?').bind(username).first();
+  if (!user) return err('nieprawidłowa nazwa użytkownika lub hasło', 401);
 
   const ok = await verifyPassword(password, user.hash);
-  if (!ok) return err('nieprawidłowy email lub hasło', 401);
+  if (!ok) return err('nieprawidłowa nazwa użytkownika lub hasło', 401);
 
   const token = await jwtSign(
     { sub: user.id, exp: Math.floor(Date.now() / 1000) + 30 * 24 * 3600 },
