@@ -22,9 +22,7 @@ import { triggerSync } from "../sync/cfSync";
 import { parseStoredPolyglot } from "../lib/polyglotParser";
 import { annotateParagraphsInHtml } from "../lib/sentenceWrapper";
 import { extractPolyglotTtsData, SentenceTtsPlayer } from "../lib/ttsFragments";
-import { getWorkerUrl } from "../config/workerUrl";
 
-const WORKER_URL = getWorkerUrl();
 const LANGUAGE_META = Object.fromEntries(
   LANGUAGES.map((lang) => [lang.code, lang]),
 );
@@ -116,7 +114,6 @@ export default function Reader({
     secs: 0,
   });
   const [polyLiveSecs, setPolyLiveSecs] = useState(0);
-  const [polyAudioText, setPolyAudioText] = useState("");
   const [confirmLang, setConfirmLang] = useState("");
   // derived
   const polyMode = activeLang !== null;
@@ -338,7 +335,6 @@ export default function Reader({
     setPolyState("idle");
     setPolyHtml("");
     setPolyError("");
-    setPolyAudioText("");
     clearTimeout(tooltipTimerRef.current);
     resetTooltipPosition(openPwRef.current);
     openPwRef.current = null;
@@ -424,7 +420,7 @@ export default function Reader({
         if (langToLoad) {
           const entry = await getPolyglotCache(ch.id, langToLoad);
           if (entry) {
-            const { html, textForAudio } = parseStoredPolyglot(entry, ch.html);
+            const { html } = parseStoredPolyglot(entry, ch.html);
             const {
               html: annotated,
               paragraphs,
@@ -434,7 +430,6 @@ export default function Reader({
             setPolyHtmlAnnotated(annotated);
             setPolyTtsParagraphs(paragraphs);
             setPolyWordFragments(words);
-            setPolyAudioText(textForAudio);
             setPolyState("done");
             setActiveLang(langToLoad);
           }
@@ -713,13 +708,12 @@ export default function Reader({
   ───────────────────────────────────────── */
 
   function applyPolyEntry(entry, chapterHtml) {
-    const { html, textForAudio } = parseStoredPolyglot(entry, chapterHtml);
+    const { html } = parseStoredPolyglot(entry, chapterHtml);
     const { html: annotated, paragraphs, words } = extractPolyglotTtsData(html);
     setPolyHtml(html);
     setPolyHtmlAnnotated(annotated);
     setPolyTtsParagraphs(paragraphs);
     setPolyWordFragments(words);
-    setPolyAudioText(textForAudio);
   }
 
   function switchToLang(lang) {
@@ -1092,203 +1086,6 @@ export default function Reader({
     };
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utt);
-  }
-
-  /* ─────────────────────────────────────────
-     AUDIO — generate, play, highlight
-  ───────────────────────────────────────── */
-
-  async function generateAudio() {
-    if (!isLoggedIn()) {
-      onOpenSettings();
-      return;
-    }
-    if (!chapter?.text) return;
-    setAudioState("loading");
-    setAudioError("");
-    try {
-      const lang = book?.lang || "pl";
-      const voice = lang.startsWith("pl")
-        ? "Ola"
-        : lang.startsWith("es")
-          ? "Lupe"
-          : "Joanna";
-
-      // In polyglot mode use the polyglot text (Spanish words + English context);
-      // strip [target::original] markers → keep only target (the foreign word).
-      const isPolyAudio = polyMode && !!polyAudioText;
-      const textForAudio = isPolyAudio ? polyAudioText : chapter.text;
-
-      // Separate cache key so polyglot audio doesn't collide with original audio
-      const cacheKey = isPolyAudio ? `${voice}_poly_${activeLang}` : voice;
-      const cached = await getAudioCache(chapter.id, cacheKey);
-      let marks, chunkCount;
-
-      if (cached) {
-        marks = cached.marks;
-        chunkCount = cached.chunkCount || 1;
-      } else {
-        const resp = await fetch(
-          `${WORKER_URL}/books/${bookId}/chapters/${chapter.id}/audio`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${getToken()}`,
-            },
-            body: JSON.stringify({ text: textForAudio, lang }),
-          },
-        );
-        if (!resp.ok) {
-          const body = await resp.json().catch(() => ({}));
-          throw new Error(body.error || `HTTP ${resp.status}`);
-        }
-        const data = await resp.json();
-        marks = data.marks;
-        chunkCount = data.chunkCount || 1;
-        await saveAudioCache(chapter.id, cacheKey, marks, chunkCount);
-      }
-
-      audioVoiceRef.current = voice;
-      audioMarksRef.current = marks;
-      // Build sid → mark map for O(1) click-to-seek
-      const markMap = new Map();
-      for (const m of marks) markMap.set(m.sid, m);
-      sidToMarkRef.current = markMap;
-
-      // Pre-fetch all audio chunks as blobs
-      const blobs = await Promise.all(
-        Array.from({ length: chunkCount }, (_, ci) =>
-          fetch(
-            `${WORKER_URL}/books/${bookId}/chapters/${chapter.id}/audio?voiceId=${voice}&chunk=${ci}`,
-            {
-              headers: { Authorization: `Bearer ${getToken()}` },
-            },
-          )
-            .then((r) => r.blob())
-            .then((b) => URL.createObjectURL(b)),
-        ),
-      );
-      audioBlobsRef.current = blobs;
-      audioChunkRef.current = 0;
-
-      // Wrap HTML with sentence spans.
-      // In polyglot mode: wrap polyHtml but skip <i class="pw-original"> so offsets match textForAudio.
-      if (isPolyAudio) {
-        setPolyHtmlWithSids(
-          wrapSentencesInHtml(polyHtml, marks, ".pw-original"),
-        );
-      } else {
-        setHtmlWithSids(wrapSentencesInHtml(chapter.html, marks));
-      }
-      setAudioMarks(marks);
-      setAudioVoiceId(voice);
-      setAudioChunkCount(chunkCount);
-      setAudioState("ready");
-
-      // Auto-start playback
-      if (audioRef.current) {
-        audioRef.current.src = blobs[0];
-        audioRef.current.play().catch(() => {});
-        setIsPlaying(true);
-      }
-    } catch (e) {
-      setAudioError(e.message || "Błąd generowania audio");
-      setAudioState("error");
-    }
-  }
-
-  function handleDurationChange() {
-    const el = audioRef.current;
-    if (el && isFinite(el.duration)) setAudioDuration(el.duration);
-  }
-
-  function handleTimeUpdate() {
-    const el = audioRef.current;
-    const marks = audioMarksRef.current;
-    if (!el || !marks) return;
-
-    setAudioCurrentTime(el.currentTime);
-
-    const chunkIdx = audioChunkRef.current;
-    const localMs = el.currentTime * 1000;
-
-    // Use localTime (ms within this chunk's audio) to find current sentence
-    const chunkMarks = marks.filter((m) => (m.chunkIndex ?? 0) === chunkIdx);
-    let active = null;
-    for (let i = chunkMarks.length - 1; i >= 0; i--) {
-      if (chunkMarks[i].localTime <= localMs) {
-        active = chunkMarks[i];
-        break;
-      }
-    }
-    const sid = active?.sid ?? -1;
-
-    if (sid !== activeSidRef.current) {
-      activeSidRef.current = sid;
-      setActiveSid(sid);
-      highlightSentence(sid);
-    }
-  }
-
-  function highlightSentence(sid) {
-    const body = chapterBodyRef.current;
-    if (!body) return;
-    body
-      .querySelectorAll(".sentence-active")
-      .forEach((el) => el.classList.remove("sentence-active"));
-    if (sid < 0) return;
-    const el = body.querySelector(`[data-sid="${sid}"]`);
-    if (el) {
-      el.classList.add("sentence-active");
-      const scrollEl = chScrollRef.current;
-      const innerEl = chInnerRef.current;
-      if (scrollEl && innerEl) {
-        const pw = scrollEl.clientWidth;
-        // Use getBoundingClientRect relative to container, compensating for current translateX
-        const containerRect = scrollEl.getBoundingClientRect();
-        const elRect = el.getBoundingClientRect();
-        const currentOffset = currentPageRef.current * pw;
-        const elAbsLeft = elRect.left - containerRect.left + currentOffset;
-        const targetPage = Math.floor(elAbsLeft / pw);
-        if (
-          targetPage !== currentPageRef.current &&
-          targetPage >= 0 &&
-          targetPage < totalPagesRef.current
-        ) {
-          goToPage(targetPage, false);
-        }
-      }
-    }
-  }
-
-  function handleAudioEnded() {
-    const nextChunk = audioChunkRef.current + 1;
-    if (nextChunk < audioBlobsRef.current.length) {
-      audioChunkRef.current = nextChunk;
-      audioRef.current.src = audioBlobsRef.current[nextChunk];
-      audioRef.current.play().catch(() => {});
-    } else {
-      setIsPlaying(false);
-      setActiveSid(-1);
-      activeSidRef.current = -1;
-      if (chapterBodyRef.current)
-        chapterBodyRef.current
-          .querySelectorAll(".sentence-active")
-          .forEach((el) => el.classList.remove("sentence-active"));
-    }
-  }
-
-  function togglePlayPause() {
-    const el = audioRef.current;
-    if (!el) return;
-    if (el.paused) {
-      el.play().catch(() => {});
-      setIsPlaying(true);
-    } else {
-      el.pause();
-      setIsPlaying(false);
-    }
   }
 
   /* ─────────────────────────────────────────
@@ -1940,13 +1737,6 @@ export default function Reader({
                     <div className="poly-loading">
                       <div className="spin-ring" />
                       <div className="poly-loading-text">{polyLoadingText}</div>
-                      {/*
-                      {polyProgress.total > 0
-                        ? polyProgress.done === 0
-                          ? `Wysyłam ${polyProgress.total} fragmentów…`
-                          : `Przetworzono ${polyProgress.done} / ${polyProgress.total} fragmentów`
-                        : 'Łączenie z API…'}
-                    */}
                       {polyProgress.total > 0 && (
                         <>
                           <div className="poly-progress-bar">
