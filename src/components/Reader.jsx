@@ -81,6 +81,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   // Page state
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages]   = useState(1);
+  const [layoutKey, setLayoutKey]     = useState(0); // bumped by ResizeObserver to re-trigger layout
 
   // Missing translation banner
   const [missingLangBanner, setMissingLangBanner] = useState(null); // langCode | null
@@ -299,8 +300,13 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       const ph = container.clientHeight;
       if (!pw || !ph) return;
 
+      // Snap height to whole lines to prevent partial-line clipping at column boundaries
+      const chBodyEl = inner.querySelector('.ch-body');
+      const lh = chBodyEl ? parseFloat(window.getComputedStyle(chBodyEl).lineHeight) : 0;
+      const snappedPh = lh > 4 ? Math.floor(ph / lh) * lh : ph;
+
       inner.style.columnWidth = pw + 'px';
-      inner.style.height = ph + 'px';
+      inner.style.height = snappedPh + 'px';
 
       requestAnimationFrame(() => {
         if (!container || !inner) return;
@@ -325,7 +331,22 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         }
       });
     });
-  }, [chapter?.id, polyMode, fs, polyHtml]);
+  }, [chapter?.id, polyMode, fs, polyHtml, originalHtmlAnnotated, layoutKey]);
+
+  /* ── Re-layout on container resize ── */
+  useEffect(() => {
+    const container = chScrollRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => {
+      const progress = totalPagesRef.current > 1
+        ? currentPageRef.current / (totalPagesRef.current - 1)
+        : 0;
+      pendingProgressRef.current = progress;
+      setLayoutKey(k => k + 1);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   /* ── Keep activeLangRef in sync; save position only on explicit user lang switch ── */
   useEffect(() => {
