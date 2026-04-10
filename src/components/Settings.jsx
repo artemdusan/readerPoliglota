@@ -12,6 +12,16 @@ const SYNC_INTERVAL_OPTIONS = [
   { value: 720, label: 'Co 12 godzin' },
 ];
 
+function formatTransfer(bytes, fallbackMB = 0) {
+  if (typeof bytes === 'number' && Number.isFinite(bytes)) {
+    if (bytes < 1_048_576) {
+      return `${Math.max(0.01, bytes / 1024).toFixed(2)} KB`;
+    }
+    return `${(bytes / 1_048_576).toFixed(2)} MB`;
+  }
+  return `${fallbackMB} MB`;
+}
+
 export default function Settings({ settings, onUpdateSetting, onClose }) {
   const [cfConnected, setCfConnected] = useState(isLoggedIn());
   const [authMode, setAuthMode] = useState('login');
@@ -118,7 +128,7 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                   <p className={`settings-inline-note ${syncStatus.error ? 'is-error' : ''}`}>
                     {syncStatus.error
                       ? `Błąd: ${syncStatus.error}`
-                      : `Zsynchronizowano ${syncStatus.synced} elementów · ↑ ${syncStatus.sentMB} MB · ↓ ${syncStatus.receivedMB} MB`}
+                      : `Zsynchronizowano ${syncStatus.synced} elementów · ↑ ${formatTransfer(syncStatus.sentBytes, syncStatus.sentMB)} · ↓ ${formatTransfer(syncStatus.receivedBytes, syncStatus.receivedMB)}`}
                   </p>
                 )}
               </>

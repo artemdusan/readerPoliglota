@@ -52,14 +52,14 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
     setLoading(true);
     getBookChaptersWithCacheStatus(bookId, selectedLang.code).then(chs => {
       setChapters(chs);
-      // Pre-select chapters without polyglot cache
+      // Pre-select chapters without translations; translated chapters can still be selected manually.
       setSelected(new Set(chs.filter(c => !c.hasPoly).map(c => c.id)));
       setLoading(false);
     });
   }, [bookId, selectedLang.code]);
 
   const toGenerate = useMemo(
-    () => chapters.filter(c => selected.has(c.id) && !c.hasPoly),
+    () => chapters.filter(c => selected.has(c.id)),
     [chapters, selected]
   );
 
@@ -80,7 +80,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
     });
   }
 
-  function selectAll() { setSelected(new Set(chapters.filter(c => !c.hasPoly).map(c => c.id))); }
+  function selectAll() { setSelected(new Set(chapters.map(c => c.id))); }
   function selectNone() { setSelected(new Set()); }
 
   async function handleGenerate() {
@@ -125,7 +125,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget && !generating) onClose(); }}>
       <div className="modal bgen-modal">
         <div className="modal-head">
-          <div className="modal-title">Generuj Poliglotę — {book?.title}</div>
+          <div className="modal-title">Generuj tłumaczenia — {book?.title}</div>
           <button className="modal-close" onClick={onClose} disabled={generating}>✕</button>
         </div>
 
@@ -137,7 +137,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
             </div>
           ) : (
             <>
-              {/* Language picker + model info */}
+              {/* Language picker */}
               <div className="bgen-info">
                 <select
                   className="form-select"
@@ -155,8 +155,6 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
                     <option key={l.code} value={l.code}>{l.flag} {l.label} ({l.name})</option>
                   ))}
                 </select>
-                <span className="bgen-sep">·</span>
-                <span>{settings.polyglotModel}</span>
               </div>
 
               {/* Chapter list */}
@@ -175,15 +173,15 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
                   >
                     <input
                       type="checkbox"
-                      checked={selected.has(ch.id) && !ch.hasPoly}
-                      disabled={ch.hasPoly || generating}
+                      checked={selected.has(ch.id)}
+                      disabled={generating}
                       onChange={() => toggleChapter(ch.id)}
                     />
                     <span className="bgen-ch-num">{i + 1}.</span>
                     <span className="bgen-ch-title">{ch.title || `Rozdział ${i + 1}`}</span>
                     <span className="bgen-ch-status">
                       {ch.hasPoly
-                        ? <span className="bgen-dot done" title="Gotowe">✓</span>
+                        ? <span className="bgen-dot done" title="Tłumaczenie już istnieje. Generowanie nadpisze je.">✓</span>
                         : errors[ch.id]
                           ? <span className="bgen-dot error" title={errors[ch.id]}>✕</span>
                           : <span className="bgen-dot empty" title="Brak">○</span>

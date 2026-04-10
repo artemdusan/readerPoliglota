@@ -13,6 +13,23 @@ import { version } from "../../package.json";
 import { isLoggedIn, onAuthChange } from "../sync/cfAuth";
 import { syncAll, uploadBook, deleteRemoteBook } from "../sync/cfSync";
 
+function getDroppedFiles(dataTransfer) {
+  if (!dataTransfer) return [];
+  if (dataTransfer.files?.length) return Array.from(dataTransfer.files);
+
+  return Array.from(dataTransfer.items || [])
+    .filter((item) => item.kind === "file")
+    .map((item) => item.getAsFile())
+    .filter(Boolean);
+}
+
+function hasDraggedFiles(event) {
+  const types = event.dataTransfer?.types;
+  return Array.isArray(types)
+    ? types.includes("Files")
+    : Array.from(types || []).includes("Files");
+}
+
 function formatLastSync(ts) {
   if (!ts) return "Jeszcze nie synchronizowano";
   return new Date(ts).toLocaleString("pl-PL", {
@@ -43,6 +60,16 @@ function formatRelativeSync(ts, now) {
 
   const days = Math.floor(diffMs / day);
   return `${days} dni temu`;
+}
+
+function formatTransfer(bytes, fallbackMB = 0) {
+  if (typeof bytes === "number" && Number.isFinite(bytes)) {
+    if (bytes < 1_048_576) {
+      return `${Math.max(0.01, bytes / 1024).toFixed(2)} KB`;
+    }
+    return `${(bytes / 1_048_576).toFixed(2)} MB`;
+  }
+  return `${fallbackMB} MB`;
 }
 
 export default function Library({ onOpenBook, onOpenSettings, settings }) {
@@ -79,6 +106,50 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
     return () => document.removeEventListener("click", close);
   }, [ctxBookId]);
 
+  useEffect(() => {
+    let dragDepth = 0;
+
+    function handleWindowDragEnter(event) {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      dragDepth += 1;
+      setDragging(true);
+    }
+
+    function handleWindowDragOver(event) {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      setDragging(true);
+    }
+
+    function handleWindowDragLeave(event) {
+      if (!hasDraggedFiles(event)) return;
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) setDragging(false);
+    }
+
+    function handleWindowDrop(event) {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      dragDepth = 0;
+      setDragging(false);
+      const file = getDroppedFiles(event.dataTransfer)[0];
+      if (file) handleFile(file);
+    }
+
+    window.addEventListener("dragenter", handleWindowDragEnter);
+    window.addEventListener("dragover", handleWindowDragOver);
+    window.addEventListener("dragleave", handleWindowDragLeave);
+    window.addEventListener("drop", handleWindowDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", handleWindowDragEnter);
+      window.removeEventListener("dragover", handleWindowDragOver);
+      window.removeEventListener("dragleave", handleWindowDragLeave);
+      window.removeEventListener("drop", handleWindowDrop);
+    };
+  }, []);
+
   const loadBooks = useCallback(async () => {
     const list = await getActiveBooks();
     const nextPositions = {};
@@ -113,31 +184,34 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
     return () => window.removeEventListener("vocabapp:synced", handleSynced);
   }, [loadBooks]);
 
-  const handleManualSync = useCallback(async ({ silent = false } = {}) => {
-    if (!cfConnected) {
-      if (!silent) onOpenSettings();
-      return;
-    }
+  const handleManualSync = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!cfConnected) {
+        if (!silent) onOpenSettings();
+        return;
+      }
 
-    if (syncStatus === "syncing") return;
+      if (syncStatus === "syncing") return;
 
-    if (!silent) {
-      setSyncStatus("syncing");
-      setSyncProgress(null);
-    }
+      if (!silent) {
+        setSyncStatus("syncing");
+        setSyncProgress(null);
+      }
 
-    const result = await syncAll((done, total) => {
-      if (!silent) setSyncProgress({ done, total });
-    });
+      const result = await syncAll((done, total) => {
+        if (!silent) setSyncProgress({ done, total });
+      });
 
-    if (!silent) {
-      setSyncStatus(result);
-      setSyncProgress(null);
-      window.setTimeout(() => setSyncStatus(null), 8000);
-    }
+      if (!silent) {
+        setSyncStatus(result);
+        setSyncProgress(null);
+        window.setTimeout(() => setSyncStatus(null), 8000);
+      }
 
-    if (result.lastSync) setLastSync(result.lastSync);
-  }, [cfConnected, onOpenSettings, syncStatus]);
+      if (result.lastSync) setLastSync(result.lastSync);
+    },
+    [cfConnected, onOpenSettings, syncStatus],
+  );
 
   useEffect(() => {
     if (!cfConnected) return;
@@ -201,7 +275,7 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
   function handleDrop(e) {
     e.preventDefault();
     setDragging(false);
-    const file = e.dataTransfer.files[0];
+    const file = getDroppedFiles(e.dataTransfer)[0];
     if (file) handleFile(file);
   }
 
@@ -272,7 +346,7 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
           <section className="lib-toolbar">
             <div className="lib-toolbar-copy">
               <span className="lib-kicker">Biblioteka</span>
-              <h1 className="lib-title">Twoje książki</h1>
+
               <p className="lib-toolbar-note">
                 {books.length
                   ? "Wróć do czytania albo dodaj kolejne pliki EPUB."
@@ -291,9 +365,6 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                   </span>
                   {books.length ? "Dodaj książkę" : "Dodaj pierwszy EPUB"}
                 </button>
-                <span className="lib-toolbar-hint">
-                  Możesz też przeciągnąć plik EPUB bezpośrednio do biblioteki.
-                </span>
               </div>
             </div>
 
@@ -304,12 +375,16 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                     className={`lib-sync-dot ${cfConnected ? "is-online" : "is-offline"}`}
                     aria-hidden="true"
                   />
-                  {cfConnected ? "Synchronizacja aktywna" : "Konto niepołączone"}
+                  {cfConnected
+                    ? "Synchronizacja aktywna"
+                    : "Konto niepołączone"}
                 </div>
                 <div className="lib-sync-meta">
                   <span>
                     Ostatni sync: {formatLastSync(lastSync)}
-                    {lastSync ? ` (${formatRelativeSync(lastSync, syncNow)})` : ""}
+                    {lastSync
+                      ? ` (${formatRelativeSync(lastSync, syncNow)})`
+                      : ""}
                   </span>
                 </div>
               </div>
@@ -334,9 +409,10 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                     <div
                       className="lib-sync-progress-fill"
                       style={{
-                        width: syncProgress.total > 0
-                          ? `${(syncProgress.done / syncProgress.total) * 100}%`
-                          : "0%",
+                        width:
+                          syncProgress.total > 0
+                            ? `${(syncProgress.done / syncProgress.total) * 100}%`
+                            : "0%",
                       }}
                     />
                   </div>
@@ -352,7 +428,7 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                 >
                   {syncStatus.error
                     ? `Błąd synchronizacji: ${syncStatus.error}`
-                    : `Zsynchronizowano ${syncStatus.synced} elementów · ↑ ${syncStatus.sentMB} MB · ↓ ${syncStatus.receivedMB} MB`}
+                    : `Zsynchronizowano ${syncStatus.synced} elementów · ↑ ${formatTransfer(syncStatus.sentBytes, syncStatus.sentMB)} · ↓ ${formatTransfer(syncStatus.receivedBytes, syncStatus.receivedMB)}`}
                 </div>
               )}
             </div>
@@ -378,7 +454,8 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
               <div className="dropzone-glyph">📚</div>
               <div className="dropzone-title">Twoja biblioteka jest pusta</div>
               <p className="dropzone-sub">
-                Przeciągnij plik <strong>.epub</strong> tutaj lub kliknij, aby go dodać.
+                Przeciągnij plik <strong>.epub</strong> tutaj lub kliknij, aby
+                go dodać.
               </p>
               <button className="btn-primary" disabled={adding}>
                 {adding ? "Ładowanie..." : "Wybierz plik EPUB"}
@@ -420,7 +497,10 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                   </button>
 
                   {ctxBookId === book.id && (
-                    <div className="book-ctx-menu" onClick={(e) => e.stopPropagation()}>
+                    <div
+                      className="book-ctx-menu"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <button
                         className="book-ctx-primary"
                         onClick={() => {
@@ -454,9 +534,13 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
 
                   <div className="book-meta">
                     <div className="book-title">{book.title}</div>
-                    {book.author && <div className="book-author">{book.author}</div>}
+                    {book.author && (
+                      <div className="book-author">{book.author}</div>
+                    )}
                     <div className="book-progress-row">
-                      <div className="book-progress">{progressLabel(book.id, book.chapterCount)}</div>
+                      <div className="book-progress">
+                        {progressLabel(book.id, book.chapterCount)}
+                      </div>
                       {positions[book.id] && (
                         <div className="book-progress-pct">
                           {progressPercent(book.id, book.chapterCount)}%
@@ -467,7 +551,9 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                       <div className="book-progress-bar" aria-hidden="true">
                         <div
                           className="book-progress-fill"
-                          style={{ width: `${progressPercent(book.id, book.chapterCount)}%` }}
+                          style={{
+                            width: `${progressPercent(book.id, book.chapterCount)}%`,
+                          }}
                         />
                       </div>
                     )}

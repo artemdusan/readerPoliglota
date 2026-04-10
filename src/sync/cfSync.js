@@ -379,6 +379,8 @@ export async function syncAll(onProgress) {
       error: null,
       sentMB:     +(stats.sent     / 1_048_576).toFixed(2),
       receivedMB: +(stats.received / 1_048_576).toFixed(2),
+      sentBytes: stats.sent,
+      receivedBytes: stats.received,
       lastSync:   now,
     };
   } catch (err) {

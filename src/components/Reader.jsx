@@ -119,6 +119,7 @@ export default function Reader({
   const [originalHtmlAnnotated, setOriginalHtmlAnnotated] = useState("");
   const [originalTtsFragments, setOriginalTtsFragments] = useState([]);
   const [originalTtsPlaying, setOriginalTtsPlaying] = useState(false);
+  const [originalTtsPaused, setOriginalTtsPaused] = useState(false);
   const [activeSid, setActiveSid] = useState(-1);
   const activeSidRef = useRef(-1);
   const chapterBodyRef = useRef(null);
@@ -165,6 +166,7 @@ export default function Reader({
 
   // Hybrid TTS state (polyglot mode — Web Speech API, no Polly)
   const [ttsPlaying, setTtsPlaying] = useState(false);
+  const [ttsPaused, setTtsPaused] = useState(false);
   const [activePolyPid, setActivePolyPid] = useState(-1);
   const [polyHtmlAnnotated, setPolyHtmlAnnotated] = useState("");
   const [polyTtsParagraphs, setPolyTtsParagraphs] = useState([]);
@@ -868,6 +870,7 @@ export default function Reader({
     ttsPlayerRef.current?.stop();
     ttsPlayerRef.current = null;
     setTtsPlaying(false);
+    setTtsPaused(false);
     setActivePolyPid(-1);
     clearSentenceHighlight();
     clearWordHighlight();
@@ -877,6 +880,7 @@ export default function Reader({
     originalTtsPlayerRef.current?.stop();
     originalTtsPlayerRef.current = null;
     setOriginalTtsPlaying(false);
+    setOriginalTtsPaused(false);
     setActiveSid(-1);
     activeSidRef.current = -1;
     clearSentenceHighlight();
@@ -930,6 +934,7 @@ export default function Reader({
       },
       onDone: () => {
         setOriginalTtsPlaying(false);
+        setOriginalTtsPaused(false);
         setActiveSid(-1);
         activeSidRef.current = -1;
         clearSentenceHighlight();
@@ -939,6 +944,7 @@ export default function Reader({
     originalTtsPlayerRef.current = player;
     player.play(fromSid);
     setOriginalTtsPlaying(true);
+    setOriginalTtsPaused(false);
   }
 
   function jumpSentence(delta) {
@@ -952,8 +958,19 @@ export default function Reader({
   }
 
   function toggleOriginalTts() {
-    if (originalTtsPlaying) stopOriginalTts();
-    else startOriginalTts(getFirstSidOnCurrentPage());
+    if (!originalTtsPlaying) {
+      startOriginalTts(getFirstSidOnCurrentPage());
+      return;
+    }
+
+    if (originalTtsPaused) {
+      originalTtsPlayerRef.current?.resume();
+      setOriginalTtsPaused(false);
+      return;
+    }
+
+    originalTtsPlayerRef.current?.pause();
+    setOriginalTtsPaused(true);
   }
 
   function startHybridTts(fromPid = 0) {
@@ -970,6 +987,7 @@ export default function Reader({
       },
       onDone: () => {
         setTtsPlaying(false);
+        setTtsPaused(false);
         setActivePolyPid(-1);
         clearSentenceHighlight();
       },
@@ -977,6 +995,7 @@ export default function Reader({
     ttsPlayerRef.current = player;
     player.play(fromPid);
     setTtsPlaying(true);
+    setTtsPaused(false);
   }
 
   // Jump to the previous/next paragraph while playing
@@ -992,8 +1011,19 @@ export default function Reader({
   }
 
   function toggleHybridTts() {
-    if (ttsPlaying) stopHybridTts();
-    else startHybridTts(getFirstSidOnCurrentPage());
+    if (!ttsPlaying) {
+      startHybridTts(getFirstSidOnCurrentPage());
+      return;
+    }
+
+    if (ttsPaused) {
+      ttsPlayerRef.current?.resume();
+      setTtsPaused(false);
+      return;
+    }
+
+    ttsPlayerRef.current?.pause();
+    setTtsPaused(true);
   }
 
   function playSingleWord(wordId) {
@@ -1352,7 +1382,8 @@ export default function Reader({
       }
       const pidEl = e.target.closest("[data-pid]");
       if (pidEl && ttsPlaying && polyTtsParagraphs.length > 0) {
-        startHybridTts(parseInt(pidEl.dataset.pid, 10));
+        const pid = parseInt(pidEl.dataset.pid, 10);
+        if (pid !== activePolyPid) startHybridTts(pid);
       }
       return;
     }
@@ -1360,7 +1391,8 @@ export default function Reader({
     // In original mode: paragraph seek works only while TTS is already active
     const pidEl = e.target.closest("[data-pid]");
     if (pidEl && originalTtsPlaying && originalTtsFragments.length > 0) {
-      startOriginalTts(parseInt(pidEl.dataset.pid, 10));
+      const pid = parseInt(pidEl.dataset.pid, 10);
+      if (pid !== activeSid) startOriginalTts(pid);
     }
   }
 
@@ -1579,19 +1611,19 @@ export default function Reader({
                   <button
                     className="ctl ctl-icon"
                     onClick={toggleHybridTts}
-                    title={ttsPlaying ? "Pauza" : "Odtwórz"}
+                    title={ttsPlaying ? (ttsPaused ? "Wznów" : "Pauza") : "Odtwórz"}
                     disabled={!polyTtsParagraphs.length}
                   >
-                    {ttsPlaying ? "⏸" : "▶"}
+                    {ttsPlaying ? (ttsPaused ? "▶" : "⏸") : "▶"}
                   </button>
                 ) : (
                   <button
                     className="ctl ctl-icon"
                     onClick={toggleOriginalTts}
-                    title={originalTtsPlaying ? "Pauza" : "Odtwórz"}
+                    title={originalTtsPlaying ? (originalTtsPaused ? "Wznów" : "Pauza") : "Odtwórz"}
                     disabled={!originalTtsFragments.length}
                   >
-                    {originalTtsPlaying ? "⏸" : "▶"}
+                    {originalTtsPlaying ? (originalTtsPaused ? "▶" : "⏸") : "▶"}
                   </button>
                 )}
               </div>
@@ -1648,11 +1680,15 @@ export default function Reader({
                       value={ttsSourceVoice}
                       disabled={!srcVoices.length}
                       onChange={(e) => {
-                        setTtsSourceVoice(e.target.value);
+                        const nextVoiceId = e.target.value;
+                        setTtsSourceVoice(nextVoiceId);
                         localStorage.setItem(
                           `tts-voice-src-${srcCode}`,
-                          e.target.value,
+                          nextVoiceId,
                         );
+                        const nextVoice = findVoiceById(ttsVoices, nextVoiceId);
+                        ttsPlayerRef.current?.setVoice(nextVoice);
+                        originalTtsPlayerRef.current?.setVoice(nextVoice);
                       }}
                     >
                       <option value="">
@@ -1944,9 +1980,16 @@ export default function Reader({
               <button
                 className="tts-bar-btn tts-bar-play active"
                 onClick={toggleOriginalTts}
-                title="Pauza"
+                title={originalTtsPaused ? "Wznów" : "Pauza"}
               >
-                ⏸
+                {originalTtsPaused ? "▶" : "⏸"}
+              </button>
+              <button
+                className="tts-bar-btn"
+                onClick={stopOriginalTts}
+                title="Zakończ TTS"
+              >
+                ⏹
               </button>
               <button
                 className="tts-bar-btn"
@@ -1970,9 +2013,16 @@ export default function Reader({
               <button
                 className="tts-bar-btn tts-bar-play active"
                 onClick={toggleHybridTts}
-                title="Pauza"
+                title={ttsPaused ? "Wznów" : "Pauza"}
               >
-                ⏸
+                {ttsPaused ? "▶" : "⏸"}
+              </button>
+              <button
+                className="tts-bar-btn"
+                onClick={stopHybridTts}
+                title="Zakończ TTS"
+              >
+                ⏹
               </button>
               <button
                 className="tts-bar-btn"
