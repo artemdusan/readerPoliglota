@@ -1551,10 +1551,7 @@ export default function Reader({
                 className="tb-ver-select"
                 value={activeLang ?? ""}
                 onChange={(e) => {
-                  if (e.target.value === "__generate__") {
-                    e.target.value = activeLang ?? "";
-                    requestGenerate();
-                  } else switchToLang(e.target.value || null);
+                  switchToLang(e.target.value || null);
                 }}
               >
                 <option value="">
@@ -1565,7 +1562,6 @@ export default function Reader({
                     {`Rozdział ${(chapterIdx ?? 0) + 1}${chapter.title ? " · " + chapter.title : ""} — ${l.name}`}
                   </option>
                 ))}
-                <option value="__generate__">+ Dodaj tłumaczenie</option>
               </select>
             ) : (
               ""
@@ -1893,7 +1889,7 @@ export default function Reader({
                               <span>~${polyProgress.cost.toFixed(4)}</span>
                             ) : (
                               <span style={{ color: "var(--txt-3)" }}>
-                                koszt nieznany
+                                ~$0.00
                               </span>
                             )}
                           </div>
