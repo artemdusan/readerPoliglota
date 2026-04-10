@@ -200,8 +200,7 @@ export default function Reader({
     const inner = chInnerRef.current;
     if (!container || !inner) return;
 
-    // Transforming the multicolumn container can intermittently skip repainting
-    // inline translated words after a page turn, so page with scrollLeft instead.
+    // Page by scrollLeft (not transform) to avoid Blink/WebKit multi-column repaint bugs.
     inner.style.removeProperty("transform");
     container.scrollLeft = Math.max(0, page) * container.clientWidth;
   }, []);
