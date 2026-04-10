@@ -189,6 +189,17 @@ export default function Reader({
     chScrollRef.current?.classList.remove("page-turning");
   }, []);
 
+  const syncPageViewport = useCallback((page) => {
+    const container = chScrollRef.current;
+    const inner = chInnerRef.current;
+    if (!container || !inner) return;
+
+    // Transforming the multicolumn container can intermittently skip repainting
+    // inline translated words after a page turn, so page with scrollLeft instead.
+    inner.style.removeProperty("transform");
+    container.scrollLeft = Math.max(0, page) * container.clientWidth;
+  }, []);
+
   /* ── Load Web Speech API voices (async, fires voiceschanged) ── */
   useEffect(() => {
     const synth = window.speechSynthesis;
@@ -329,6 +340,7 @@ export default function Reader({
     currentPageRef.current = 0;
     totalPagesRef.current = 1;
     flippingRef.current = false;
+    syncPageViewport(0);
     setMissingLangBanner(null);
     // Reset original TTS
     stopOriginalTts();
@@ -420,7 +432,7 @@ export default function Reader({
         }
       }
     });
-  }, [bookId, chapterIdx, clearPageTurnState]);
+  }, [bookId, chapterIdx, clearPageTurnState, syncPageViewport]);
 
   /* ── Refresh cached langs when BatchGenModal saves a translation ── */
   useEffect(() => {
@@ -482,8 +494,7 @@ export default function Reader({
           setCurrentPage(targetPage);
           currentPageRef.current = targetPage;
           inner.style.transition = "";
-          inner.style.transform =
-            targetPage > 0 ? `translateX(-${targetPage * pw}px)` : "";
+          syncPageViewport(targetPage);
         } else {
           // Re-layout only (font change or polyMode switch) — keep current page
           const cur = Math.min(currentPageRef.current, total - 1);
@@ -492,7 +503,7 @@ export default function Reader({
             currentPageRef.current = cur;
           }
           inner.style.transition = "";
-          inner.style.transform = cur > 0 ? `translateX(-${cur * pw}px)` : "";
+          syncPageViewport(cur);
         }
       });
     });
@@ -504,6 +515,7 @@ export default function Reader({
     originalHtmlAnnotated,
     layoutKey,
     clearPageTurnState,
+    syncPageViewport,
   ]);
 
   useEffect(() => {
@@ -575,20 +587,16 @@ export default function Reader({
           clearPageTurnState();
           return;
         }
-        const pw = chScrollRef.current.clientWidth;
         chInnerRef.current.style.transition = "";
-        chInnerRef.current.style.transform =
-          clampedPage > 0 ? `translateX(-${clampedPage * pw}px)` : "";
+        syncPageViewport(clampedPage);
         setCurrentPage(clampedPage);
         currentPageRef.current = clampedPage;
         clearPageTurnState();
         persistPosition();
       }, 90);
     } else {
-      const pw = container.clientWidth;
       inner.style.transition = "";
-      inner.style.transform =
-        clampedPage > 0 ? `translateX(-${clampedPage * pw}px)` : "";
+      syncPageViewport(clampedPage);
       setCurrentPage(clampedPage);
       currentPageRef.current = clampedPage;
     }
