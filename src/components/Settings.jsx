@@ -38,6 +38,16 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
 
   useEffect(() => onAuthChange(setCfConnected), []);
 
+  useEffect(() => {
+    function handleSynced() {
+      const value = localStorage.getItem('vocabapp:lastSync');
+      setLastSync(value ? Number(value) : Date.now());
+    }
+
+    window.addEventListener('vocabapp:synced', handleSynced);
+    return () => window.removeEventListener('vocabapp:synced', handleSynced);
+  }, []);
+
   async function handleAuth(e) {
     e.preventDefault();
     setAuthWorking(true);
