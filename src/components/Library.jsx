@@ -352,20 +352,22 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                   ? "Wróć do czytania albo dodaj kolejne pliki EPUB."
                   : "Dodaj pierwszy plik EPUB, aby rozpocząć czytanie."}
               </p>
-              <div className="lib-toolbar-cta">
-                <button
-                  className="btn-primary lib-add-book-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={adding}
-                  title="Dodaj książkę"
-                  aria-label="Dodaj książkę"
-                >
-                  <span className="lib-add-book-icon" aria-hidden="true">
-                    {adding ? "..." : "+"}
-                  </span>
-                  {books.length ? "Dodaj książkę" : "Dodaj pierwszy EPUB"}
-                </button>
-              </div>
+              {books.length > 0 && (
+                <div className="lib-toolbar-cta">
+                  <button
+                    className="btn-primary lib-add-book-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={adding}
+                    title="Dodaj książkę"
+                    aria-label="Dodaj książkę"
+                  >
+                    <span className="lib-add-book-icon" aria-hidden="true">
+                      {adding ? "..." : "+"}
+                    </span>
+                    Dodaj książkę
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="lib-sync-strip">
