@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS users (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  email      TEXT    NOT NULL UNIQUE,
+  email      TEXT    NOT NULL UNIQUE, -- legacy column name; stores username/login identifier
   hash       TEXT    NOT NULL,   -- "saltHex:iterations:derivedKeyHex" (PBKDF2-SHA256)
   created_at INTEGER NOT NULL
 );

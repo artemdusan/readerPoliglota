@@ -1,67 +1,39 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { BOOK_SOURCE_LANGUAGES } from "../constants/bookLanguages";
 
-export default function ImportDialog({ parsed, onConfirm, onCancel }) {
-  const [title, setTitle] = useState(parsed.title || "");
-  const [author, setAuthor] = useState(parsed.author || "");
-  const [lang, setLang] = useState(parsed.lang || "");
-  const [cover, setCover] = useState(parsed.cover || null);
-  const coverInputRef = useRef(null);
-
-  function handleCoverFile(file) {
-    if (!file || !file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setCover(e.target.result);
-    reader.readAsDataURL(file);
-  }
+export default function BookMetadataDialog({
+  book,
+  title = "Edytuj metadane",
+  confirmLabel = "Zapisz zmiany",
+  onConfirm,
+  onCancel,
+}) {
+  const [bookTitle, setBookTitle] = useState(book?.title || "");
+  const [author, setAuthor] = useState(book?.author || "");
+  const [lang, setLang] = useState(book?.lang || "");
 
   function handleConfirm() {
     onConfirm({
-      ...parsed,
-      title: title.trim() || "Bez tytułu",
+      ...book,
+      title: bookTitle.trim() || "Bez tytułu",
       author: author.trim(),
       lang,
-      cover,
     });
   }
 
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="import-dialog" onClick={(e) => e.stopPropagation()}>
-        <h2 className="import-dialog-title">Dodaj książkę</h2>
+        <h2 className="import-dialog-title">{title}</h2>
 
-        <div className="import-dialog-body">
-          <div
-            className="import-cover"
-            onClick={() => coverInputRef.current?.click()}
-            title="Kliknij, aby zmienić okładkę"
-          >
-            {cover ? (
-              <img src={cover} alt="okładka" />
-            ) : (
-              <span className="cover-ph cover-ph-lg">📖</span>
-            )}
-            <div className="import-cover-hint">zmień</div>
-          </div>
-
-          <input
-            ref={coverInputRef}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={(e) => {
-              handleCoverFile(e.target.files[0]);
-              e.target.value = "";
-            }}
-          />
-
+        <div className="import-dialog-body is-metadata-only">
           <div className="import-fields">
             <label className="import-field">
               <span>Tytuł</span>
               <input
                 type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                value={bookTitle}
+                onChange={(e) => setBookTitle(e.target.value)}
                 placeholder="Tytuł książki"
                 autoFocus
               />
@@ -95,7 +67,7 @@ export default function ImportDialog({ parsed, onConfirm, onCancel }) {
             Anuluj
           </button>
           <button className="btn-primary" onClick={handleConfirm}>
-            Dodaj książkę
+            {confirmLabel}
           </button>
         </div>
       </div>

@@ -3,11 +3,13 @@ import { EpubParser } from "../lib/epubParser";
 import {
   getActiveBooks,
   saveBook,
+  updateBookMetadata,
   softDeleteBook,
   purgeBookData,
   getReadingPosition,
 } from "../db";
 import BatchGenModal from "./BatchGenModal";
+import BookMetadataDialog from "./BookMetadataDialog";
 import ImportDialog from "./ImportDialog";
 import { version } from "../../package.json";
 import { isLoggedIn, onAuthChange } from "../sync/cfAuth";
@@ -81,6 +83,7 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const [positions, setPositions] = useState({});
   const [batchBook, setBatchBook] = useState(null);
   const [importDraft, setImportDraft] = useState(null);
+  const [editingBook, setEditingBook] = useState(null);
   const [ctxBookId, setCtxBookId] = useState(null);
   const [cfConnected, setCfConnected] = useState(() => isLoggedIn());
   const [syncStatus, setSyncStatus] = useState(null);
@@ -267,6 +270,22 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
       onOpenBook(bookId);
     } catch (err) {
       setAddError(err.message || "Nie udało się zapisać książki.");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleMetadataSave(updatedBook) {
+    setEditingBook(null);
+    setAdding(true);
+    setAddError("");
+
+    try {
+      const savedBook = await updateBookMetadata(updatedBook.id, updatedBook);
+      await uploadBook(savedBook.id);
+      await loadBooks();
+    } catch (err) {
+      setAddError(err.message || "Nie udało się zapisać metadanych książki.");
     } finally {
       setAdding(false);
     }
@@ -523,6 +542,14 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                         </button>
                       )}
                       <button
+                        onClick={() => {
+                          setEditingBook(book);
+                          setCtxBookId(null);
+                        }}
+                      >
+                        Edytuj metadane
+                      </button>
+                      <button
                         className="book-ctx-delete"
                         onClick={(e) => {
                           handleDelete(e, book.id);
@@ -572,6 +599,14 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
           parsed={importDraft}
           onConfirm={handleImportConfirm}
           onCancel={() => setImportDraft(null)}
+        />
+      )}
+
+      {editingBook && (
+        <BookMetadataDialog
+          book={editingBook}
+          onConfirm={handleMetadataSave}
+          onCancel={() => setEditingBook(null)}
         />
       )}
 

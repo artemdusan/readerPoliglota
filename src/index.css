@@ -1369,6 +1369,9 @@ html, body, #root {
   display: flex; gap: 24px;
   padding: 24px 28px;
 }
+.import-dialog-body.is-metadata-only {
+  display: block;
+}
 .import-cover {
   position: relative;
   flex-shrink: 0;

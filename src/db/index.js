@@ -180,6 +180,23 @@ export async function softDeleteBook(bookId) {
   return deletedAt;
 }
 
+export async function updateBookMetadata(bookId, updates) {
+  const existing = await db.books.get(bookId);
+  if (!existing) {
+    throw new Error('Nie znaleziono książki do aktualizacji.');
+  }
+
+  const nextBook = {
+    ...existing,
+    title: updates.title?.trim() || 'Bez tytułu',
+    author: updates.author?.trim() || '',
+    lang: updates.lang || '',
+  };
+
+  await db.books.put(nextBook);
+  return nextBook;
+}
+
 export async function purgeBookData(bookId, { keepBookRecord = true } = {}) {
   const chapters = await db.chapters.where('bookId').equals(bookId).toArray();
   const chapterIds = chapters.map(ch => ch.id);

@@ -33,11 +33,11 @@ export async function initCfAuth() {
   notify();
 }
 
-export async function login(email, password) {
+export async function login(username, password) {
   const resp = await fetch(`${WORKER_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ username, password }),
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
@@ -49,11 +49,11 @@ export async function login(email, password) {
   notify();
 }
 
-export async function register(email, password) {
+export async function register(username, password) {
   const resp = await fetch(`${WORKER_URL}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ username, password }),
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
