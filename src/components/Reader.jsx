@@ -160,6 +160,7 @@ export default function Reader({
   const openPwRef = useRef(null);
   const activeLangRef = useRef(null);
   const pendingProgressRef = useRef(null); // progress (0-1) to restore after layout (null = no pending restore)
+  const pendingChapterProgressOverrideRef = useRef(null); // one-shot progress override for the next chapter load
   const userChangedLangRef = useRef(false); // true only when user explicitly switched lang
   const currentPageRef = useRef(0);
   const totalPagesRef = useRef(1);
@@ -364,8 +365,11 @@ export default function Reader({
 
     getChapter(bookId, chapterIdx).then(async (ch) => {
       const pos = await getReadingPosition(bookId);
+      const progressOverride = pendingChapterProgressOverrideRef.current;
+      pendingChapterProgressOverrideRef.current = null;
       pendingProgressRef.current =
-        pos && pos.chapterIndex === chapterIdx ? (pos.progress ?? 0) : 0;
+        progressOverride ??
+        (pos && pos.chapterIndex === chapterIdx ? (pos.progress ?? 0) : 0);
 
       setChapter(ch || null);
       setOriginalHtmlAnnotated("");
@@ -502,11 +506,17 @@ export default function Reader({
 
         if (pendingProgressRef.current !== null) {
           // Initial load or chapter navigation — restore saved progress (device-independent)
+          const restoreProgress = pendingProgressRef.current;
           const targetPage = Math.min(
-            Math.round(pendingProgressRef.current * (total - 1)),
+            Math.round(restoreProgress * (total - 1)),
             total - 1,
           );
-          pendingProgressRef.current = null;
+          // Some first-pass layouts briefly report a single page before the
+          // final column flow is measured. Keep non-zero restores queued until
+          // we see a multi-page layout, otherwise they get collapsed to page 1.
+          if (restoreProgress === 0 || total > 1) {
+            pendingProgressRef.current = null;
+          }
           setCurrentPage(targetPage);
           currentPageRef.current = targetPage;
           inner.style.transition = "";
@@ -551,7 +561,11 @@ export default function Reader({
         totalPagesRef.current > 1
           ? currentPageRef.current / (totalPagesRef.current - 1)
           : 0;
-      pendingProgressRef.current = progress;
+      // Keep explicit chapter-transition restores intact; only capture
+      // current progress when no restore is already queued.
+      if (pendingProgressRef.current === null) {
+        pendingProgressRef.current = progress;
+      }
       setLayoutKey((k) => k + 1);
     });
     observer.observe(container);
@@ -619,9 +633,19 @@ export default function Reader({
   }
 
   function prevPage() {
+    if (currentPageRef.current === 0) {
+      if ((chapterIdx ?? 0) === 0) return;
+      navigate((chapterIdx ?? 0) - 1, { progressOverride: 1 });
+      return;
+    }
     goToPage(currentPageRef.current - 1);
   }
   function nextPage() {
+    if (currentPageRef.current >= totalPagesRef.current - 1) {
+      if ((chapterIdx ?? 0) >= chapterCount - 1) return;
+      navigate((chapterIdx ?? 0) + 1);
+      return;
+    }
     goToPage(currentPageRef.current + 1);
   }
 
@@ -637,11 +661,11 @@ export default function Reader({
         return;
       if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
         e.preventDefault();
-        goToPage(currentPageRef.current - 1);
+        prevPage();
       }
       if (e.key === "ArrowRight" || e.key === "ArrowDown") {
         e.preventDefault();
-        goToPage(currentPageRef.current + 1);
+        nextPage();
       }
       if (e.key === "Escape") {
         setSidebarOpen(false);
@@ -650,7 +674,7 @@ export default function Reader({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [nextPage, prevPage]);
 
   /* ── Close settings menu on outside click ── */
   useEffect(() => {
@@ -669,10 +693,12 @@ export default function Reader({
     return () => document.removeEventListener("mousedown", onOutside);
   }, [settingsMenuOpen]);
 
-  function navigate(idx) {
+  function navigate(idx, options = {}) {
     if (chapterIdx === null) return;
+    const { progressOverride = null } = options;
     clearPageTurnState();
     persistPosition();
+    pendingChapterProgressOverrideRef.current = progressOverride;
     // Carry current language to next chapter
     desiredLangRef.current = activeLangRef.current;
     // Save per-chapter lang before leaving
@@ -2005,9 +2031,7 @@ export default function Reader({
         <div className="bottombar">
           <button
             className="nav-btn"
-            onClick={() =>
-              currentPage === 0 ? navigate((chapterIdx ?? 0) - 1) : prevPage()
-            }
+            onClick={prevPage}
             disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
           >
             ←
@@ -2089,11 +2113,7 @@ export default function Reader({
 
           <button
             className="nav-btn"
-            onClick={() =>
-              currentPage >= totalPages - 1
-                ? navigate((chapterIdx ?? 0) + 1)
-                : nextPage()
-            }
+            onClick={nextPage}
             disabled={
               currentPage >= totalPages - 1 &&
               (chapterIdx ?? 0) >= chapterCount - 1
