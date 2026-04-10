@@ -1214,10 +1214,24 @@ html, body, #root {
   -webkit-box-orient: vertical;
   white-space: normal;
 }
-.toc-badges { display: flex; gap: 3px; flex-shrink: 0; margin-left: 6px; }
+.toc-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: 6px;
+}
 .toc-bdg {
-  font-size: 9px; opacity: .65;
-  line-height: 1; padding: 1px 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1em;
+  font-size: 14px;
+  opacity: .92;
+  line-height: 1;
+  padding: 0;
 }
 .toc-bdg-tr { color: var(--gold); }
 .toc-bdg-au { color: var(--green); }

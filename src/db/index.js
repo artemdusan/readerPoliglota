@@ -339,25 +339,28 @@ export async function getChapterLang(bookId, chapterIndex) {
   return map[String(chapterIndex)] ?? null;
 }
 
-/** Returns { chapterIndex: { hasTranslation, chapterId } } for all chapters. */
-export async function getChapterStatusMap(bookId, langCode) {
+/** Returns { chapterIndex: { hasTranslation, translationLangs, chapterId } } for all chapters. */
+export async function getChapterStatusMap(bookId) {
   const chapters = await db.chapters.where('bookId').equals(bookId).sortBy('chapterIndex');
   const chapterIds = chapters.map(c => c.id);
   if (!chapterIds.length) return {};
 
-  const polyEntries = langCode
-    ? await db.polyglotCache.where('chapterId').anyOf(chapterIds).toArray()
-    : [];
-  const polySet = new Set(
-    polyEntries
-      .filter(p => isSupportedPolyglotValue(p) && (!langCode || p.targetLang === langCode))
-      .map(p => p.chapterId)
-  );
+  const polyEntries = await db.polyglotCache.where('chapterId').anyOf(chapterIds).toArray();
+  const langsByChapterId = new Map();
+  for (const entry of polyEntries) {
+    if (!isSupportedPolyglotValue(entry)) continue;
+    if (!langsByChapterId.has(entry.chapterId)) {
+      langsByChapterId.set(entry.chapterId, new Set());
+    }
+    langsByChapterId.get(entry.chapterId).add(entry.targetLang);
+  }
 
   const map = {};
   for (const ch of chapters) {
+    const translationLangs = [...(langsByChapterId.get(ch.id) ?? [])];
     map[ch.chapterIndex] = {
-      hasTranslation: polySet.has(ch.id),
+      hasTranslation: translationLangs.length > 0,
+      translationLangs,
       chapterId: ch.id,
     };
   }

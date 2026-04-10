@@ -25,6 +25,12 @@ import { extractPolyglotTtsData, SentenceTtsPlayer } from "../lib/ttsFragments";
 import { getWorkerUrl } from "../config/workerUrl";
 
 const WORKER_URL = getWorkerUrl();
+const LANGUAGE_META = Object.fromEntries(
+  LANGUAGES.map((lang) => [lang.code, lang]),
+);
+const LANGUAGE_ORDER = new Map(
+  LANGUAGES.map((lang, index) => [lang.code, index]),
+);
 
 /* ═══════════════════════════════════════════
    Helpers
@@ -434,25 +440,36 @@ export default function Reader({
     });
   }, [bookId, chapterIdx, clearPageTurnState, syncPageViewport]);
 
-  /* ── Refresh cached langs when BatchGenModal saves a translation ── */
+  /* ── Refresh cached langs + TOC badges when a translation is saved ── */
+  const refreshChapterStatusMap = useCallback(() => {
+    if (!bookId) {
+      setChapterStatusMap({});
+      return Promise.resolve();
+    }
+    return getChapterStatusMap(bookId).then(setChapterStatusMap);
+  }, [bookId]);
+
   useEffect(() => {
     function onPolyglotSaved(e) {
-      if (!chapter?.id || e.detail.chapterId !== chapter.id) return;
-      getChapterCachedLangs(chapter.id).then((codes) => {
-        setCachedLangs(
-          codes.map((c) => LANGUAGES.find((l) => l.code === c)).filter(Boolean),
-        );
-      });
+      if (chapter?.id && e.detail.chapterId === chapter.id) {
+        getChapterCachedLangs(chapter.id).then((codes) => {
+          setCachedLangs(
+            codes
+              .map((c) => LANGUAGES.find((l) => l.code === c))
+              .filter(Boolean),
+          );
+        });
+      }
+      refreshChapterStatusMap();
     }
     window.addEventListener("polyglot-saved", onPolyglotSaved);
     return () => window.removeEventListener("polyglot-saved", onPolyglotSaved);
-  }, [chapter?.id]);
+  }, [chapter?.id, refreshChapterStatusMap]);
 
   /* ── Chapter status map (translation + audio badges in TOC) ── */
   useEffect(() => {
-    if (!bookId) return;
-    getChapterStatusMap(bookId, activeLang).then(setChapterStatusMap);
-  }, [bookId, activeLang]);
+    refreshChapterStatusMap();
+  }, [refreshChapterStatusMap]);
 
   /* ── Page break calculation + position restore ── */
   useEffect(() => {
@@ -779,18 +796,15 @@ export default function Reader({
 
       localStorage.setItem("vocabapp:lastLang", langCode);
       await savePolyglotCache(chapter.id, langCode, cacheValue);
+      window.dispatchEvent(
+        new CustomEvent("polyglot-saved", {
+          detail: { chapterId: chapter.id, lang: langCode },
+        }),
+      );
       triggerSync();
 
       applyPolyEntry(cacheValue, chapter.html);
       setPolyState("done");
-
-      // Refresh cached langs list
-      const cached_codes = await getChapterCachedLangs(chapter.id);
-      setCachedLangs(
-        cached_codes
-          .map((c) => LANGUAGES.find((l) => l.code === c))
-          .filter(Boolean),
-      );
     } catch (err) {
       if (token !== genTokenRef.current) return;
       setPolyError(err.message || "Błąd API.");
@@ -1323,7 +1337,10 @@ export default function Reader({
         tooltipRect.width - 10,
       );
 
-      pw.style.setProperty("--pw-tooltip-left", `${clampedLeft - pwRect.left}px`);
+      pw.style.setProperty(
+        "--pw-tooltip-left",
+        `${clampedLeft - pwRect.left}px`,
+      );
       pw.style.setProperty("--pw-tooltip-top", `${clampedTop - pwRect.top}px`);
       pw.style.setProperty("--pw-tooltip-arrow-left", `${arrowLeft}px`);
       pw.dataset.tooltipPlacement =
@@ -1506,6 +1523,20 @@ export default function Reader({
               const itemHref = (item.href || "").split("#")[0];
               const chIdx = hrefToIndex[itemHref] ?? -1;
               const status = chapterStatusMap[chIdx];
+              const translationBadges = [...(status?.translationLangs || [])]
+                .sort(
+                  (a, b) =>
+                    (LANGUAGE_ORDER.get(a) ?? Number.MAX_SAFE_INTEGER) -
+                    (LANGUAGE_ORDER.get(b) ?? Number.MAX_SAFE_INTEGER),
+                )
+                .map(
+                  (code) =>
+                    LANGUAGE_META[code] || {
+                      code,
+                      flag: code.toUpperCase(),
+                      name: code,
+                    },
+                );
               return (
                 <li
                   key={itemHref || `${i}-${item.title || "toc"}`}
@@ -1519,14 +1550,18 @@ export default function Reader({
                     onClick={() => goToHref(itemHref)}
                   >
                     <span className="toc-entry-title">{item.title || "—"}</span>
-                    {status?.hasTranslation && (
+                    {translationBadges.length > 0 && (
                       <span className="toc-badges">
-                        <span
-                          className="toc-bdg toc-bdg-tr"
-                          title="Tłumaczenie"
-                        >
-                          ⊙
-                        </span>
+                        {translationBadges.map((lang) => (
+                          <span
+                            key={`${itemHref}-${lang.code}`}
+                            className="toc-bdg toc-bdg-tr"
+                            title={`Tłumaczenie: ${lang.name}`}
+                            aria-label={`Tłumaczenie: ${lang.name}`}
+                          >
+                            {lang.flag}
+                          </span>
+                        ))}
                       </span>
                     )}
                   </button>
@@ -1615,7 +1650,9 @@ export default function Reader({
                   <button
                     className="ctl ctl-icon"
                     onClick={toggleHybridTts}
-                    title={ttsPlaying ? (ttsPaused ? "Wznów" : "Pauza") : "Odtwórz"}
+                    title={
+                      ttsPlaying ? (ttsPaused ? "Wznów" : "Pauza") : "Odtwórz"
+                    }
                     disabled={!polyTtsParagraphs.length}
                   >
                     {ttsPlaying ? (ttsPaused ? "▶" : "⏸") : "▶"}
@@ -1624,7 +1661,13 @@ export default function Reader({
                   <button
                     className="ctl ctl-icon"
                     onClick={toggleOriginalTts}
-                    title={originalTtsPlaying ? (originalTtsPaused ? "Wznów" : "Pauza") : "Odtwórz"}
+                    title={
+                      originalTtsPlaying
+                        ? originalTtsPaused
+                          ? "Wznów"
+                          : "Pauza"
+                        : "Odtwórz"
+                    }
                     disabled={!originalTtsFragments.length}
                   >
                     {originalTtsPlaying ? (originalTtsPaused ? "▶" : "⏸") : "▶"}
