@@ -1,3 +1,5 @@
+import { applySentencePatchPayloadToHtml } from './polyglotStructure';
+
 function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -36,4 +38,12 @@ export function parsePolyglotHtml(raw) {
     .join('\n');
 
   return { html, count };
+}
+
+export function parseStoredPolyglot(entry, chapterHtml = '') {
+  if ((entry?.format === 'sentence-patches-v1' || entry?.payload?.version === 1) && entry?.payload && chapterHtml) {
+    return applySentencePatchPayloadToHtml(chapterHtml, entry.payload);
+  }
+
+  throw new Error('To tlumaczenie jest w starym formacie i wymaga ponownego wygenerowania.');
 }

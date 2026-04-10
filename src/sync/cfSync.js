@@ -74,7 +74,7 @@ async function downloadMissingPolys(bookId, remotePolys, chapters, stats) {
     if (!chapterById[chapterId]) continue;
     try {
       const poly = await apiFetch(`/books/${bookId}/chapters/${chapterId}/translations/${lang}`, {}, stats);
-      await restorePolyglotCache(chapterId, lang, poly.rawText);
+      await restorePolyglotCache(chapterId, lang, poly);
     } catch {
       // poly missing on server — skip
     }
@@ -124,7 +124,14 @@ export async function syncPending() {
           if (!poly) { await clearPolyPending(ch.id, lang); continue; }
           await apiFetch(
             `/books/${ch.bookId}/chapters/${ch.id}/translations/${lang}`,
-            { method: 'POST', body: JSON.stringify({ rawText: poly.rawText }) },
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                format: poly.format ?? null,
+                rawText: poly.rawText ?? null,
+                payload: poly.payload ?? null,
+              }),
+            },
             stats,
           );
         }
@@ -328,7 +335,7 @@ export async function syncAll(onProgress) {
         for (const { chapterId, lang } of remotePolys) {
           try {
             const poly = await apiFetch(`/books/${bookId}/chapters/${chapterId}/translations/${lang}`, {}, stats);
-            await restorePolyglotCache(chapterId, lang, poly.rawText);
+            await restorePolyglotCache(chapterId, lang, poly);
           } catch {
             // poly missing — skip
           }

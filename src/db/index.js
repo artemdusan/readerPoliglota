@@ -57,6 +57,22 @@ db.version(4).stores({
   settings:         'key',
 });
 
+// v5: drop unsupported legacy polyglot translations
+db.version(5).stores({
+  books:            'id, title, createdAt, deletedAt',
+  chapters:         'id, bookId, chapterIndex, [bookId+chapterIndex], pendingSyncFlag',
+  polyglotCache:    'id, chapterId, targetLang, [chapterId+targetLang]',
+  readingPositions: 'bookId',
+  settings:         'key',
+}).upgrade(async tx => {
+  const allPolys = await tx.table('polyglotCache').toArray();
+  for (const poly of allPolys) {
+    if (!isSupportedPolyglotValue(poly)) {
+      await tx.table('polyglotCache').delete(poly.id);
+    }
+  }
+});
+
 // ─── Pending sync helpers ─────────────────────────────────────────────────────
 
 export async function markChapterMetaPending(chapterId) {
@@ -194,18 +210,42 @@ export async function getChapter(bookId, chapterIndex) {
 }
 
 export async function getPolyglotCache(chapterId, targetLang) {
-  return db.polyglotCache
+  const entry = await db.polyglotCache
     .where('[chapterId+targetLang]')
     .equals([chapterId, targetLang])
     .first();
+  return isSupportedPolyglotValue(entry) ? entry : null;
 }
 
 export async function getChapterCachedLangs(chapterId) {
   const all = await db.polyglotCache.where('chapterId').equals(chapterId).toArray();
-  return [...new Set(all.map(c => c.targetLang))];
+  return [...new Set(all.filter(isSupportedPolyglotValue).map(c => c.targetLang))];
 }
 
-export async function savePolyglotCache(chapterId, targetLang, rawText) {
+function isSupportedPolyglotValue(value) {
+  return !!(
+    value &&
+    typeof value === 'object' &&
+    (value.format === 'sentence-patches-v1' || value.payload?.version === 1) &&
+    Array.isArray(value.payload?.changes)
+  );
+}
+
+function normalizePolyglotValue(value) {
+  if (!isSupportedPolyglotValue(value)) return null;
+  return {
+    format: 'sentence-patches-v1',
+    rawText: null,
+    payload: {
+      version: 1,
+      changes: value.payload.changes,
+    },
+  };
+}
+
+export async function savePolyglotCache(chapterId, targetLang, value) {
+  const normalized = normalizePolyglotValue(value);
+  if (!normalized) throw new Error('Obslugiwany jest juz tylko nowy format tlumaczen.');
   const existing = await db.polyglotCache
     .where('[chapterId+targetLang]').equals([chapterId, targetLang]).first();
   const { v4: uuid } = await import('uuid');
@@ -213,10 +253,19 @@ export async function savePolyglotCache(chapterId, targetLang, rawText) {
     id: existing?.id ?? uuid(),
     chapterId,
     targetLang,
-    rawText,
+    ...normalized,
     createdAt: Date.now(),
   });
   await markPolyPending(chapterId, targetLang);
+}
+
+export async function deletePolyglotCache(chapterId, targetLang) {
+  const existing = await db.polyglotCache
+    .where('[chapterId+targetLang]').equals([chapterId, targetLang]).first();
+  if (!existing) return false;
+  await db.polyglotCache.delete(existing.id);
+  await clearPolyPending(chapterId, targetLang);
+  return true;
 }
 
 export async function getReadingPosition(bookId) {
@@ -252,12 +301,21 @@ export async function restoreChapter(chapterData) {
   await db.chapters.add({ ...chapterData, pendingSync: null, pendingSyncFlag: 0 });
 }
 
-export async function restorePolyglotCache(chapterId, targetLang, rawText) {
+export async function restorePolyglotCache(chapterId, targetLang, value) {
+  const normalized = normalizePolyglotValue(value);
+  if (!normalized) return false;
   const exists = await db.polyglotCache
     .where('[chapterId+targetLang]').equals([chapterId, targetLang]).first();
   if (exists) return;
   const { v4: uuid } = await import('uuid');
-  await db.polyglotCache.put({ id: uuid(), chapterId, targetLang, rawText, createdAt: Date.now() });
+  await db.polyglotCache.put({
+    id: uuid(),
+    chapterId,
+    targetLang,
+    ...normalized,
+    createdAt: Date.now(),
+  });
+  return true;
 }
 
 // ─── Audio cache ──────────────────────────────────────────────────────────────
@@ -291,7 +349,9 @@ export async function getChapterStatusMap(bookId, langCode) {
     ? await db.polyglotCache.where('chapterId').anyOf(chapterIds).toArray()
     : [];
   const polySet = new Set(
-    polyEntries.filter(p => !langCode || p.targetLang === langCode).map(p => p.chapterId)
+    polyEntries
+      .filter(p => isSupportedPolyglotValue(p) && (!langCode || p.targetLang === langCode))
+      .map(p => p.chapterId)
   );
 
   const map = {};
@@ -312,6 +372,6 @@ export async function getBookChaptersWithCacheStatus(bookId, targetLang) {
   return Promise.all(chapters.map(async ch => {
     const cached = await db.polyglotCache
       .where('[chapterId+targetLang]').equals([ch.id, targetLang]).first();
-    return { ...ch, hasPoly: !!cached };
+    return { ...ch, hasPoly: isSupportedPolyglotValue(cached) };
   }));
 }

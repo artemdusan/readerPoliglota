@@ -199,7 +199,7 @@ async function handleLogin(request, env) {
 }
 
 async function handleTranslate(request, env) {
-  const { model, messages } = await request.json().catch(() => ({}));
+  const { model, messages, max_tokens } = await request.json().catch(() => ({}));
   if (!model || !Array.isArray(messages)) return err('model i messages są wymagane');
 
   // deepseek-reasoner needs more time for chain-of-thought; use 60s for all models
@@ -215,7 +215,7 @@ async function handleTranslate(request, env) {
         'Authorization': `Bearer ${env.DEEPSEEK_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: 4096 }),
+      body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: Number(max_tokens) > 0 ? Math.min(4096, Number(max_tokens)) : 4096 }),
       signal: controller.signal,
     });
   } catch (e) {

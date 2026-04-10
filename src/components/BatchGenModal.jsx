@@ -93,12 +93,12 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
       const ch = toGenerate[i];
       setGenStep({ chIdx: i, total: toGenerate.length, batchDone: 0, batchTotal: 0 });
       try {
-        const { rawText } = await generatePolyglot(
-          ch.text,
-          { targetLangName: selectedLang.name, model: settings.polyglotModel },
+        const { cacheValue } = await generatePolyglot(
+          { text: ch.text, html: ch.html },
+          { targetLangName: selectedLang.name, sourceLangName: book?.lang || '', model: settings.polyglotModel },
           (done, total) => setGenStep(s => ({ ...s, batchDone: done, batchTotal: total }))
         );
-        await savePolyglotCache(ch.id, selectedLang.code, rawText);
+        await savePolyglotCache(ch.id, selectedLang.code, cacheValue);
         triggerSync();
         window.dispatchEvent(new CustomEvent('polyglot-saved', { detail: { chapterId: ch.id, lang: selectedLang.code } }));
         // Mark chapter as done

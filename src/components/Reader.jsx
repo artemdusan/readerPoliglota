@@ -9,7 +9,7 @@ import { LANGUAGES } from '../hooks/useSettings';
 import { generatePolyglot } from '../lib/polyglotApi';
 import { isLoggedIn } from '../sync/cfAuth';
 import { triggerSync } from '../sync/cfSync';
-import { parsePolyglotHtml } from '../lib/polyglotParser';
+import { parseStoredPolyglot } from '../lib/polyglotParser';
 import { MODEL_PRICING } from '../lib/polyglotApi';
 import { annotateParagraphsInHtml } from '../lib/sentenceWrapper';
 import { extractPolyglotTtsData, SentenceTtsPlayer } from '../lib/ttsFragments';
@@ -77,7 +77,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const [polyHtml, setPolyHtml]           = useState('');
   const [polyError, setPolyError]         = useState('');
   const [polyProgress, setPolyProgress]   = useState({ done: 0, total: 0, cost: 0, secs: 0 });
-  const [polyRawText, setPolyRawText]     = useState('');
+  const [polyAudioText, setPolyAudioText] = useState('');
   const [confirmLang, setConfirmLang]     = useState('');
   // derived
   const polyMode = activeLang !== null;
@@ -256,7 +256,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     setPolyState('idle');
     setPolyHtml('');
     setPolyError('');
-    setPolyRawText('');
+    setPolyAudioText('');
     clearTimeout(tooltipTimerRef.current);
     openPwRef.current = null;
     setCurrentPage(0);
@@ -332,13 +332,13 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         if (langToLoad) {
           const entry = await getPolyglotCache(ch.id, langToLoad);
           if (entry) {
-            const { html } = parsePolyglotHtml(entry.rawText);
+            const { html, textForAudio } = parseStoredPolyglot(entry, ch.html);
             const { html: annotated, paragraphs, words } = extractPolyglotTtsData(html);
             setPolyHtml(html);
             setPolyHtmlAnnotated(annotated);
             setPolyTtsParagraphs(paragraphs);
             setPolyWordFragments(words);
-            setPolyRawText(entry.rawText);
+            setPolyAudioText(textForAudio);
             setPolyState('done');
             setActiveLang(langToLoad);
           }
@@ -531,6 +531,16 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
      VERSION SWITCHING
   ───────────────────────────────────────── */
 
+  function applyPolyEntry(entry, chapterHtml) {
+    const { html, textForAudio } = parseStoredPolyglot(entry, chapterHtml);
+    const { html: annotated, paragraphs, words } = extractPolyglotTtsData(html);
+    setPolyHtml(html);
+    setPolyHtmlAnnotated(annotated);
+    setPolyTtsParagraphs(paragraphs);
+    setPolyWordFragments(words);
+    setPolyAudioText(textForAudio);
+  }
+
   function switchToLang(lang) {
     if (lang === activeLang) return;
     userChangedLangRef.current = true;
@@ -562,13 +572,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     if (!chapter?.id) return;
     getPolyglotCache(chapter.id, lang).then(entry => {
       if (entry) {
-        const { html } = parsePolyglotHtml(entry.rawText);
-        const { html: annotated, paragraphs, words } = extractPolyglotTtsData(html);
-        setPolyHtml(html);
-        setPolyHtmlAnnotated(annotated);
-        setPolyTtsParagraphs(paragraphs);
-        setPolyWordFragments(words);
-        setPolyRawText(entry.rawText);
+        applyPolyEntry(entry, chapter.html);
         setPolyState('done');
         setActiveLang(lang);
       }
@@ -586,19 +590,27 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     setPolyState('confirm');
   }
 
-  async function startGeneration() {
+  function regenerateCurrentTranslation() {
+    if (!activeLang || !chapter?.text) return;
+    if (!isLoggedIn()) { onOpenSettings(); return; }
+    setSettingsMenuOpen(false);
+    startGeneration(activeLang);
+  }
+
+  async function startGeneration(forcedLangCode = null) {
     if (!chapter?.text) return;
     const token = ++genTokenRef.current;
-    const langCode = confirmLang;
+    const langCode = forcedLangCode ?? confirmLang;
+    if (!langCode) return;
     const langObj = LANGUAGES.find(l => l.code === langCode) ?? LANGUAGES[0];
     setPolyState('loading');
     setPolyProgress({ done: 0, total: 0, cost: 0, secs: 0 });
     setPolyError('');
 
     try {
-      const { rawText, cost, elapsedMs } = await generatePolyglot(
-        chapter.text,
-        { targetLangName: langObj.name, model: settings.polyglotModel },
+      const { cacheValue } = await generatePolyglot(
+        { text: chapter.text, html: chapter.html },
+        { targetLangName: langObj.name, sourceLangName: book?.lang || '', model: settings.polyglotModel },
         (done, total, cost, secs) => {
           if (token === genTokenRef.current) setPolyProgress({ done, total, cost, secs });
         }
@@ -607,16 +619,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       if (token !== genTokenRef.current) return;
 
       localStorage.setItem('vocabapp:lastLang', langCode);
-      await savePolyglotCache(chapter.id, langCode, rawText);
+      await savePolyglotCache(chapter.id, langCode, cacheValue);
       triggerSync();
 
-      const { html } = parsePolyglotHtml(rawText);
-      const { html: annotated, paragraphs, words } = extractPolyglotTtsData(html);
-      setPolyHtml(html);
-      setPolyHtmlAnnotated(annotated);
-      setPolyTtsParagraphs(paragraphs);
-      setPolyWordFragments(words);
-      setPolyRawText(rawText);
+      applyPolyEntry(cacheValue, chapter.html);
       setPolyState('done');
 
       // Refresh cached langs list
@@ -854,9 +860,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
       // In polyglot mode use the polyglot text (Spanish words + English context);
       // strip [target::original] markers → keep only target (the foreign word).
-      const isPolyAudio = polyMode && !!polyRawText;
+      const isPolyAudio = polyMode && !!polyAudioText;
       const textForAudio = isPolyAudio
-        ? polyRawText.replace(/\[([^\]]+?)::([^\]]+?)\]/g, (_, target) => target)
+        ? polyAudioText
         : chapter.text;
 
       // Separate cache key so polyglot audio doesn't collide with original audio
@@ -1246,6 +1252,14 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 <span className="settings-menu-label">Tłumacz</span>
                 <div className="settings-menu-ctrl">
                   <button className="ctl" onClick={() => { requestGenerate(); setSettingsMenuOpen(false); }}>+ Dodaj</button>
+                </div>
+              </div>
+            )}
+            {polyMode && polyState === 'done' && activeLang && chapter?.text && (
+              <div className="settings-menu-row">
+                <span className="settings-menu-label">Regeneruj</span>
+                <div className="settings-menu-ctrl">
+                  <button className="ctl" onClick={regenerateCurrentTranslation}>Od nowa</button>
                 </div>
               </div>
             )}
