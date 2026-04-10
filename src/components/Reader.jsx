@@ -1696,13 +1696,13 @@ export default function Reader({
               activeLang &&
               chapter?.text && (
                 <div className="settings-menu-row">
-                  <span className="settings-menu-label">Regeneruj</span>
+                  <span className="settings-menu-label">Tłumaczenie</span>
                   <div className="settings-menu-ctrl">
                     <button
                       className="ctl"
                       onClick={regenerateCurrentTranslation}
                     >
-                      Od nowa
+                      Regeneruj
                     </button>
                   </div>
                 </div>
