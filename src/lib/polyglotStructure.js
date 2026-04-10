@@ -79,6 +79,40 @@ function getReadableBlocks(root) {
   return [...root.querySelectorAll(BLOCK_SELECTOR)].filter(node => collapseWhitespace(node.textContent).length > 0);
 }
 
+function cleanupEmptyStyleAttribute(node) {
+  if (!node?.getAttribute) return;
+  if ((node.getAttribute('style') || '').trim()) return;
+  node.removeAttribute('style');
+}
+
+function normalizeTranslatedLayout(root) {
+  if (!root?.querySelectorAll) return;
+
+  const elements = [root, ...root.querySelectorAll('*')];
+  elements.forEach((node) => {
+    if (!node?.getAttribute) return;
+
+    const align = (node.getAttribute('align') || '').trim().toLowerCase();
+    if (align === 'justify') node.removeAttribute('align');
+
+    if (!node.style) return;
+
+    const textAlign = node.style.getPropertyValue('text-align').trim().toLowerCase();
+    const textAlignLast = node.style.getPropertyValue('text-align-last').trim().toLowerCase();
+
+    if (textAlign === 'justify') {
+      node.style.removeProperty('text-align');
+      node.style.removeProperty('text-justify');
+    }
+
+    if (textAlignLast === 'justify') {
+      node.style.removeProperty('text-align-last');
+    }
+
+    cleanupEmptyStyleAttribute(node);
+  });
+}
+
 export function buildSentencePatchSource(html, lang = 'en') {
   if (!html) return { blocks: [], sentences: [] };
 
@@ -123,6 +157,7 @@ export function applySentencePatchPayloadToHtml(html, payload, lang = 'en', over
   if (!html) return { html: '', textForAudio: '', count: 0 };
 
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  normalizeTranslatedLayout(doc.body);
   const changeMap = new Map(
     (payload?.changes ?? [])
       .filter(change => change && typeof change.id === 'string' && typeof change.text === 'string')
