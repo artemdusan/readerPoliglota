@@ -47,9 +47,10 @@ export class SentenceTtsPlayer {
     this._sid = 0;
   }
 
-  play(fromSid = 0) {
+  play(fromSid = 0, stopAfterSid = Infinity) {
     this._stopped = false;
     this._sid = fromSid;
+    this._stopAfterSid = stopAfterSid;
     window.speechSynthesis.cancel();
     this._next();
   }
@@ -60,7 +61,7 @@ export class SentenceTtsPlayer {
   }
 
   _next() {
-    if (this._stopped || this._sid >= this.fragments.length) {
+    if (this._stopped || this._sid >= this.fragments.length || this._sid > this._stopAfterSid) {
       if (!this._stopped) this.onDone?.();
       return;
     }

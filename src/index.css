@@ -277,7 +277,7 @@ html, body, #root {
 .sb-stats  { font-size: 10px; color: var(--txt-3); letter-spacing: .1em; text-transform: uppercase; padding-bottom: 16px; border-bottom: 1px solid var(--border-soft); }
 
 .toc-label { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--txt-3); padding: 14px 18px 8px; flex-shrink: 0; }
-.toc-scroll { flex: 1; overflow-y: auto; padding: 0 6px 24px; }
+.toc-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 6px 24px; }
 .toc-list { list-style: none; }
 
 .toc-entry {
@@ -300,6 +300,7 @@ html, body, #root {
   height: 100vh;
   overflow: hidden;
   min-width: 0;
+  position: relative;
 }
 
 /* Top bar */
@@ -340,15 +341,10 @@ html, body, #root {
 .fs-val { color: var(--txt-3); font-size: 11px; padding: 0 2px; }
 
 
-/* ════════════════ TTS CONTROL BAR ════════════════ */
-.tts-bar {
-  display: flex; align-items: center; gap: 6px;
-  padding: 0 28px; height: 40px;
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--bg-side);
-  flex-shrink: 0;
+/* ════════════════ TTS INLINE CONTROLS (inside bottombar) ════════════════ */
+.tts-inline {
+  display: flex; align-items: center; gap: 8px;
 }
-.tts-bar-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
 .tts-bar-btn {
   display: flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; padding: 0;
@@ -380,7 +376,8 @@ html, body, #root {
 .ch-scroll { flex: 1; overflow: hidden; transition: opacity 0.1s ease; }
 .ch-scroll.page-turning { opacity: 0.06; }
 .ch-columns { height: 100%; column-gap: 0; }
-.ch-inner { max-width: 668px; margin: 0 auto; padding: 48px 0 64px; }
+.ch-inner { max-width: 668px; margin: 0 auto; padding: 24px 0 48px; }
+.ch-body p:empty { display: none; }
 .ch-anim { animation: fadeup .28s ease both; }
 @keyframes fadeup { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
@@ -571,11 +568,11 @@ html, body, #root {
   cursor: pointer;
 }
 
-/* Active sentence highlight */
-span[data-sid].sentence-active {
-  background: rgba(192, 144, 80, 0.18);
+/* Active paragraph highlight */
+[data-pid].paragraph-active {
+  background: rgba(192, 144, 80, 0.13);
   border-radius: 2px;
-  outline: 1px solid rgba(192, 144, 80, 0.25);
+  outline: 1px solid rgba(192, 144, 80, 0.22);
   transition: background .1s;
 }
 
@@ -865,7 +862,7 @@ span[data-sid].sentence-active {
 /* ════════════════ TOC BADGES ════════════════ */
 
 .toc-entry { display: flex; align-items: center; justify-content: space-between; }
-.toc-entry-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toc-entry-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toc-badges { display: flex; gap: 3px; flex-shrink: 0; margin-left: 6px; }
 .toc-bdg {
   font-size: 9px; opacity: .65;
@@ -874,26 +871,24 @@ span[data-sid].sentence-active {
 .toc-bdg-tr { color: var(--gold); }
 .toc-bdg-au { color: var(--green); }
 
-/* ════════════════ AUDIO-READY SENTENCE CLICK ════════════════ */
+/* ════════════════ AUDIO-READY PARAGRAPH CLICK ════════════════ */
 
-.ch-body.audio-ready [data-sid] {
+.ch-body.audio-ready [data-pid] {
   cursor: pointer;
   border-radius: 2px;
   transition: background .08s;
 }
-.ch-body.audio-ready [data-sid]:hover {
+.ch-body.audio-ready [data-pid]:hover {
   background: rgba(192,144,80,.08);
 }
 
 /* ════════════════ TOOLBAR HIDE (centre tap) ════════════════ */
 
 .reader-layout .topbar,
-.reader-layout .tts-bar,
 .reader-layout .bottombar {
   transition: transform .25s ease, opacity .25s ease;
 }
-.reader-layout.toolbar-hidden .topbar,
-.reader-layout.toolbar-hidden .tts-bar {
+.reader-layout.toolbar-hidden .topbar {
   transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;
@@ -903,6 +898,31 @@ span[data-sid].sentence-active {
   opacity: 0;
   pointer-events: none;
 }
+
+/* ════════════════ SETTINGS DROPDOWN ════════════════ */
+
+.settings-menu {
+  position: absolute; right: 16px; top: 52px; z-index: 200;
+  background: #1a1714; border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 0; min-width: 260px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.55);
+}
+.settings-menu-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 16px; gap: 12px;
+}
+.settings-menu-label {
+  font-size: 11px; color: var(--txt-3); letter-spacing: .1em;
+  text-transform: uppercase; flex-shrink: 0;
+}
+.settings-menu-ctrl { display: flex; align-items: center; gap: 4px; }
+.settings-menu-divider { height: 1px; background: var(--border-soft); margin: 5px 0; }
+.settings-menu-action {
+  width: 100%; padding: 8px 16px; background: none; border: none;
+  color: var(--txt-2); font-family: 'DM Sans', sans-serif; font-size: 12px;
+  text-align: left; cursor: pointer; transition: color .15s;
+}
+.settings-menu-action:hover { color: var(--txt-1); }
 
 /* ════════════════ IMPORT DIALOG ════════════════ */
 

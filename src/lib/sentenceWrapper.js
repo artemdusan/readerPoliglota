@@ -1,4 +1,27 @@
 /**
+ * Annotate chapter HTML at paragraph level — adds data-pid="N" to each
+ * block element (p, li, blockquote, h1-h6, td, dd) and returns fragments
+ * with full paragraph text. Much faster than sentence-level splitting.
+ */
+export function annotateParagraphsInHtml(html) {
+  if (!html) return { html, fragments: [] };
+
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const root = doc.body;
+  const fragments = [];
+  let pid = 0;
+
+  root.querySelectorAll('p, li, blockquote, h1, h2, h3, h4, h5, h6, td, dd').forEach(el => {
+    const text = el.textContent.trim();
+    if (!text) return;
+    el.dataset.pid = String(pid);
+    fragments.push({ id: pid++, type: 'paragraph', text });
+  });
+
+  return { html: root.innerHTML, fragments };
+}
+
+/**
  * Annotate chapter HTML with <span data-sid="N"> sentence wrappers and
  * return the extracted sentence fragments for local Web Speech playback.
  */

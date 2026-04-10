@@ -11,7 +11,7 @@ import { isLoggedIn } from '../sync/cfAuth';
 import { triggerSync } from '../sync/cfSync';
 import { parsePolyglotHtml } from '../lib/polyglotParser';
 import { MODEL_PRICING } from '../lib/polyglotApi';
-import { annotateSentencesInHtml } from '../lib/sentenceWrapper';
+import { annotateParagraphsInHtml } from '../lib/sentenceWrapper';
 import { extractFragments, SentenceTtsPlayer, TtsPlayer } from '../lib/ttsFragments';
 
 /* ═══════════════════════════════════════════
@@ -75,6 +75,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toolbarVisible, setToolbarVisible] = useState(true);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [fs, setFs]                   = useState(settings.fontSize ?? 19);
 
   // Page state
@@ -105,9 +106,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const totalPagesRef  = useRef(1);
   const flippingRef    = useRef(false);
   const desiredLangRef = useRef(null);  // lang to carry over when changing chapter
-  const touchStartXRef = useRef(null);
-  const touchStartYRef = useRef(null);
   const originalTtsPlayerRef = useRef(null);
+  const settingsMenuRef   = useRef(null);
+  const settingsToggleRef = useRef(null);
 
   // Hybrid TTS state (polyglot mode — Web Speech API, no Polly)
   const [ttsPlaying, setTtsPlaying]           = useState(false);
@@ -208,16 +209,20 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         : 0;
 
       setChapter(ch || null);
-      if (ch?.html) {
-        const { html: annotated, fragments } = annotateSentencesInHtml(ch.html, book?.lang || 'en');
-        setOriginalHtmlAnnotated(annotated);
-        setOriginalTtsFragments(fragments);
-      } else {
-        setOriginalHtmlAnnotated('');
-        setOriginalTtsFragments([]);
-      }
+      setOriginalHtmlAnnotated('');
+      setOriginalTtsFragments([]);
       setChapterLoading(false);
       animKeyRef.current += 1;
+
+      // Defer paragraph annotation so chapter HTML renders immediately
+      if (ch?.html) {
+        const chHtml = ch.html;
+        setTimeout(() => {
+          const { html: annotated, fragments } = annotateParagraphsInHtml(chHtml);
+          setOriginalHtmlAnnotated(annotated);
+          setOriginalTtsFragments(fragments);
+        }, 0);
+      }
 
       if (ch?.id) {
         const cached_codes = await getChapterCachedLangs(ch.id);
@@ -281,57 +286,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     if (!bookId) return;
     getChapterStatusMap(bookId, activeLang).then(setChapterStatusMap);
   }, [bookId, activeLang]);
-
-  /* ── Touch swipe + tap zones for mobile page flip ── */
-  useEffect(() => {
-    const el = chScrollRef.current;
-    if (!el) return;
-
-    function onTouchStart(e) {
-      touchStartXRef.current = e.touches[0].clientX;
-      touchStartYRef.current = e.touches[0].clientY;
-    }
-
-    function onTouchEnd(e) {
-      const startX = touchStartXRef.current;
-      const startY = touchStartYRef.current;
-      touchStartXRef.current = null;
-      touchStartYRef.current = null;
-      if (startX === null) return;
-
-      const dx = e.changedTouches[0].clientX - startX;
-      const dy = e.changedTouches[0].clientY - startY;
-
-      // Horizontal swipe → page flip
-      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
-        if (dx < 0) nextPage(); else prevPage();
-        return;
-      }
-
-      // Short tap → check zone
-      if (Math.abs(dx) < 15 && Math.abs(dy) < 15) {
-        const tapX = e.changedTouches[0].clientX;
-        const tapY = e.changedTouches[0].clientY;
-        const target = document.elementFromPoint(tapX, tapY);
-        // Don't intercept interactive content
-        if (target?.closest('.pw') || target?.closest('a[href]') || target?.closest('button') || target?.closest('select')) return;
-        const containerW = el.clientWidth;
-        const relX = tapX / containerW;
-        if (relX < 0.28) { prevPage(); return; }
-        if (relX > 0.72) { nextPage(); return; }
-        // Centre tap → toggle toolbar
-        setToolbarVisible(v => !v);
-      }
-    }
-
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchend', onTouchEnd);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   /* ── Page break calculation + position restore ── */
   useEffect(() => {
@@ -434,11 +388,26 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); goToPage(currentPageRef.current - 1); }
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); goToPage(currentPageRef.current + 1); }
-      if (e.key === 'Escape') setSidebarOpen(false);
+      if (e.key === 'Escape') { setSidebarOpen(false); setSettingsMenuOpen(false); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  /* ── Close settings menu on outside click ── */
+  useEffect(() => {
+    if (!settingsMenuOpen) return;
+    function onOutside(e) {
+      if (
+        settingsMenuRef.current && !settingsMenuRef.current.contains(e.target) &&
+        settingsToggleRef.current && !settingsToggleRef.current.contains(e.target)
+      ) {
+        setSettingsMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
+  }, [settingsMenuOpen]);
 
   function navigate(idx) {
     if (chapterIdx === null) return;
@@ -475,7 +444,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     setTtsFragments([]);
     if (lang === null) {
       if (chapter?.html) {
-        const { html: annotated, fragments } = annotateSentencesInHtml(chapter.html, book?.lang || 'en');
+        const { html: annotated, fragments } = annotateParagraphsInHtml(chapter.html);
         setOriginalHtmlAnnotated(annotated);
         setOriginalTtsFragments(fragments);
       }
@@ -582,26 +551,26 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   function clearSentenceHighlight() {
     const body = chapterBodyRef.current;
     if (!body) return;
-    body.querySelectorAll('.sentence-active').forEach(el => el.classList.remove('sentence-active'));
+    body.querySelectorAll('.paragraph-active').forEach(el => el.classList.remove('paragraph-active'));
   }
 
-  function highlightCurrentSentence(sid) {
+  function highlightCurrentSentence(pid) {
     const body = chapterBodyRef.current;
     if (!body) return;
 
     clearSentenceHighlight();
-    if (sid < 0) return;
+    if (pid < 0) return;
 
-    const nodes = [...body.querySelectorAll(`[data-sid="${sid}"]`)];
-    if (!nodes.length) return;
-    nodes.forEach(node => node.classList.add('sentence-active'));
+    const el = body.querySelector(`[data-pid="${pid}"]`);
+    if (!el) return;
+    el.classList.add('paragraph-active');
 
     const scrollEl = chScrollRef.current;
     if (!scrollEl) return;
 
     const pw = scrollEl.clientWidth;
     const containerRect = scrollEl.getBoundingClientRect();
-    const elRect = nodes[0].getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
     const currentOffset = currentPageRef.current * pw;
     const elAbsLeft = elRect.left - containerRect.left + currentOffset;
     const targetPage = Math.floor(elAbsLeft / pw);
@@ -636,11 +605,11 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     const containerRect = scrollEl.getBoundingClientRect();
     const page = currentPageRef.current;
 
-    for (const el of body.querySelectorAll('[data-sid]')) {
+    for (const el of body.querySelectorAll('[data-pid]')) {
       const elRect = el.getBoundingClientRect();
       const elAbsLeft = elRect.left - containerRect.left + page * pw;
       if (Math.floor(elAbsLeft / pw) >= page) {
-        return parseInt(el.dataset.sid, 10);
+        return parseInt(el.dataset.pid, 10);
       }
     }
 
@@ -678,8 +647,8 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   function jumpSentence(delta) {
     if (!originalTtsFragments.length) return;
     const base = activeSid >= 0 ? activeSid : getFirstSidOnCurrentPage();
-    const sid = Math.max(0, Math.min(originalTtsFragments.length - 1, base + delta));
-    startOriginalTts(sid);
+    const pid = Math.max(0, Math.min(originalTtsFragments.length - 1, base + delta));
+    startOriginalTts(pid);
   }
 
   function toggleOriginalTts() {
@@ -980,17 +949,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   }
 
   /* ─────────────────────────────────────────
-     REGENERATE TRANSLATION
-  ───────────────────────────────────────── */
-
-  function handleRegenerate() {
-    if (!chapter?.id || !activeLang) return;
-    userChangedLangRef.current = true;
-    setConfirmLang(activeLang);
-    setPolyState('confirm');
-  }
-
-  /* ─────────────────────────────────────────
      CONTENT CLICK — tooltip + internal links + click-to-seek
   ───────────────────────────────────────── */
 
@@ -1026,11 +984,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       return;
     }
 
-    // Click on sentence span → seek audio to that sentence
-    const sidEl = e.target.closest('[data-sid]');
-    if (sidEl && !polyMode && originalTtsFragments.length > 0) {
-      const sid = parseInt(sidEl.dataset.sid, 10);
-      startOriginalTts(sid);
+    // Click on paragraph block → play from that paragraph onward
+    const pidEl = e.target.closest('[data-pid]');
+    if (pidEl && !polyMode && originalTtsFragments.length > 0) {
+      startOriginalTts(parseInt(pidEl.dataset.pid, 10));
     }
   }
 
@@ -1145,129 +1102,80 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
             ) : ''}
           </div>
           <div className="tb-controls">
-            <div className="tb-sep" />
-            <button className="ctl" onClick={() => setFs(f => Math.max(13, f - 1))}>A−</button>
-            <span className="fs-val">{fs}</span>
-            <button className="ctl" onClick={() => setFs(f => Math.min(30, f + 1))}>A+</button>
-            <div className="tb-sep" />
-            {polyMode && polyState === 'done' ? (
-              <button className="ctl ctl-icon" onClick={toggleHybridTts} title={ttsPlaying ? 'Stop' : 'Odtwórz'} disabled={!ttsFragments.length}>
-                {ttsPlaying ? '⏸' : '▶'}
-              </button>
-            ) : (
-              <button className="ctl ctl-icon" onClick={toggleOriginalTts} title={originalTtsPlaying ? 'Stop' : 'Odtwórz'} disabled={!originalTtsFragments.length}>
-                {originalTtsPlaying ? '⏸' : '▶'}
-              </button>
-            )}
-            {polyMode && polyState === 'done' && (
-              <>
-                <div className="tb-sep" />
-                <button className="ctl ctl-icon" onClick={handleRegenerate} title="Regeneruj tłumaczenie">↻</button>
-              </>
-            )}
-            <div className="tb-sep" />
-            <button className="ctl ctl-icon" onClick={onOpenSettings} title="Ustawienia">⚙</button>
+            <button
+              ref={settingsToggleRef}
+              className={`ctl ctl-icon${settingsMenuOpen ? ' ctl-active' : ''}`}
+              onClick={() => setSettingsMenuOpen(v => !v)}
+              title="Ustawienia"
+            >⚙</button>
           </div>
         </div>
 
-        {/* TTS control bar — visible when polyglot TTS is ready */}
-        {!polyMode && originalTtsFragments.length > 0 && (() => {
-          const srcCode = (book?.lang || 'en').split('-')[0].toLowerCase();
-          const srcVoices = ttsVoices.filter(v => v.lang.toLowerCase().startsWith(srcCode));
-          return (
-            <div className="tts-bar">
-              <button
-                className="tts-bar-btn"
-                onClick={() => jumpSentence(-1)}
-                disabled={activeSid <= 0}
-                title="Poprzednie zdanie"
-              >⏮</button>
-              <button
-                className={`tts-bar-btn tts-bar-play${originalTtsPlaying ? ' active' : ''}`}
-                onClick={toggleOriginalTts}
-                title={originalTtsPlaying ? 'Pauza' : 'Odtwórz'}
-              >{originalTtsPlaying ? '⏸' : '▶'}</button>
-              <button
-                className="tts-bar-btn"
-                onClick={() => jumpSentence(1)}
-                disabled={activeSid >= originalTtsFragments.length - 1}
-                title="Następne zdanie"
-              >⏭</button>
-              <div className="tts-bar-sep" />
-              <select
-                className="tts-voice-sel"
-                value={ttsSourceVoice}
-                title="Głos oryginału"
-                onChange={e => {
-                  setTtsSourceVoice(e.target.value);
-                  localStorage.setItem(`tts-voice-src-${srcCode}`, e.target.value);
-                }}
-              >
-                <option value="">Domyślny ({srcCode})</option>
-                {srcVoices.map(v => (
-                  <option key={v.voiceURI} value={v.voiceURI}>{v.name} [{v.lang}]</option>
-                ))}
-              </select>
+        {/* Settings dropdown */}
+        {settingsMenuOpen && (
+          <div className="settings-menu" ref={settingsMenuRef}>
+            <div className="settings-menu-row">
+              <span className="settings-menu-label">Czcionka</span>
+              <div className="settings-menu-ctrl">
+                <button className="ctl" onClick={() => setFs(f => Math.max(13, f - 1))}>A−</button>
+                <span className="fs-val">{fs}</span>
+                <button className="ctl" onClick={() => setFs(f => Math.min(30, f + 1))}>A+</button>
+              </div>
             </div>
-          );
-        })()}
-
-        {polyMode && polyState === 'done' && ttsFragments.length > 0 && (() => {
-          const srcCode = (book?.lang || 'en').split('-')[0].toLowerCase();
-          const tgtCode = (activeLang || 'es').split('-')[0].toLowerCase();
-          const srcVoices = ttsVoices.filter(v => v.lang.toLowerCase().startsWith(srcCode));
-          const tgtVoices = ttsVoices.filter(v => v.lang.toLowerCase().startsWith(tgtCode));
-          return (
-            <div className="tts-bar">
-              <button
-                className="tts-bar-btn"
-                onClick={() => jumpFragment(-1)}
-                disabled={activeFid <= 0}
-                title="Previous fragment"
-              >⏮</button>
-              <button
-                className={`tts-bar-btn tts-bar-play${ttsPlaying ? ' active' : ''}`}
-                onClick={toggleHybridTts}
-                title={ttsPlaying ? 'Pause' : 'Play'}
-              >{ttsPlaying ? '⏸' : '▶'}</button>
-              <button
-                className="tts-bar-btn"
-                onClick={() => jumpFragment(1)}
-                disabled={activeFid >= ttsFragments.length - 1}
-                title="Next fragment"
-              >⏭</button>
-              <div className="tts-bar-sep" />
-              <select
-                className="tts-voice-sel"
-                value={ttsSourceVoice}
-                title="Source language voice"
-                onChange={e => {
-                  setTtsSourceVoice(e.target.value);
-                  localStorage.setItem(`tts-voice-src-${srcCode}`, e.target.value);
-                }}
-              >
-                <option value="">Default ({srcCode})</option>
-                {srcVoices.map(v => (
-                  <option key={v.voiceURI} value={v.voiceURI}>{v.name} [{v.lang}]</option>
-                ))}
-              </select>
-              <select
-                className="tts-voice-sel"
-                value={ttsTargetVoice}
-                title="Target language voice"
-                onChange={e => {
-                  setTtsTargetVoice(e.target.value);
-                  localStorage.setItem(`tts-voice-tgt-${tgtCode}`, e.target.value);
-                }}
-              >
-                <option value="">Default ({tgtCode})</option>
-                {tgtVoices.map(v => (
-                  <option key={v.voiceURI} value={v.voiceURI}>{v.name} [{v.lang}]</option>
-                ))}
-              </select>
+            <div className="settings-menu-row">
+              <span className="settings-menu-label">Czytaj</span>
+              <div className="settings-menu-ctrl">
+                {polyMode && polyState === 'done' ? (
+                  <button className="ctl ctl-icon" onClick={toggleHybridTts} title={ttsPlaying ? 'Pauza' : 'Odtwórz'} disabled={!ttsFragments.length}>
+                    {ttsPlaying ? '⏸' : '▶'}
+                  </button>
+                ) : (
+                  <button className="ctl ctl-icon" onClick={toggleOriginalTts} title={originalTtsPlaying ? 'Pauza' : 'Odtwórz'} disabled={!originalTtsFragments.length}>
+                    {originalTtsPlaying ? '⏸' : '▶'}
+                  </button>
+                )}
+              </div>
             </div>
-          );
-        })()}
+            {!polyMode && chapter?.text && (
+              <div className="settings-menu-row">
+                <span className="settings-menu-label">Tłumacz</span>
+                <div className="settings-menu-ctrl">
+                  <button className="ctl" onClick={() => { requestGenerate(); setSettingsMenuOpen(false); }}>+ Dodaj</button>
+                </div>
+              </div>
+            )}
+            {ttsVoices.length > 0 && (() => {
+              const srcCode = (book?.lang || 'en').split('-')[0].toLowerCase();
+              const tgtCode = (activeLang || 'es').split('-')[0].toLowerCase();
+              const srcVoices = ttsVoices.filter(v => v.lang.toLowerCase().startsWith(srcCode));
+              const tgtVoices = ttsVoices.filter(v => v.lang.toLowerCase().startsWith(tgtCode));
+              return (
+                <>
+                  {srcVoices.length > 0 && (
+                    <div className="settings-menu-row">
+                      <span className="settings-menu-label">Głos ({srcCode})</span>
+                      <select className="tts-voice-sel" value={ttsSourceVoice} onChange={e => { setTtsSourceVoice(e.target.value); localStorage.setItem(`tts-voice-src-${srcCode}`, e.target.value); }}>
+                        <option value="">Domyślny</option>
+                        {srcVoices.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {polyMode && tgtVoices.length > 0 && (
+                    <div className="settings-menu-row">
+                      <span className="settings-menu-label">Głos ({tgtCode})</span>
+                      <select className="tts-voice-sel" value={ttsTargetVoice} onChange={e => { setTtsTargetVoice(e.target.value); localStorage.setItem(`tts-voice-tgt-${tgtCode}`, e.target.value); }}>
+                        <option value="">Domyślny</option>
+                        {tgtVoices.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+            <div className="settings-menu-divider" />
+            <button className="settings-menu-action" onClick={() => { onOpenSettings(); setSettingsMenuOpen(false); }}>Ustawienia aplikacji ⚙</button>
+          </div>
+        )}
 
         {/* Missing translation banner */}
         {missingLangBanner && (() => {
@@ -1310,8 +1218,6 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
               </div>
             ) : (
               <>
-                {chapter.title && <div className="ch-title ch-anim">{chapter.title}</div>}
-
                 {polyMode && polyState === 'confirm' && (
                   <div className="poly-confirm ch-anim">
                     <p className="poly-confirm-title">Wybierz język tłumaczenia</p>
@@ -1405,30 +1311,37 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
           </div>
         </div>
 
-        {/* Bottom navigation */}
+        {/* Bottom navigation — TTS controls replace page counter when playing */}
         <div className="bottombar">
           <button
             className="nav-btn"
             onClick={() => currentPage === 0 ? navigate((chapterIdx ?? 0) - 1) : prevPage()}
             disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
-          >
-            ←
-          </button>
-          <div className="prog-wrap">
-            <div className="prog-lbl">
-              {(chapterIdx ?? 0) + 1}/{chapterCount} · {currentPage + 1}/{totalPages}
+          >←</button>
+
+          {originalTtsPlaying ? (
+            <div className="tts-inline">
+              <button className="tts-bar-btn" onClick={() => jumpSentence(-1)} disabled={activeSid <= 0} title="Poprzedni akapit">⏮</button>
+              <button className="tts-bar-btn tts-bar-play active" onClick={toggleOriginalTts} title="Pauza">⏸</button>
+              <button className="tts-bar-btn" onClick={() => jumpSentence(1)} disabled={activeSid >= originalTtsFragments.length - 1} title="Następny akapit">⏭</button>
             </div>
-            <div className="prog-track">
-              <div className="prog-fill" style={{ width: progressPct }} />
+          ) : ttsPlaying ? (
+            <div className="tts-inline">
+              <button className="tts-bar-btn" onClick={() => jumpFragment(-1)} disabled={activeFid <= 0} title="Poprzedni fragment">⏮</button>
+              <button className="tts-bar-btn tts-bar-play active" onClick={toggleHybridTts} title="Pauza">⏸</button>
+              <button className="tts-bar-btn" onClick={() => jumpFragment(1)} disabled={activeFid >= ttsFragments.length - 1} title="Następny fragment">⏭</button>
             </div>
-          </div>
+          ) : (
+            <div className="prog-wrap">
+              <div className="prog-lbl">{currentPage + 1}/{totalPages}</div>
+            </div>
+          )}
+
           <button
             className="nav-btn"
             onClick={() => currentPage >= totalPages - 1 ? navigate((chapterIdx ?? 0) + 1) : nextPage()}
             disabled={currentPage >= totalPages - 1 && (chapterIdx ?? 0) >= chapterCount - 1}
-          >
-            →
-          </button>
+          >→</button>
         </div>
       </div>
 
