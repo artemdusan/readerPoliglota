@@ -15,23 +15,36 @@ export const MODEL_PRICING = {
   "anthropic/claude-3.5-haiku": { input: 0.0008, output: 0.004 },
 };
 
-function buildSentencePatchSystemPrompt(targetLangName, sourceLangName) {
+function buildSentencePatchSystemPrompt(
+  targetLangName,
+  sourceLangName,
+  { singleSentence = false, strictJson = false } = {},
+) {
   const sourceHint = sourceLangName
     ? ` Tekst zrodlowy jest w jezyku ${sourceLangName}.`
+    : "";
+  const singleHint = singleSentence
+    ? `
+Masz dokladnie jedno zdanie na wejsciu. Jesli je zmieniasz, zwroc tablice changes z jednym elementem.`
+    : "";
+  const strictHint = strictJson
+    ? `
+- odpowiedz ma byc pojedynczym obiektem JSON, bez komentarzy, bez markdownu i bez dodatkowego tekstu
+- kazdy element changes ma miec dokladnie pola "id" i "text"
+- jesli nie jestes pewny formatu, zwroc {"changes":[]}`
     : "";
   return `Wstaw markery do nauki jezyka ${targetLangName}.${sourceHint}
 Wejscie: {"sentences":[{"id":"s1","text":"..."}]}
 
 Zasady:
-- zmieniaj tylko rzeczowniki i przymiotniki (nie wszystkie)
-- nie zmieniaj kolejnosci slow, interpunkcji ani innych slow
-- nie lacz, nie dziel i nie przepisuj zdania
-- kazda zmiana ma miec format [TLUMACZENIE::ORYGINAL]
-- lewa strona markera: jezyk ${targetLangName}
-- prawa strona markera: dokladny fragment oryginalnego zdania
-- po podmianie kazdego markera na prawa strone zdanie musi byc identyczne z wejsciem
-- jesli nie jestes pewny, nie zmieniaj tego slowa
+- zmieniaj tylko losowe: rzeczowniki i przymiotniki 
+- nie zmieniaj słów bezposrednio obok siebie
+- kazda zmiana ma miec format [tłumaczenie::oryginał]
+- lewa strona markera: słowo w jezyku ${targetLangName}
+- prawa strona markera: słowo w oryginale
 - zwroc tylko zdania, ktore rzeczywiscie zmieniles
+${singleHint}
+${strictHint}
 
 Zwroc tylko JSON bez markdownu:
 {"changes":[{"id":"s1","text":"..."}]}
@@ -157,16 +170,106 @@ async function processBatchWithRetry(
   }
 }
 
-function parseJsonResponse(text) {
-  const raw = String(text ?? "").trim();
-  const cleaned = raw
+function normalizeJsonishText(text) {
+  return String(text ?? "")
+    .replace(/^\uFEFF/, "")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/\u00A0/g, " ")
+    .trim();
+}
+
+function stripMarkdownFence(text) {
+  return String(text ?? "")
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
-  const candidates = [cleaned];
-  const embeddedJson = cleaned.match(/\{[\s\S]*\}/)?.[0];
-  if (embeddedJson && embeddedJson !== cleaned) candidates.push(embeddedJson);
+}
+
+function extractJsonBlocks(text) {
+  const source = String(text ?? "");
+  const blocks = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let quoteChar = "";
+  let escaped = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === quoteChar) {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      inString = true;
+      quoteChar = char;
+      continue;
+    }
+
+    if (char === "{" || char === "[") {
+      if (depth === 0) start = index;
+      depth += 1;
+      continue;
+    }
+
+    if ((char === "}" || char === "]") && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        blocks.push(source.slice(start, index + 1));
+        start = -1;
+      }
+    }
+  }
+
+  return blocks;
+}
+
+function repairCommonJsonIssues(text) {
+  return String(text ?? "")
+    .replace(/^\s*\/\/.*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\bNone\b/g, "null")
+    .replace(/\bTrue\b/g, "true")
+    .replace(/\bFalse\b/g, "false")
+    .replace(/([{,]\s*)'([^'\\]*(?:\\.[^'\\]*)*)'\s*:/g, '$1"$2":')
+    .replace(/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'(?=\s*[,}\]])/g, ': "$1"')
+    .replace(/,\s*([}\]])/g, "$1")
+    .trim();
+}
+
+function parseJsonResponse(text) {
+  const normalized = normalizeJsonishText(text);
+  const cleaned = stripMarkdownFence(normalized);
+  const candidates = [];
+  const seen = new Set();
+
+  function pushCandidate(candidate) {
+    const value = String(candidate ?? "").trim();
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    candidates.push(value);
+  }
+
+  pushCandidate(cleaned);
+  pushCandidate(repairCommonJsonIssues(cleaned));
+  extractJsonBlocks(cleaned).forEach((block) => {
+    pushCandidate(block);
+    pushCandidate(repairCommonJsonIssues(block));
+  });
 
   let lastError;
   for (const candidate of candidates) {
@@ -377,6 +480,48 @@ function normalizeSentenceChange(sourceText, candidateText) {
   return bestResult ? { ok: true, text: bestResult.text } : directValidation;
 }
 
+function extractRawChanges(data) {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== "object") return null;
+  if (Array.isArray(data.changes)) return data.changes;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.sentences)) return data.sentences;
+  if (Array.isArray(data.patches)) return data.patches;
+  if (
+    data.changes &&
+    typeof data.changes === "object" &&
+    !Array.isArray(data.changes)
+  ) {
+    return Object.entries(data.changes).map(([id, text]) => ({ id, text }));
+  }
+  return null;
+}
+
+function normalizeRawChange(change) {
+  if (!change || typeof change !== "object") return null;
+
+  const id = [
+    change.id,
+    change.sentenceId,
+    change.sentence_id,
+    change.key,
+  ].find((value) => typeof value === "string" && value.trim());
+  const text = [
+    change.text,
+    change.value,
+    change.content,
+    change.sentence,
+    change.patchedText,
+    change.patched_text,
+  ].find((value) => typeof value === "string" && value.trim());
+
+  if (!id || !text) return null;
+  return {
+    id: id.trim(),
+    text: text.trim(),
+  };
+}
+
 function parseSentencePatchResponse(text, batchSentences) {
   let data;
   try {
@@ -385,24 +530,17 @@ function parseSentencePatchResponse(text, batchSentences) {
     throw new Error("Model nie zwrocil poprawnego JSON dla paczki zmian.");
   }
 
-  if (!data || !Array.isArray(data.changes)) {
+  const rawChanges = extractRawChanges(data);
+  if (!rawChanges) {
     throw new Error("Model zwrocil nieprawidlowy format zmian.");
   }
 
   const originalById = new Map(
     batchSentences.map((sentence) => [sentence.id, sentence.text]),
   );
-  return data.changes
-    .filter(
-      (change) =>
-        change &&
-        typeof change.id === "string" &&
-        typeof change.text === "string",
-    )
-    .map((change) => ({
-      id: change.id.trim(),
-      text: change.text.trim(),
-    }))
+  return rawChanges
+    .map(normalizeRawChange)
+    .filter(Boolean)
     .filter(
       (change) =>
         originalById.has(change.id) &&
@@ -411,38 +549,162 @@ function parseSentencePatchResponse(text, batchSentences) {
     );
 }
 
-async function runBatches(batchRequests, pricing, onProgress) {
+function estimateBatchCost(pricing, promptTokens, completionTokens) {
+  return (
+    (promptTokens / 1000) * pricing.input +
+    (completionTokens / 1000) * pricing.output
+  );
+}
+
+function buildSentencePatchRequest(
+  sentences,
+  { targetLangName, sourceLangName = "", model },
+  { strictJson = false } = {},
+) {
+  return {
+    label: strictJson ? "patch-recover" : "patch",
+    model,
+    maxTokens: Math.min(1400, Math.max(220, 120 + sentences.length * 70)),
+    messages: [
+      {
+        role: "system",
+        content: buildSentencePatchSystemPrompt(
+          targetLangName,
+          sourceLangName,
+          {
+            singleSentence: sentences.length === 1,
+            strictJson,
+          },
+        ),
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          sentences: sentences.map((sentence) => ({
+            id: sentence.id,
+            text: sentence.text,
+          })),
+        }),
+      },
+    ],
+  };
+}
+
+async function generateSentenceBatchWithRecovery(
+  sentences,
+  options,
+  pricing,
+  trace = { batchIdx: 0, strictJson: false },
+) {
+  const didUseStrictJson = trace.strictJson || sentences.length === 1;
+  const request = buildSentencePatchRequest(sentences, options, {
+    strictJson: didUseStrictJson,
+  });
+  const startedAt = Date.now();
+  const { text, promptTokens, completionTokens } = await processBatchWithRetry({
+    ...request,
+    batchIdx: trace.batchIdx,
+  });
+  const ownCost = estimateBatchCost(pricing, promptTokens, completionTokens);
+  const ownElapsedMs = Date.now() - startedAt;
+
+  try {
+    return {
+      changes: parseSentencePatchResponse(text, sentences),
+      cost: ownCost,
+      elapsedMs: ownElapsedMs,
+    };
+  } catch (error) {
+    console.warn(
+      `[Polyglot] patch ${trace.batchIdx + 1} parse fallback for ${sentences.length} zd. (${error.message})`,
+    );
+
+    if (sentences.length === 1) {
+      if (!didUseStrictJson) {
+        const retry = await generateSentenceBatchWithRecovery(
+          sentences,
+          options,
+          pricing,
+          {
+            ...trace,
+            strictJson: true,
+          },
+        );
+        return {
+          changes: retry.changes,
+          cost: ownCost + retry.cost,
+          elapsedMs: ownElapsedMs + retry.elapsedMs,
+        };
+      }
+
+      console.warn(
+        `[Polyglot] patch ${trace.batchIdx + 1} pomijam zdanie ${sentences[0]?.id} po nieudanych probach odzyskania JSON`,
+      );
+      return {
+        changes: [],
+        cost: ownCost,
+        elapsedMs: ownElapsedMs,
+      };
+    }
+
+    const middle = Math.ceil(sentences.length / 2);
+    const [left, right] = await Promise.all([
+      generateSentenceBatchWithRecovery(
+        sentences.slice(0, middle),
+        options,
+        pricing,
+        { ...trace, strictJson: true },
+      ),
+      generateSentenceBatchWithRecovery(
+        sentences.slice(middle),
+        options,
+        pricing,
+        { ...trace, strictJson: true },
+      ),
+    ]);
+
+    return {
+      changes: [...left.changes, ...right.changes],
+      cost: ownCost + left.cost + right.cost,
+      elapsedMs: ownElapsedMs + left.elapsedMs + right.elapsedMs,
+    };
+  }
+}
+
+async function runSentencePatchBatches(batches, options, pricing, onProgress) {
   const startTime = Date.now();
   let totalCost = 0;
   let done = 0;
-  const results = new Array(batchRequests.length);
+  const results = new Array(batches.length);
 
-  onProgress?.(0, batchRequests.length, 0, 0);
+  onProgress?.(0, batches.length, 0, 0);
 
   const concurrency = 5;
-  for (let index = 0; index < batchRequests.length; index += concurrency) {
-    const chunk = batchRequests.slice(index, index + concurrency);
+  for (let index = 0; index < batches.length; index += concurrency) {
+    const chunk = batches.slice(index, index + concurrency);
     await Promise.all(
-      chunk.map(async (request, innerIdx) => {
+      chunk.map(async (sentences, innerIdx) => {
         const absoluteIdx = index + innerIdx;
-        const { text, promptTokens, completionTokens } =
-          await processBatchWithRetry({
-            ...request,
+        const batchResult = await generateSentenceBatchWithRecovery(
+          sentences,
+          options,
+          pricing,
+          {
             batchIdx: absoluteIdx,
-          });
-        totalCost +=
-          (promptTokens / 1000) * pricing.input +
-          (completionTokens / 1000) * pricing.output;
-        results[absoluteIdx] = text;
+            strictJson: false,
+          },
+        );
+        totalCost += batchResult.cost;
+        results[absoluteIdx] = batchResult.changes;
         done += 1;
         const secs = (Date.now() - startTime) / 1000;
-        onProgress?.(done, batchRequests.length, totalCost, secs);
+        onProgress?.(done, batches.length, totalCost, secs);
       }),
     );
   }
 
   return {
-    texts: results,
+    changes: results.flat(),
     cost: totalCost,
     elapsedMs: Date.now() - startTime,
   };
@@ -579,29 +841,17 @@ async function generateStructuredPolyglot(
     `[Polyglot] Start patches: ${batches.length} paczek, ${source.sentences.length} zdan, jezyk: ${targetLangName}, model: ${model}`,
   );
 
-  const requests = batches.map((sentences) => ({
-    label: "patch",
-    model,
-    maxTokens: Math.min(1400, Math.max(300, 120 + sentences.length * 70)),
-    messages: [
-      {
-        role: "system",
-        content: buildSentencePatchSystemPrompt(targetLangName, sourceLangName),
-      },
-      {
-        role: "user",
-        content: JSON.stringify({
-          sentences: sentences.map((sentence) => ({
-            id: sentence.id,
-            text: sentence.text,
-          })),
-        }),
-      },
-    ],
-  }));
-
-  const { texts, cost, elapsedMs } = await runBatches(
-    requests,
+  const {
+    changes: rawChanges,
+    cost,
+    elapsedMs,
+  } = await runSentencePatchBatches(
+    batches,
+    {
+      targetLangName,
+      sourceLangName,
+      model,
+    },
     pricing,
     (done, total, currentCost, secs) => {
       onProgress?.({
@@ -613,11 +863,6 @@ async function generateStructuredPolyglot(
       });
     },
   );
-  const rawChanges = [];
-
-  texts.forEach((text, idx) => {
-    rawChanges.push(...parseSentencePatchResponse(text, batches[idx]));
-  });
 
   const verified = await verifySentenceChangesLocally(
     rawChanges,
