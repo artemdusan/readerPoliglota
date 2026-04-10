@@ -165,6 +165,7 @@ export default function Reader({
   const pageTurnTimerRef = useRef(null);
   const desiredLangRef = useRef(null); // lang to carry over when changing chapter
   const originalTtsPlayerRef = useRef(null);
+  const ttsAutoStartRef = useRef(null); // 'original' | 'hybrid' | null
   const settingsMenuRef = useRef(null);
   const settingsToggleRef = useRef(null);
 
@@ -463,6 +464,20 @@ export default function Reader({
     window.addEventListener("polyglot-saved", onPolyglotSaved);
     return () => window.removeEventListener("polyglot-saved", onPolyglotSaved);
   }, [chapter?.id, refreshChapterStatusMap]);
+
+  /* ── Auto-start TTS after chapter auto-advance ── */
+  useEffect(() => {
+    if (!ttsAutoStartRef.current) return;
+    if (originalTtsFragments.length === 0) return;
+    const mode = ttsAutoStartRef.current;
+    ttsAutoStartRef.current = null;
+    if (mode === "hybrid" && polyTtsParagraphs.length > 0) {
+      startHybridTts(0);
+    } else {
+      startOriginalTts(0);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originalTtsFragments]);
 
   /* ── Chapter status map (translation + audio badges in TOC) ── */
   useEffect(() => {
@@ -907,6 +922,23 @@ export default function Reader({
     }
   }
 
+  function announceNextChapter(callback) {
+    const polishVoices = ttsVoices.filter(
+      (v) => v.lang?.startsWith("pl") || v.name?.toLowerCase().includes("polish"),
+    );
+    const voice =
+      polishVoices.length > 0
+        ? polishVoices[Math.floor(Math.random() * polishVoices.length)]
+        : null;
+    const utt = new SpeechSynthesisUtterance("Kolejny rozdział");
+    utt.lang = "pl-PL";
+    if (voice) utt.voice = voice;
+    utt.onend = callback;
+    utt.onerror = callback;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utt);
+  }
+
   function stopHybridTts() {
     ttsPlayerRef.current?.stop();
     ttsPlayerRef.current = null;
@@ -979,6 +1011,12 @@ export default function Reader({
         setActiveSid(-1);
         activeSidRef.current = -1;
         clearSentenceHighlight();
+        if (chapterIdx < chapterCount - 1) {
+          announceNextChapter(() => {
+            ttsAutoStartRef.current = "original";
+            navigate(chapterIdx + 1);
+          });
+        }
       },
     });
 
@@ -1031,6 +1069,12 @@ export default function Reader({
         setTtsPaused(false);
         setActivePolyPid(-1);
         clearSentenceHighlight();
+        if (chapterIdx < chapterCount - 1) {
+          announceNextChapter(() => {
+            ttsAutoStartRef.current = "hybrid";
+            navigate(chapterIdx + 1);
+          });
+        }
       },
     });
     ttsPlayerRef.current = player;
