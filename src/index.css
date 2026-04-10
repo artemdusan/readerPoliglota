@@ -370,7 +370,14 @@ html, body, #root {
   transition: border-color .15s, color .15s;
 }
 .tts-voice-sel:hover { border-color: var(--txt-3); color: var(--txt-1); }
+.tts-voice-sel:disabled { opacity: .55; cursor: default; }
 .tts-voice-sel option { background: #161412; color: var(--txt-1); font-size: 12px; }
+.settings-menu-note {
+  margin-top: -4px;
+  color: var(--txt-3);
+  font-size: 11px;
+  line-height: 1.45;
+}
 
 /* Chapter scroll — always page mode */
 .ch-scroll { flex: 1; overflow: hidden; transition: opacity 0.1s ease; }
@@ -578,7 +585,7 @@ html, body, #root {
 
 /* ════════════════ HYBRID TTS ════════════════ */
 
-/* Active TTS fragment (text span or .pw word) */
+/* Active inline word pronunciation highlight */
 .tts-active {
   background: rgba(192, 144, 80, 0.18) !important;
   border-radius: 2px;
@@ -586,13 +593,13 @@ html, body, #root {
   transition: background .1s;
 }
 
-/* Clickable fragments when TTS is ready */
-.ch-body.tts-ready [data-fid] {
+/* Clickable foreign words in translated mode */
+.ch-body.tts-ready .pw {
   cursor: pointer;
   border-radius: 2px;
   transition: background .08s;
 }
-.ch-body.tts-ready [data-fid]:hover {
+.ch-body.tts-ready .pw:hover {
   background: rgba(192, 144, 80, .08);
 }
 

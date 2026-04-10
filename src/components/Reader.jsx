@@ -12,7 +12,7 @@ import { triggerSync } from '../sync/cfSync';
 import { parsePolyglotHtml } from '../lib/polyglotParser';
 import { MODEL_PRICING } from '../lib/polyglotApi';
 import { annotateParagraphsInHtml } from '../lib/sentenceWrapper';
-import { extractFragments, SentenceTtsPlayer, TtsPlayer } from '../lib/ttsFragments';
+import { extractPolyglotTtsData, SentenceTtsPlayer } from '../lib/ttsFragments';
 
 /* ═══════════════════════════════════════════
    Helpers
@@ -35,6 +35,21 @@ function navigableTocItems(toc) {
     seen.add(base);
     return true;
   });
+}
+
+function getVoiceId(voice) {
+  if (!voice) return '';
+  return voice.voiceURI || `${voice.name}__${voice.lang}`;
+}
+
+function findVoiceById(voices, id) {
+  if (!id) return null;
+  return voices.find(voice => getVoiceId(voice) === id) || null;
+}
+
+function getVoicesForLang(voices, lang) {
+  const code = (lang || '').split('-')[0].toLowerCase();
+  return voices.filter(voice => (voice.lang || '').toLowerCase().split('-')[0] === code);
 }
 
 /* ═══════════════════════════════════════════
@@ -113,22 +128,78 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
 
   // Hybrid TTS state (polyglot mode — Web Speech API, no Polly)
   const [ttsPlaying, setTtsPlaying]           = useState(false);
-  const [activeFid, setActiveFid]             = useState(-1);
+  const [activePolyPid, setActivePolyPid]     = useState(-1);
   const [polyHtmlAnnotated, setPolyHtmlAnnotated] = useState('');
-  const [ttsFragments, setTtsFragments]       = useState([]);
+  const [polyTtsParagraphs, setPolyTtsParagraphs] = useState([]);
+  const [polyWordFragments, setPolyWordFragments] = useState([]);
   const ttsPlayerRef = useRef(null);
 
   // TTS voice selection — persisted per language in localStorage
   const [ttsVoices, setTtsVoices]           = useState([]);
-  const [ttsSourceVoice, setTtsSourceVoice] = useState(''); // voiceURI
-  const [ttsTargetVoice, setTtsTargetVoice] = useState(''); // voiceURI
+  const [ttsSourceVoice, setTtsSourceVoice] = useState(''); // stable voice id
+  const [ttsTargetVoice, setTtsTargetVoice] = useState(''); // stable voice id
+  const [voiceLoadState, setVoiceLoadState] = useState('loading');
 
   /* ── Load Web Speech API voices (async, fires voiceschanged) ── */
   useEffect(() => {
-    const load = () => setTtsVoices(window.speechSynthesis?.getVoices() || []);
+    const synth = window.speechSynthesis;
+    if (!synth?.getVoices) {
+      setVoiceLoadState('unsupported');
+      setTtsVoices([]);
+      return undefined;
+    }
+
+    let pollTimer = null;
+    let cancelled = false;
+    const prevOnVoicesChanged = synth.onvoiceschanged;
+
+    const load = () => {
+      if (cancelled) return false;
+      const voices = synth.getVoices() || [];
+      setTtsVoices(voices);
+      setVoiceLoadState(voices.length ? 'ready' : 'empty');
+      return voices.length > 0;
+    };
+
+    const handleVoicesChanged = () => {
+      load();
+    };
+
     load();
-    window.speechSynthesis?.addEventListener('voiceschanged', load);
-    return () => window.speechSynthesis?.removeEventListener('voiceschanged', load);
+    let attempts = 0;
+    pollTimer = window.setInterval(() => {
+      attempts += 1;
+      if (load() || attempts >= 12) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }, 400);
+
+    if (typeof synth.addEventListener === 'function') {
+      synth.addEventListener('voiceschanged', handleVoicesChanged);
+    }
+    synth.onvoiceschanged = (...args) => {
+      prevOnVoicesChanged?.apply(synth, args);
+      handleVoicesChanged();
+    };
+
+    const handleUserUnlock = () => {
+      window.setTimeout(load, 0);
+    };
+
+    window.addEventListener('pointerdown', handleUserUnlock, { passive: true });
+    document.addEventListener('visibilitychange', handleVoicesChanged);
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) window.clearInterval(pollTimer);
+      if (typeof synth.removeEventListener === 'function') {
+        synth.removeEventListener('voiceschanged', handleVoicesChanged);
+      }
+      synth.onvoiceschanged = prevOnVoicesChanged || null;
+      window.removeEventListener('pointerdown', handleUserUnlock);
+      document.removeEventListener('visibilitychange', handleVoicesChanged);
+    };
   }, []);
 
   /* ── Restore saved voice for source lang when book or voices change ── */
@@ -136,7 +207,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     if (!ttsVoices.length || !book?.lang) return;
     const key = `tts-voice-src-${book.lang.split('-')[0]}`;
     const saved = localStorage.getItem(key);
-    if (saved && ttsVoices.some(v => v.voiceURI === saved)) setTtsSourceVoice(saved);
+    if (saved && findVoiceById(ttsVoices, saved)) setTtsSourceVoice(saved);
   }, [ttsVoices, book?.lang]);
 
   /* ── Restore saved voice for target lang when language or voices change ── */
@@ -144,7 +215,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     if (!ttsVoices.length || !activeLang) return;
     const key = `tts-voice-tgt-${activeLang.split('-')[0]}`;
     const saved = localStorage.getItem(key);
-    if (saved && ttsVoices.some(v => v.voiceURI === saved)) setTtsTargetVoice(saved);
+    if (saved && findVoiceById(ttsVoices, saved)) setTtsTargetVoice(saved);
     else setTtsTargetVoice(''); // reset when switching language
   }, [ttsVoices, activeLang]);
 
@@ -199,9 +270,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     ttsPlayerRef.current?.stop();
     ttsPlayerRef.current = null;
     setTtsPlaying(false);
-    setActiveFid(-1);
+    setActivePolyPid(-1);
     setPolyHtmlAnnotated('');
-    setTtsFragments([]);
+    setPolyTtsParagraphs([]);
+    setPolyWordFragments([]);
 
     getChapter(bookId, chapterIdx).then(async ch => {
       const pos = await getReadingPosition(bookId);
@@ -257,10 +329,11 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
           const entry = await getPolyglotCache(ch.id, langToLoad);
           if (entry) {
             const { html } = parsePolyglotHtml(entry.rawText);
-            const { html: annotated, fragments } = extractFragments(html);
+            const { html: annotated, paragraphs, words } = extractPolyglotTtsData(html);
             setPolyHtml(html);
             setPolyHtmlAnnotated(annotated);
-            setTtsFragments(fragments);
+            setPolyTtsParagraphs(paragraphs);
+            setPolyWordFragments(words);
             setPolyRawText(entry.rawText);
             setPolyState('done');
             setActiveLang(langToLoad);
@@ -460,9 +533,10 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     ttsPlayerRef.current?.stop();
     ttsPlayerRef.current = null;
     setTtsPlaying(false);
-    setActiveFid(-1);
+    setActivePolyPid(-1);
     setPolyHtmlAnnotated('');
-    setTtsFragments([]);
+    setPolyTtsParagraphs([]);
+    setPolyWordFragments([]);
     if (lang === null) {
       if (chapter?.html) {
         const { html: annotated, fragments } = annotateParagraphsInHtml(chapter.html);
@@ -477,10 +551,11 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     getPolyglotCache(chapter.id, lang).then(entry => {
       if (entry) {
         const { html } = parsePolyglotHtml(entry.rawText);
-        const { html: annotated, fragments } = extractFragments(html);
+        const { html: annotated, paragraphs, words } = extractPolyglotTtsData(html);
         setPolyHtml(html);
         setPolyHtmlAnnotated(annotated);
-        setTtsFragments(fragments);
+        setPolyTtsParagraphs(paragraphs);
+        setPolyWordFragments(words);
         setPolyRawText(entry.rawText);
         setPolyState('done');
         setActiveLang(lang);
@@ -524,10 +599,11 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       triggerSync();
 
       const { html } = parsePolyglotHtml(rawText);
-      const { html: annotated, fragments } = extractFragments(html);
+      const { html: annotated, paragraphs, words } = extractPolyglotTtsData(html);
       setPolyHtml(html);
       setPolyHtmlAnnotated(annotated);
-      setTtsFragments(fragments);
+      setPolyTtsParagraphs(paragraphs);
+      setPolyWordFragments(words);
       setPolyRawText(rawText);
       setPolyState('done');
 
@@ -545,16 +621,21 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
      HYBRID TTS — Web Speech API, polyglot mode
   ───────────────────────────────────────── */
 
-  function highlightFragment(fid) {
+  function clearWordHighlight() {
     const body = chapterBodyRef.current;
     if (!body) return;
     body.querySelectorAll('.tts-active').forEach(el => el.classList.remove('tts-active'));
-    if (fid < 0) return;
-    const el = body.querySelector(`[data-fid="${fid}"]`);
+  }
+
+  function highlightWord(wordId) {
+    const body = chapterBodyRef.current;
+    if (!body) return;
+    clearWordHighlight();
+    if (wordId < 0) return;
+    const el = body.querySelector(`[data-word-id="${wordId}"]`);
     if (!el) return;
     el.classList.add('tts-active');
-    if (el.classList.contains('pw')) openTooltip(el, true);
-    // Auto-scroll page to keep fragment visible
+    openTooltip(el, true);
     const scrollEl = chScrollRef.current;
     if (scrollEl) {
       const pw = scrollEl.clientWidth;
@@ -604,9 +685,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     ttsPlayerRef.current?.stop();
     ttsPlayerRef.current = null;
     setTtsPlaying(false);
-    setActiveFid(-1);
-    const body = chapterBodyRef.current;
-    if (body) body.querySelectorAll('.tts-active').forEach(el => el.classList.remove('tts-active'));
+    setActivePolyPid(-1);
+    clearSentenceHighlight();
+    clearWordHighlight();
   }
 
   function stopOriginalTts() {
@@ -646,7 +727,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     const player = new SentenceTtsPlayer({
       fragments: originalTtsFragments,
       lang: book?.lang || 'en',
-      voice: ttsVoices.find(v => v.voiceURI === ttsSourceVoice) || null,
+      voice: findVoiceById(ttsVoices, ttsSourceVoice),
       onSentence: (sid) => {
         activeSidRef.current = sid;
         setActiveSid(sid);
@@ -677,82 +758,61 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     else startOriginalTts(getFirstSidOnCurrentPage());
   }
 
-  function startHybridTts(fromFid = 0) {
-    if (!ttsFragments.length) return;
+  function startHybridTts(fromPid = 0) {
+    if (!polyTtsParagraphs.length) return;
     stopOriginalTts();
     stopHybridTts();
-    const player = new TtsPlayer({
-      fragments: ttsFragments,
-      sourceLang: book?.lang || 'en',
-      targetLang: activeLang || 'es',
-      sourceVoice: ttsVoices.find(v => v.voiceURI === ttsSourceVoice) || null,
-      targetVoice: ttsVoices.find(v => v.voiceURI === ttsTargetVoice) || null,
-      onFragment: (fid) => { setActiveFid(fid); highlightFragment(fid); },
+    const player = new SentenceTtsPlayer({
+      fragments: polyTtsParagraphs,
+      lang: book?.lang || 'en',
+      voice: findVoiceById(ttsVoices, ttsSourceVoice),
+      onSentence: (pid) => {
+        setActivePolyPid(pid);
+        highlightCurrentSentence(pid);
+      },
       onDone: () => {
         setTtsPlaying(false);
-        setActiveFid(-1);
-        const body = chapterBodyRef.current;
-        if (body) body.querySelectorAll('.tts-active').forEach(el => el.classList.remove('tts-active'));
+        setActivePolyPid(-1);
+        clearSentenceHighlight();
       },
     });
     ttsPlayerRef.current = player;
-    player.play(fromFid);
+    player.play(fromPid);
     setTtsPlaying(true);
   }
 
-  // Jump to the previous/next word fragment while playing
-  function jumpFragment(delta) {
-    if (!ttsFragments.length) return;
-    const base = activeFid >= 0 ? activeFid : 0;
-    let idx = base + delta;
-    // Skip text fragments — stop at word boundaries
-    while (idx > 0 && idx < ttsFragments.length - 1 && ttsFragments[idx]?.type !== 'word') {
-      idx += delta;
-    }
-    idx = Math.max(0, Math.min(ttsFragments.length - 1, idx));
-    startHybridTts(idx);
+  // Jump to the previous/next paragraph while playing
+  function jumpPolyParagraph(delta) {
+    if (!polyTtsParagraphs.length) return;
+    const base = activePolyPid >= 0 ? activePolyPid : getFirstSidOnCurrentPage();
+    const pid = Math.max(0, Math.min(polyTtsParagraphs.length - 1, base + delta));
+    startHybridTts(pid);
   }
 
   function toggleHybridTts() {
     if (ttsPlaying) stopHybridTts();
-    else startHybridTts(getFirstFidOnCurrentPage());
+    else startHybridTts(getFirstSidOnCurrentPage());
   }
 
-  function getFirstFidOnCurrentPage() {
-    const scrollEl = chScrollRef.current;
-    const body = chapterBodyRef.current;
-    if (!scrollEl || !body) return 0;
-    const pw = scrollEl.clientWidth;
-    const containerRect = scrollEl.getBoundingClientRect();
-    const page = currentPageRef.current;
-    for (const el of body.querySelectorAll('[data-fid]')) {
-      const elRect = el.getBoundingClientRect();
-      const elAbsLeft = elRect.left - containerRect.left + page * pw;
-      if (Math.floor(elAbsLeft / pw) >= page) {
-        return parseInt(el.dataset.fid, 10);
-      }
-    }
-    return 0;
-  }
-
-  function playSingleFragment(fid) {
+  function playSingleWord(wordId) {
     stopOriginalTts();
     stopHybridTts();
-    const frag = ttsFragments[fid];
-    if (!frag) return;
-    highlightFragment(fid);
-    const text = frag.type === 'word' ? frag.target : frag.text;
-    const lang = frag.type === 'word' ? (activeLang || 'es') : (book?.lang || 'en');
+    const word = polyWordFragments[wordId];
+    if (!word) return;
+    highlightWord(wordId);
+    const text = word.target;
     const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = lang;
+    utt.lang = activeLang || 'es';
+    const targetVoice = findVoiceById(ttsVoices, ttsTargetVoice);
+    if (targetVoice) utt.voice = targetVoice;
     utt.onend = () => {
-      setActiveFid(-1);
-      const body = chapterBodyRef.current;
-      if (body) body.querySelectorAll('.tts-active').forEach(el => el.classList.remove('tts-active'));
+      clearWordHighlight();
+    };
+    utt.onerror = () => {
+      clearWordHighlight();
     };
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utt);
-    setActiveFid(fid);
   }
 
   /* ─────────────────────────────────────────
@@ -984,30 +1044,25 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       return;
     }
 
-    // In polyglot TTS mode: click [data-fid] to play from that fragment
-    if (ttsFragments.length > 0) {
-      const fidEl = e.target.closest('[data-fid]');
-      if (fidEl) {
-        const fid = parseInt(fidEl.dataset.fid, 10);
-        if (!ttsPlaying && fidEl.classList.contains('pw')) {
-          // Not playing: single word preview only
-          playSingleFragment(fid);
-        } else {
-          startHybridTts(fid);
-        }
+    // In translated mode: words preview pronunciation, paragraphs seek only while TTS is active
+    if (polyMode) {
+      const pw = e.target.closest('.pw');
+      if (pw) {
+        openTooltip(pw);
+        const wordId = Number.parseInt(pw.dataset.wordId, 10);
+        if (Number.isInteger(wordId)) playSingleWord(wordId);
         return;
       }
-    }
-
-    const pw = e.target.closest('.pw');
-    if (pw) {
-      openTooltip(pw);
+      const pidEl = e.target.closest('[data-pid]');
+      if (pidEl && ttsPlaying && polyTtsParagraphs.length > 0) {
+        startHybridTts(parseInt(pidEl.dataset.pid, 10));
+      }
       return;
     }
 
-    // Click on paragraph block → play from that paragraph onward
+    // In original mode: paragraph seek works only while TTS is already active
     const pidEl = e.target.closest('[data-pid]');
-    if (pidEl && !polyMode && originalTtsFragments.length > 0) {
+    if (pidEl && originalTtsPlaying && originalTtsFragments.length > 0) {
       startOriginalTts(parseInt(pidEl.dataset.pid, 10));
     }
   }
@@ -1147,7 +1202,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
               <span className="settings-menu-label">Czytaj</span>
               <div className="settings-menu-ctrl">
                 {polyMode && polyState === 'done' ? (
-                  <button className="ctl ctl-icon" onClick={toggleHybridTts} title={ttsPlaying ? 'Pauza' : 'Odtwórz'} disabled={!ttsFragments.length}>
+                  <button className="ctl ctl-icon" onClick={toggleHybridTts} title={ttsPlaying ? 'Pauza' : 'Odtwórz'} disabled={!polyTtsParagraphs.length}>
                     {ttsPlaying ? '⏸' : '▶'}
                   </button>
                 ) : (
@@ -1165,29 +1220,38 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 </div>
               </div>
             )}
-            {ttsVoices.length > 0 && (() => {
+            {(() => {
               const srcCode = (book?.lang || 'en').split('-')[0].toLowerCase();
               const tgtCode = (activeLang || 'es').split('-')[0].toLowerCase();
-              const srcVoices = ttsVoices.filter(v => v.lang.toLowerCase().startsWith(srcCode));
-              const tgtVoices = ttsVoices.filter(v => v.lang.toLowerCase().startsWith(tgtCode));
+              const srcVoices = getVoicesForLang(ttsVoices, book?.lang || 'en');
+              const tgtVoices = getVoicesForLang(ttsVoices, activeLang || 'es');
+              const showVoiceNote = voiceLoadState !== 'ready' || !srcVoices.length || (polyMode && !tgtVoices.length);
               return (
                 <>
-                  {srcVoices.length > 0 && (
-                    <div className="settings-menu-row">
+                  <div className="settings-menu-row">
                       <span className="settings-menu-label">Głos ({srcCode})</span>
-                      <select className="tts-voice-sel" value={ttsSourceVoice} onChange={e => { setTtsSourceVoice(e.target.value); localStorage.setItem(`tts-voice-src-${srcCode}`, e.target.value); }}>
-                        <option value="">Domyślny</option>
-                        {srcVoices.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
+                      <select className="tts-voice-sel" value={ttsSourceVoice} disabled={!srcVoices.length} onChange={e => { setTtsSourceVoice(e.target.value); localStorage.setItem(`tts-voice-src-${srcCode}`, e.target.value); }}>
+                        <option value="">{srcVoices.length ? 'Domyślny' : 'Systemowy'}</option>
+                        {srcVoices.map(v => <option key={getVoiceId(v)} value={getVoiceId(v)}>{v.name}</option>)}
+                      </select>
+                    </div>
+                  
+                  {polyMode && (
+                    <div className="settings-menu-row">
+                      <span className="settings-menu-label">Głos ({tgtCode})</span>
+                      <select className="tts-voice-sel" value={ttsTargetVoice} disabled={!tgtVoices.length} onChange={e => { setTtsTargetVoice(e.target.value); localStorage.setItem(`tts-voice-tgt-${tgtCode}`, e.target.value); }}>
+                        <option value="">{tgtVoices.length ? 'Domyślny' : 'Systemowy'}</option>
+                        {tgtVoices.map(v => <option key={getVoiceId(v)} value={getVoiceId(v)}>{v.name}</option>)}
                       </select>
                     </div>
                   )}
-                  {polyMode && tgtVoices.length > 0 && (
-                    <div className="settings-menu-row">
-                      <span className="settings-menu-label">Głos ({tgtCode})</span>
-                      <select className="tts-voice-sel" value={ttsTargetVoice} onChange={e => { setTtsTargetVoice(e.target.value); localStorage.setItem(`tts-voice-tgt-${tgtCode}`, e.target.value); }}>
-                        <option value="">Domyślny</option>
-                        {tgtVoices.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
-                      </select>
+                  {showVoiceNote && (
+                    <div className="settings-menu-note">
+                      {voiceLoadState === 'unsupported'
+                        ? 'Ta przeglądarka nie udostępnia listy głosów Web Speech.'
+                        : voiceLoadState === 'empty'
+                          ? 'Lista głosów jest pusta. Na mobilnym Chromium pojawia się to często, gdy system nie ma zainstalowanych danych TTS albo przeglądarka nie odsłoni jeszcze głosów.'
+                          : 'Brak osobnych głosów dla tego języka. Przeglądarka użyje domyślnego głosu systemowego.'}
                     </div>
                   )}
                 </>
@@ -1305,7 +1369,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                   <div
                     key={activeLang}
                     ref={chapterBodyRef}
-                    className={`ch-body ch-anim${ttsFragments.length ? ' tts-ready' : ''}`}
+                    className={`ch-body ch-anim${polyWordFragments.length ? ' tts-ready' : ''}${ttsPlaying ? ' audio-ready' : ''}`}
                     dangerouslySetInnerHTML={{
                       __html: polyHtmlAnnotated || polyHtml,
                     }}
@@ -1316,7 +1380,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                 {!polyMode && (
                   <div
                     ref={chapterBodyRef}
-                    className={`ch-body ch-anim${originalTtsFragments.length ? ' audio-ready' : ''}`}
+                    className={`ch-body ch-anim${originalTtsPlaying ? ' audio-ready' : ''}`}
                     dangerouslySetInnerHTML={{
                       __html: originalHtmlAnnotated
                         ? originalHtmlAnnotated
@@ -1348,9 +1412,9 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
             </div>
           ) : ttsPlaying ? (
             <div className="tts-inline">
-              <button className="tts-bar-btn" onClick={() => jumpFragment(-1)} disabled={activeFid <= 0} title="Poprzedni fragment">⏮</button>
+              <button className="tts-bar-btn" onClick={() => jumpPolyParagraph(-1)} disabled={activePolyPid <= 0} title="Poprzedni akapit">⏮</button>
               <button className="tts-bar-btn tts-bar-play active" onClick={toggleHybridTts} title="Pauza">⏸</button>
-              <button className="tts-bar-btn" onClick={() => jumpFragment(1)} disabled={activeFid >= ttsFragments.length - 1} title="Następny fragment">⏭</button>
+              <button className="tts-bar-btn" onClick={() => jumpPolyParagraph(1)} disabled={activePolyPid >= polyTtsParagraphs.length - 1} title="Następny akapit">⏭</button>
             </div>
           ) : (
             <div className="prog-wrap">
