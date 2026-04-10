@@ -135,6 +135,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   const [polyHtmlAnnotated, setPolyHtmlAnnotated] = useState('');
   const [polyTtsParagraphs, setPolyTtsParagraphs] = useState([]);
   const [polyWordFragments, setPolyWordFragments] = useState([]);
+  const renderedPolyHtml = polyHtmlAnnotated || polyHtml;
   const ttsPlayerRef = useRef(null);
 
   // TTS voice selection — persisted per language in localStorage
@@ -223,7 +224,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
   }, [ttsVoices, activeLang]);
 
   useEffect(() => () => {
-    window.speechSynthesis?.cancel();
+    stopAllTts();
   }, []);
 
   /* ── Load book metadata + restore starting chapter ── */
@@ -407,7 +408,15 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
         }
       });
     });
-  }, [chapter?.id, polyMode, fs, polyHtml, originalHtmlAnnotated, layoutKey]);
+  }, [chapter?.id, polyMode, fs, renderedPolyHtml, originalHtmlAnnotated, layoutKey]);
+
+  useEffect(() => {
+    if (!polyMode || polyState !== 'done' || !renderedPolyHtml) return;
+    const rafId = window.requestAnimationFrame(() => {
+      setLayoutKey(k => k + 1);
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [polyMode, polyState, renderedPolyHtml]);
 
   /* ── Re-layout on container resize ── */
   useEffect(() => {
@@ -700,6 +709,18 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     setActiveSid(-1);
     activeSidRef.current = -1;
     clearSentenceHighlight();
+  }
+
+  function stopAllTts() {
+    stopOriginalTts();
+    stopHybridTts();
+    window.speechSynthesis?.cancel();
+  }
+
+  function handleBackToLibrary() {
+    persistPosition();
+    stopAllTts();
+    onBack();
   }
 
   function getFirstSidOnCurrentPage() {
@@ -1101,7 +1122,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
     return (
       <div className="loading-screen">
         <div style={{ color: 'var(--red)' }}>Nie znaleziono książki.</div>
-        <button className="btn-ghost" onClick={onBack}>← Biblioteka</button>
+        <button className="btn-ghost" onClick={handleBackToLibrary}>← Biblioteka</button>
       </div>
     );
   }
@@ -1112,7 +1133,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
       {/* ── Sidebar ── */}
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sb-top">
-          <button className="btn-back" onClick={() => { persistPosition(); onBack(); }}>
+          <button className="btn-back" onClick={handleBackToLibrary}>
             ← Biblioteka
           </button>
           <div className="sb-cover">
@@ -1377,7 +1398,7 @@ export default function Reader({ bookId, settings, onUpdateSetting, onBack, onOp
                     ref={chapterBodyRef}
                     className={`ch-body ch-anim${polyWordFragments.length ? ' tts-ready' : ''}${ttsPlaying ? ' audio-ready' : ''}`}
                     dangerouslySetInnerHTML={{
-                      __html: polyHtmlAnnotated || polyHtml,
+                      __html: renderedPolyHtml,
                     }}
                     onClick={handleContentClick}
                   />
