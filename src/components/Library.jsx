@@ -21,6 +21,30 @@ function formatLastSync(ts) {
   });
 }
 
+function formatRelativeSync(ts, now) {
+  if (!ts) return "";
+
+  const diffMs = Math.max(0, now - ts);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (diffMs < minute) return "przed chwilą";
+
+  if (diffMs < hour) {
+    const minutes = Math.floor(diffMs / minute);
+    return `${minutes} min temu`;
+  }
+
+  if (diffMs < day) {
+    const hours = Math.floor(diffMs / hour);
+    return `${hours} godz. temu`;
+  }
+
+  const days = Math.floor(diffMs / day);
+  return `${days} dni temu`;
+}
+
 export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +58,7 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const [cfConnected, setCfConnected] = useState(() => isLoggedIn());
   const [syncStatus, setSyncStatus] = useState(null);
   const [syncProgress, setSyncProgress] = useState(null);
+  const [syncNow, setSyncNow] = useState(() => Date.now());
   const [lastSync, setLastSync] = useState(() => {
     const value = localStorage.getItem("vocabapp:lastSync");
     return value ? Number(value) : null;
@@ -41,6 +66,11 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const fileInputRef = useRef(null);
 
   useEffect(() => onAuthChange(setCfConnected), []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setSyncNow(Date.now()), 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!ctxBookId) return;
@@ -217,15 +247,6 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
         <div className="lib-header-actions">
           <button
             className="ctl ctl-icon lib-header-icon"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={adding}
-            title="Dodaj książkę"
-            aria-label="Dodaj książkę"
-          >
-            {adding ? "…" : "+"}
-          </button>
-          <button
-            className="ctl ctl-icon lib-header-icon"
             onClick={onOpenSettings}
             title="Ustawienia aplikacji"
             aria-label="Ustawienia aplikacji"
@@ -257,6 +278,23 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                   ? "Wróć do czytania albo dodaj kolejne pliki EPUB."
                   : "Dodaj pierwszy plik EPUB, aby rozpocząć czytanie."}
               </p>
+              <div className="lib-toolbar-cta">
+                <button
+                  className="btn-primary lib-add-book-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={adding}
+                  title="Dodaj książkę"
+                  aria-label="Dodaj książkę"
+                >
+                  <span className="lib-add-book-icon" aria-hidden="true">
+                    {adding ? "..." : "+"}
+                  </span>
+                  {books.length ? "Dodaj książkę" : "Dodaj pierwszy EPUB"}
+                </button>
+                <span className="lib-toolbar-hint">
+                  Możesz też przeciągnąć plik EPUB bezpośrednio do biblioteki.
+                </span>
+              </div>
             </div>
 
             <div className="lib-sync-strip">
@@ -269,7 +307,10 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                   {cfConnected ? "Synchronizacja aktywna" : "Konto niepołączone"}
                 </div>
                 <div className="lib-sync-meta">
-                  <span>Ostatni sync: {formatLastSync(lastSync)}</span>
+                  <span>
+                    Ostatni sync: {formatLastSync(lastSync)}
+                    {lastSync ? ` (${formatRelativeSync(lastSync, syncNow)})` : ""}
+                  </span>
                 </div>
               </div>
 
