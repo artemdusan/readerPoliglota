@@ -1,6 +1,7 @@
 import { getToken } from '../sync/cfAuth';
+import { getWorkerUrl } from '../config/workerUrl';
 
-const WORKER_URL = import.meta.env.VITE_WORKER_URL ?? '';
+const WORKER_URL = getWorkerUrl();
 
 /** Approximate pricing in USD per 1 000 tokens (input / output) */
 export const MODEL_PRICING = {

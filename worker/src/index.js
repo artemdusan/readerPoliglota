@@ -8,16 +8,40 @@
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-};
+const DEFAULT_ALLOWED_ORIGIN = 'https://reader-worker.artemdusan.workers.dev';
+
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  if (origin === DEFAULT_ALLOWED_ORIGIN) return true;
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+}
+
+function corsHeaders(request) {
+  const origin = request.headers.get('Origin');
+  return {
+    'Access-Control-Allow-Origin': isAllowedOrigin(origin) ? origin : DEFAULT_ALLOWED_ORIGIN,
+    'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+    'Vary': 'Origin',
+  };
+}
+
+function withCors(response, request) {
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(corsHeaders(request))) {
+    headers.set(key, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 
@@ -420,9 +444,10 @@ async function handleHealth(env) {
 export default {
   async fetch(request, env) {
     try {
-      return await handleRequest(request, env);
+      const response = await handleRequest(request, env);
+      return withCors(response, request);
     } catch (e) {
-      return err(`Nieoczekiwany błąd: ${e.message}`, 500);
+      return withCors(err(`Nieoczekiwany błąd: ${e.message}`, 500), request);
     }
   },
 };
@@ -434,7 +459,7 @@ async function handleRequest(request, env) {
 
     // CORS preflight
     if (method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+      return new Response(null, { status: 204 });
     }
 
     // Public routes

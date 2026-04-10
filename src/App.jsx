@@ -3,7 +3,8 @@ import { useSettings } from './hooks/useSettings';
 import Library from './components/Library';
 import Reader  from './components/Reader';
 import Settings from './components/Settings';
-import { initCfAuth } from './sync/cfAuth';
+import { initCfAuth, isLoggedIn } from './sync/cfAuth';
+import { syncAll } from './sync/cfSync';
 
 export default function App() {
   const { settings, updateSetting, updateLanguage, loaded } = useSettings();
@@ -12,6 +13,18 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   // Load CF JWT from Dexie into memory on startup
   useEffect(() => { initCfAuth(); }, []);
+
+  useEffect(() => {
+    const intervalMinutes = Number(settings.syncIntervalMinutes ?? 30);
+    if (!intervalMinutes || intervalMinutes < 1) return undefined;
+
+    const timer = window.setInterval(() => {
+      if (!navigator.onLine || !isLoggedIn()) return;
+      syncAll().catch(() => {});
+    }, intervalMinutes * 60 * 1000);
+
+    return () => window.clearInterval(timer);
+  }, [settings.syncIntervalMinutes]);
 
   const openBook = useCallback((bookId) => {
     setCurrentBookId(bookId);
