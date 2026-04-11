@@ -1,10 +1,4 @@
-import {
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  useMemo,
-} from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   db,
   getBook,
@@ -29,6 +23,7 @@ import { triggerSync, syncBook } from "../sync/cfSync";
 import { parseStoredPolyglot } from "../lib/polyglotParser";
 import { annotateParagraphsInHtml } from "../lib/sentenceWrapper";
 import { extractPolyglotTtsData, SentenceTtsPlayer } from "../lib/ttsFragments";
+import BatchGenModal from "./BatchGenModal";
 
 const LANGUAGE_META = Object.fromEntries(
   LANGUAGES.map((lang) => [lang.code, lang]),
@@ -160,6 +155,7 @@ export default function Reader({
   const [book, setBook] = useState(null);
   const [toc, setToc] = useState([]);
   const [chapterCount, setChapterCount] = useState(0);
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
 
   // Chapter state
   const [chapterIdx, setChapterIdx] = useState(null); // null until reading position loaded
@@ -212,7 +208,8 @@ export default function Reader({
   const [fs, setFs] = useState(settings.fontSize ?? 19);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(
-    () => typeof document !== "undefined" && Boolean(document.fullscreenElement),
+    () =>
+      typeof document !== "undefined" && Boolean(document.fullscreenElement),
   );
   const orderedCachedLangs = useMemo(
     () =>
@@ -627,7 +624,7 @@ export default function Reader({
     } else {
       startOriginalTts(0);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [originalTtsFragments]);
 
   /* ── Chapter status map (translation + audio badges in TOC) ── */
@@ -684,7 +681,10 @@ export default function Reader({
             // Schedule a fallback re-layout after the animation frame budget.
             const token = ++scrollRetryTokenRef.current;
             setTimeout(() => {
-              if (scrollRetryTokenRef.current === token && pendingProgressRef.current !== null) {
+              if (
+                scrollRetryTokenRef.current === token &&
+                pendingProgressRef.current !== null
+              ) {
                 setLayoutKey((k) => k + 1);
               }
             }, 250);
@@ -886,7 +886,11 @@ export default function Reader({
 
   const persistBookmarks = useCallback(
     async (nextBookmarks) => {
-      if (!bookId || chapterIdxRef.current === null || chapterIdxRef.current === undefined) {
+      if (
+        !bookId ||
+        chapterIdxRef.current === null ||
+        chapterIdxRef.current === undefined
+      ) {
         return;
       }
 
@@ -1678,7 +1682,8 @@ export default function Reader({
 
   function announceNextChapter(callback) {
     const polishVoices = ttsVoices.filter(
-      (v) => v.lang?.startsWith("pl") || v.name?.toLowerCase().includes("polish"),
+      (v) =>
+        v.lang?.startsWith("pl") || v.name?.toLowerCase().includes("polish"),
     );
     const voice =
       polishVoices.length > 0
@@ -1697,7 +1702,9 @@ export default function Reader({
     ttsPlayerRef.current?.stop();
     ttsPlayerRef.current = null;
     ttsPagePauseModeRef.current =
-      ttsPagePauseModeRef.current === "hybrid" ? null : ttsPagePauseModeRef.current;
+      ttsPagePauseModeRef.current === "hybrid"
+        ? null
+        : ttsPagePauseModeRef.current;
     setTtsPlaying(false);
     setTtsPaused(false);
     setActivePolyPid(-1);
@@ -1709,7 +1716,9 @@ export default function Reader({
     originalTtsPlayerRef.current?.stop();
     originalTtsPlayerRef.current = null;
     ttsPagePauseModeRef.current =
-      ttsPagePauseModeRef.current === "original" ? null : ttsPagePauseModeRef.current;
+      ttsPagePauseModeRef.current === "original"
+        ? null
+        : ttsPagePauseModeRef.current;
     setOriginalTtsPlaying(false);
     setOriginalTtsPaused(false);
     setActiveSid(-1);
@@ -1913,10 +1922,7 @@ export default function Reader({
     if (ttsPagePauseModeRef.current === "original") {
       const base = getFirstSidOnCurrentPage();
       startOriginalTts(
-        Math.max(
-          0,
-          Math.min(originalTtsFragments.length - 1, base + delta),
-        ),
+        Math.max(0, Math.min(originalTtsFragments.length - 1, base + delta)),
       );
       return;
     }
@@ -1924,10 +1930,7 @@ export default function Reader({
     if (ttsPagePauseModeRef.current === "hybrid") {
       const base = getFirstSidOnCurrentPage();
       startHybridTts(
-        Math.max(
-          0,
-          Math.min(polyTtsParagraphs.length - 1, base + delta),
-        ),
+        Math.max(0, Math.min(polyTtsParagraphs.length - 1, base + delta)),
       );
       return;
     }
@@ -2328,6 +2331,17 @@ export default function Reader({
           </div>
           <div className="sb-title">{book?.title || "…"}</div>
           {book?.author && <div className="sb-author">{book.author}</div>}
+          {book && settings && (
+            <button
+              className="sb-translate-btn"
+              onClick={() => {
+                setBatchModalOpen(true);
+                setSidebarOpen(false);
+              }}
+            >
+              Tlumacz ksiazke
+            </button>
+          )}
           <div className="sb-stats">{chapterCount} rozdziałów</div>
         </div>
         <div className="toc-label">Spis treści</div>
@@ -2470,9 +2484,7 @@ export default function Reader({
                   if (e.key === "Enter") {
                     e.preventDefault();
                     if (!searchMatches.length) return;
-                    goToSearchMatch(
-                      activeSearchIdx + (e.shiftKey ? -1 : 1),
-                    );
+                    goToSearchMatch(activeSearchIdx + (e.shiftKey ? -1 : 1));
                   }
                 }}
                 placeholder="Szukaj tekstu w tym rozdziale"
@@ -2607,9 +2619,7 @@ export default function Reader({
                   </div>
                 ))
               ) : (
-                <div className="bookmark-empty">
-                  Brak zapisanych zakladek.
-                </div>
+                <div className="bookmark-empty">Brak zapisanych zakladek.</div>
               )}
             </div>
           </div>
@@ -2668,7 +2678,11 @@ export default function Reader({
               </button>
               <button
                 className={`settings-tool${(ttsPlaying && !ttsPaused) || (originalTtsPlaying && !originalTtsPaused) ? " settings-tool-active" : ""}`}
-                onClick={polyMode && polyState === "done" ? toggleHybridTts : toggleOriginalTts}
+                onClick={
+                  polyMode && polyState === "done"
+                    ? toggleHybridTts
+                    : toggleOriginalTts
+                }
                 title={ttsButtonTitle}
                 disabled={!hasTtsAvailable}
               >
@@ -2806,6 +2820,15 @@ export default function Reader({
           </div>
         )}
 
+        {batchModalOpen && book && settings && (
+          <BatchGenModal
+            bookId={book.id}
+            book={book}
+            settings={settings}
+            onClose={() => setBatchModalOpen(false)}
+          />
+        )}
+
         {shortcutsOpen && (
           <div className="shortcuts-panel">
             <div className="shortcuts-head">
@@ -2824,21 +2847,66 @@ export default function Reader({
               </button>
             </div>
             <div className="shortcuts-grid">
-              <div><kbd>Shift</kbd><span>oryginal / tlumaczenie</span></div>
-              <div><kbd>?</kbd><span>pokaz te sciage</span></div>
-              <div><kbd>Space</kbd><span>play / pause TTS</span></div>
-              <div><kbd>,</kbd><span>poprzedni fragment TTS</span></div>
-              <div><kbd>.</kbd><span>nastepny fragment TTS</span></div>
-              <div><kbd>J</kbd><span>wyszukiwarka</span></div>
-              <div><kbd>Z</kbd><span>zakladki</span></div>
-              <div><kbd>Q</kbd><span>sidebar</span></div>
-              <div><kbd>F</kbd><span>pelny ekran</span></div>
-              <div><kbd>N</kbd><span>nastepny rozdzial</span></div>
-              <div><kbd>P</kbd><span>poprzedni rozdzial</span></div>
-              <div><kbd>Backspace</kbd><span>powrot do biblioteki</span></div>
-              <div><kbd>[</kbd><span>mniejsza czcionka</span></div>
-              <div><kbd>]</kbd><span>wieksza czcionka</span></div>
-              <div><kbd>← →</kbd><span>zmiana strony</span></div>
+              <div>
+                <kbd>Shift</kbd>
+                <span>oryginal / tlumaczenie</span>
+              </div>
+              <div>
+                <kbd>?</kbd>
+                <span>pokaz te sciage</span>
+              </div>
+              <div>
+                <kbd>Space</kbd>
+                <span>play / pause TTS</span>
+              </div>
+              <div>
+                <kbd>,</kbd>
+                <span>poprzedni fragment TTS</span>
+              </div>
+              <div>
+                <kbd>.</kbd>
+                <span>nastepny fragment TTS</span>
+              </div>
+              <div>
+                <kbd>J</kbd>
+                <span>wyszukiwarka</span>
+              </div>
+              <div>
+                <kbd>Z</kbd>
+                <span>zakladki</span>
+              </div>
+              <div>
+                <kbd>Q</kbd>
+                <span>sidebar</span>
+              </div>
+              <div>
+                <kbd>F</kbd>
+                <span>pelny ekran</span>
+              </div>
+              <div>
+                <kbd>N</kbd>
+                <span>nastepny rozdzial</span>
+              </div>
+              <div>
+                <kbd>P</kbd>
+                <span>poprzedni rozdzial</span>
+              </div>
+              <div>
+                <kbd>Backspace</kbd>
+                <span>powrot do biblioteki</span>
+              </div>
+              <div>
+                <kbd>[</kbd>
+                <span>mniejsza czcionka</span>
+              </div>
+              <div>
+                <kbd>]</kbd>
+                <span>wieksza czcionka</span>
+              </div>
+              <div>
+                <kbd>← →</kbd>
+                <span>zmiana strony</span>
+              </div>
             </div>
           </div>
         )}
@@ -2999,7 +3067,8 @@ export default function Reader({
                       </p>
                       <p className="poly-loading-hint">
                         Ekran pozostaje aktywny podczas generowania. Jesli API
-                        utknie bez postepu, aplikacja automatycznie ponowi probe.
+                        utknie bez postepu, aplikacja automatycznie ponowi
+                        probe.
                       </p>
                       {polyRescueNote && (
                         <p

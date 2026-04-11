@@ -559,6 +559,31 @@ html, body, #root {
 
 .sb-title  { font-family: 'EB Garamond', serif; font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--txt-1); margin-bottom: 5px; }
 .sb-author { font-size: 12px; color: var(--gold); margin-bottom: 12px; }
+.sb-translate-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: rgba(192,144,80,.12);
+  border: 1px solid rgba(192,144,80,.28);
+  border-radius: 12px;
+  color: #f4ebdf;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, transform .15s;
+}
+.sb-translate-btn:hover {
+  background: rgba(192,144,80,.18);
+  border-color: rgba(192,144,80,.42);
+  color: #fff5e7;
+}
 .sb-stats  { font-size: 10px; color: var(--txt-3); letter-spacing: .1em; text-transform: uppercase; padding-bottom: 16px; border-bottom: 1px solid var(--border-soft); }
 
 .toc-label { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--txt-3); padding: 14px 18px 8px; flex-shrink: 0; }
@@ -1372,7 +1397,9 @@ html, body, #root {
   z-index: 3;
 }
 .book-card:hover .book-menu-btn { opacity: 1; }
-@media (hover: none) { .book-menu-btn { opacity: 1; } } /* always visible on touch devices */
+@media (hover: none), (pointer: coarse), (max-width: 900px) {
+  .book-menu-btn { opacity: 1; }
+} /* always visible on touch devices and narrow screens */
 .book-menu-btn:hover { color: var(--txt-1); border-color: var(--txt-2); }
 
 .book-ctx-menu {
@@ -1689,6 +1716,9 @@ html, body, #root {
   }
   .settings-menu-toolbar {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .settings-tool-desktop-only {
+    display: none;
   }
 }
 
