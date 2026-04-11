@@ -24,6 +24,7 @@ export function getToken() {
 /** Subscribe to auth state changes. Returns unsubscribe function. */
 export function onAuthChange(fn) {
   _listeners.push(fn);
+  fn(isLoggedIn());
   return () => { _listeners = _listeners.filter(f => f !== fn); };
 }
 

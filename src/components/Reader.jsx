@@ -1,7 +1,6 @@
 import {
   useState,
   useEffect,
-  useLayoutEffect,
   useRef,
   useCallback,
   useMemo,
@@ -96,13 +95,6 @@ function resetTooltipPosition(pw) {
   pw.style.removeProperty("--pw-tooltip-arrow-left");
   delete pw.dataset.tooltipPlacement;
   delete pw.dataset.tooltipPending;
-}
-
-function resetCompactTooltipLayout(pw) {
-  if (!pw) return;
-  pw.style.removeProperty("--pw-compact-left");
-  pw.style.removeProperty("--pw-compact-top");
-  pw.style.removeProperty("--pw-compact-scale");
 }
 
 function normalizeInlineText(value) {
@@ -226,13 +218,6 @@ export default function Reader({
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [fs, setFs] = useState(settings.fontSize ?? 19);
-  const [tooltipMode, setTooltipModeState] = useState(
-    settings.tooltipMode ||
-      (settings.alwaysShowTranslations ? "compact" : "click"),
-  );
-  const [tooltipMaskStrength, setTooltipMaskStrength] = useState(
-    Number(settings.tooltipMaskStrength ?? 55),
-  );
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(
     () => typeof document !== "undefined" && Boolean(document.fullscreenElement),
@@ -246,8 +231,7 @@ export default function Reader({
       ),
     [cachedLangs],
   );
-  const revealAllTranslations = tooltipMode === "compact";
-  const tooltipClickEnabled = tooltipMode === "click";
+  const tooltipClickEnabled = true;
 
   // Page state
   const [currentPage, setCurrentPage] = useState(0);
@@ -291,26 +275,14 @@ export default function Reader({
   const settingsMenuRef = useRef(null);
   const settingsToggleRef = useRef(null);
   const readerLayoutRef = useRef(null);
-  const modifierTapRef = useRef({ Control: false, Shift: false });
+  const modifierTapRef = useRef({ Shift: false });
   const ttsPagePauseModeRef = useRef(null);
-  const revealLayoutTokenRef = useRef(0);
 
-  useWakeLock(polyState === "loading");
+  useWakeLock(Boolean(bookId));
 
   useEffect(() => {
     setFs(settings.fontSize ?? 19);
   }, [settings.fontSize]);
-
-  useEffect(() => {
-    setTooltipModeState(
-      settings.tooltipMode ||
-        (settings.alwaysShowTranslations ? "compact" : "click"),
-    );
-  }, [settings.alwaysShowTranslations, settings.tooltipMode]);
-
-  useEffect(() => {
-    setTooltipMaskStrength(Number(settings.tooltipMaskStrength ?? 55));
-  }, [settings.tooltipMaskStrength]);
 
   useEffect(() => {
     function handleFullscreenChange() {
@@ -1023,98 +995,6 @@ export default function Reader({
   }, [searchMatches, activeSearchIdx, currentPage]);
 
   /* ── Keep activeLangRef in sync; save position only on explicit user lang switch ── */
-  const clearRevealAllLayout = useCallback(() => {
-    const body = chapterBodyRef.current;
-    if (!body) return;
-
-    body.querySelectorAll(".pw").forEach((pw) => {
-      resetCompactTooltipLayout(pw);
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    clearRevealAllLayout();
-
-    if (!polyMode || polyState !== "done") return;
-
-    const body = chapterBodyRef.current;
-    const scrollEl = chScrollRef.current;
-    if (!body || !scrollEl) return;
-
-    const token = ++revealLayoutTokenRef.current;
-    const laneGap = 8;
-
-    const runLayout = () => {
-      if (token !== revealLayoutTokenRef.current) return;
-      body.dataset.compactPreparing = "true";
-
-      const viewportRect = scrollEl.getBoundingClientRect();
-      const pageWidth = scrollEl.clientWidth || 1;
-      const laneMap = new Map();
-
-      body.querySelectorAll(".pw").forEach((pw) => {
-        const tooltip = pw.querySelector(".pw-original");
-        if (!tooltip) return;
-
-        resetCompactTooltipLayout(pw);
-        const pwRect = pw.getBoundingClientRect();
-        const tooltipRect = tooltip.getBoundingClientRect();
-        if (!tooltipRect.width || !tooltipRect.height) return;
-
-        const absoluteLeft =
-          pwRect.left - viewportRect.left + scrollEl.scrollLeft;
-        const pageIndex = Math.max(0, Math.floor(absoluteLeft / pageWidth));
-        const pageLeft = pageIndex * pageWidth;
-        const wordLeft = absoluteLeft - pageLeft;
-        const minLeft = 6;
-        const maxLeft = Math.max(minLeft, pageWidth - tooltipRect.width - 6);
-        const preferredLeft =
-          wordLeft + pwRect.width / 2 - tooltipRect.width / 2;
-        const clampedLeft = Math.min(
-          Math.max(preferredLeft, minLeft),
-          maxLeft,
-        );
-        const rowKey = `${pageIndex}:${Math.round(pwRect.top)}`;
-        const lanes = laneMap.get(rowKey) ?? [];
-        const startX = clampedLeft;
-        const endX = clampedLeft + tooltipRect.width;
-        let lane = lanes.findIndex((lastEnd) => startX > lastEnd + laneGap);
-        if (lane === -1) lane = lanes.length;
-        lanes[lane] = endX;
-        laneMap.set(rowKey, lanes);
-
-        const compactScale = lane === 0 ? 1 : lane === 1 ? 0.94 : 0.88;
-        const centeredTop =
-          (pwRect.height - tooltipRect.height * compactScale) / 2 -
-          lane * (tooltipRect.height * compactScale + 4);
-
-        const localLeft = pageLeft + clampedLeft - absoluteLeft;
-
-        pw.style.setProperty("--pw-compact-left", `${localLeft}px`);
-        pw.style.setProperty("--pw-compact-top", `${centeredTop}px`);
-        pw.style.setProperty("--pw-compact-scale", String(compactScale));
-      });
-
-      delete body.dataset.compactPreparing;
-    };
-
-    runLayout();
-
-    return () => {
-      revealLayoutTokenRef.current += 1;
-      delete body.dataset.compactPreparing;
-      clearRevealAllLayout();
-    };
-  }, [
-    activeLang,
-    clearRevealAllLayout,
-    currentPage,
-    fs,
-    layoutKey,
-    polyMode,
-    polyState,
-    renderedPolyHtml,
-  ]);
 
   useEffect(() => {
     activeLangRef.current = activeLang;
@@ -1270,23 +1150,11 @@ export default function Reader({
   /* ── Keyboard navigation ── */
   useEffect(() => {
     function clearModifierTap(exceptKey = "") {
-      if (exceptKey !== "Control") modifierTapRef.current.Control = false;
       if (exceptKey !== "Shift") modifierTapRef.current.Shift = false;
     }
 
     function onKey(e) {
       if (isShortcutTargetBlocked(e.target)) return;
-
-      const isStandaloneControl =
-        !e.repeat &&
-        e.key === "Control" &&
-        !e.altKey &&
-        !e.metaKey &&
-        !e.shiftKey;
-      if (isStandaloneControl) {
-        modifierTapRef.current.Control = true;
-        return;
-      }
 
       const isStandaloneShift =
         !e.repeat && e.key === "Shift" && !e.altKey && !e.metaKey && !e.ctrlKey;
@@ -1395,16 +1263,6 @@ export default function Reader({
     function onKeyUp(e) {
       if (isShortcutTargetBlocked(e.target)) return;
 
-      if (e.key === "Control") {
-        const shouldToggle = modifierTapRef.current.Control;
-        modifierTapRef.current.Control = false;
-        if (shouldToggle) {
-          e.preventDefault();
-          cycleTranslationReveal();
-        }
-        return;
-      }
-
       if (e.key === "Shift") {
         const shouldCycle = modifierTapRef.current.Shift;
         modifierTapRef.current.Shift = false;
@@ -1433,7 +1291,6 @@ export default function Reader({
     chapterCount,
     chapterIdx,
     cycleChapterVersion,
-    cycleTranslationReveal,
     handleBackToLibrary,
     nextPage,
     nextChapterDirect,
@@ -1446,7 +1303,6 @@ export default function Reader({
     prevPage,
     prevChapter,
     jumpCurrentTts,
-    tooltipMode,
     toggleCurrentTts,
     toggleFullscreen,
   ]);
@@ -1559,44 +1415,6 @@ export default function Reader({
     });
   }
 
-  function setTooltipMode(nextModeOrUpdater) {
-    setTooltipModeState((current) => {
-      const nextMode =
-        typeof nextModeOrUpdater === "function"
-          ? nextModeOrUpdater(current)
-          : nextModeOrUpdater;
-
-      if (!["off", "click", "compact"].includes(nextMode)) return current;
-      if (nextMode === current) return current;
-
-      if (nextMode !== "click" && openPwRef.current) {
-        clearTimeout(tooltipTimerRef.current);
-        openPwRef.current.classList.remove("open");
-        resetTooltipPosition(openPwRef.current);
-        openPwRef.current = null;
-      }
-
-      void onUpdateSetting?.("tooltipMode", nextMode);
-      void onUpdateSetting?.(
-        "alwaysShowTranslations",
-        nextMode === "compact",
-      );
-      return nextMode;
-    });
-  }
-
-  function cycleTranslationReveal() {
-    setTooltipMode((current) =>
-      current === "compact" ? "click" : "compact",
-    );
-  }
-
-  function updateTooltipMaskStrength(nextValue) {
-    const clamped = Math.max(0, Math.min(100, Number(nextValue) || 0));
-    setTooltipMaskStrength(clamped);
-    void onUpdateSetting?.("tooltipMaskStrength", clamped);
-  }
-
   function changeFontSize(delta) {
     setFs((current) => {
       const next = Math.max(
@@ -1633,6 +1451,17 @@ export default function Reader({
     setSearchOpen(false);
     setBookmarkMenuOpen(false);
     setSettingsMenuOpen(false);
+  }
+
+  function handlePageSliderChange(e) {
+    const nextPage = Number(e.target.value);
+    if (!Number.isFinite(nextPage)) return;
+    goToPage(nextPage, { animate: false });
+    void persistPosition();
+  }
+
+  function handlePageSliderCommit() {
+    void persistPosition({ immediate: true });
   }
 
   function requestGenerate() {
@@ -2382,17 +2211,6 @@ export default function Reader({
     [visibleBookmarks],
   );
   const currentChapterHref = (chapter?.href || "").split("#")[0];
-  const compactTooltipStyle = useMemo(() => {
-    const strength = Math.max(0, Math.min(100, tooltipMaskStrength));
-    const textOpacity = 0.58 - (strength / 100) * 0.38;
-    const blurPx = 0.4 + (strength / 100) * 3.2;
-    const bgAlpha = 0.52 + (strength / 100) * 0.28;
-    return {
-      "--pw-mask-text-opacity": String(Math.max(0.12, textOpacity)),
-      "--pw-mask-blur": `${blurPx.toFixed(2)}px`,
-      "--pw-compact-bg-alpha": bgAlpha.toFixed(2),
-    };
-  }, [tooltipMaskStrength]);
   const tocItems = navigableTocItems(toc);
 
   if (!book && !chapterLoading) {
@@ -2540,31 +2358,6 @@ export default function Reader({
           </div>
           <div className="tb-controls">
             <button
-              className={`ctl${searchOpen ? " ctl-active" : ""}`}
-              onClick={() => {
-                setSearchOpen((open) => !open);
-                setBookmarkMenuOpen(false);
-                setSettingsMenuOpen(false);
-                setShortcutsOpen(false);
-              }}
-              title="Szukaj w rozdziale (J)"
-            >
-              Szukaj
-            </button>
-            <button
-              ref={bookmarkToggleRef}
-              className={`ctl${bookmarkMenuOpen || currentPageBookmarks.length ? " ctl-active" : ""}`}
-              onClick={() => {
-                setBookmarkMenuOpen((open) => !open);
-                setSearchOpen(false);
-                setSettingsMenuOpen(false);
-                setShortcutsOpen(false);
-              }}
-              title="Zakladki (Z)"
-            >
-              Zakladki
-            </button>
-            <button
               ref={settingsToggleRef}
               className={`ctl ctl-icon${settingsMenuOpen ? " ctl-active" : ""}`}
               onClick={() => {
@@ -2576,18 +2369,6 @@ export default function Reader({
               title="Ustawienia"
             >
               ⚙
-            </button>
-            <button
-              className={`ctl ctl-icon${shortcutsOpen ? " ctl-active" : ""}`}
-              onClick={() => {
-                setShortcutsOpen((open) => !open);
-                setSearchOpen(false);
-                setBookmarkMenuOpen(false);
-                setSettingsMenuOpen(false);
-              }}
-              title="Skroty (?)"
-            >
-              ?
             </button>
           </div>
         </div>
@@ -2769,6 +2550,46 @@ export default function Reader({
         {settingsMenuOpen && (
           <div className="settings-menu" ref={settingsMenuRef}>
             <div className="settings-menu-row">
+              <span className="settings-menu-label">Szukaj</span>
+              <div className="settings-menu-ctrl">
+                <button
+                  className={`ctl${searchOpen ? " ctl-active" : ""}`}
+                  onClick={() => {
+                    if (searchOpen) {
+                      setSearchOpen(false);
+                      setSettingsMenuOpen(false);
+                      return;
+                    }
+                    openSearchPanel();
+                  }}
+                  title="Szukaj w rozdziale (J)"
+                >
+                  {searchOpen ? "Ukryj" : "Otworz"}
+                </button>
+              </div>
+            </div>
+            <div className="settings-menu-row">
+              <span className="settings-menu-label">Zakladki</span>
+              <div className="settings-menu-ctrl">
+                <button
+                  ref={bookmarkToggleRef}
+                  className={`ctl${bookmarkMenuOpen || currentPageBookmarks.length ? " ctl-active" : ""}`}
+                  onClick={() => {
+                    if (bookmarkMenuOpen) {
+                      setBookmarkMenuOpen(false);
+                      setSettingsMenuOpen(false);
+                      return;
+                    }
+                    openBookmarksPanel();
+                  }}
+                  title="Zakladki (Z)"
+                >
+                  {bookmarkMenuOpen ? "Ukryj" : "Otworz"}
+                </button>
+              </div>
+            </div>
+            <div className="settings-menu-divider" />
+            <div className="settings-menu-row">
               <span className="settings-menu-label">Czcionka</span>
               <div className="settings-menu-ctrl">
                 <button
@@ -2784,47 +2605,6 @@ export default function Reader({
                 >
                   A+
                 </button>
-              </div>
-            </div>
-            <div className="settings-menu-row">
-              <span className="settings-menu-label">Dymki</span>
-              <div className="settings-menu-ctrl">
-                <button
-                  className={`ctl${tooltipMode === "off" ? " ctl-active" : ""}`}
-                  onClick={() => setTooltipMode("off")}
-                  title="Ukryj dymki"
-                >
-                  Off
-                </button>
-                <button
-                  className={`ctl${tooltipMode === "click" ? " ctl-active" : ""}`}
-                  onClick={() => setTooltipMode("click")}
-                  title="Pokazuj po kliknieciu"
-                >
-                  Klik
-                </button>
-                <button
-                  className={`ctl${tooltipMode === "compact" ? " ctl-active" : ""}`}
-                  onClick={() => setTooltipMode("compact")}
-                  title="Zwarty overlay dymkow (Control)"
-                >
-                  Compact
-                </button>
-              </div>
-            </div>
-            <div className="settings-menu-row settings-menu-row-stack">
-              <span className="settings-menu-label">Maska slowa</span>
-              <div className="settings-menu-slider">
-                <input
-                  className="settings-range"
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={tooltipMaskStrength}
-                  onChange={(e) => updateTooltipMaskStrength(e.target.value)}
-                />
-                <span className="settings-range-val">{tooltipMaskStrength}%</span>
               </div>
             </div>
             <div className="settings-menu-row">
@@ -3018,7 +2798,6 @@ export default function Reader({
               </button>
             </div>
             <div className="shortcuts-grid">
-              <div><kbd>Control</kbd><span>klik / compact</span></div>
               <div><kbd>Shift</kbd><span>oryginal / tlumaczenie</span></div>
               <div><kbd>?</kbd><span>pokaz te sciage</span></div>
               <div><kbd>Space</kbd><span>play / pause TTS</span></div>
@@ -3226,8 +3005,7 @@ export default function Reader({
                     <div
                       key={activeLang}
                       ref={chapterBodyRef}
-                      className={`ch-body ch-anim${polyWordFragments.length ? " tts-ready" : ""}${ttsPlaying ? " audio-ready" : ""}${revealAllTranslations ? " reveal-all" : ""}${tooltipMode === "off" ? " hide-tooltips" : ""}`}
-                      style={compactTooltipStyle}
+                      className={`ch-body ch-anim${polyWordFragments.length ? " tts-ready" : ""}${ttsPlaying ? " audio-ready" : ""}`}
                       dangerouslySetInnerHTML={{
                         __html: renderedPolyHtml,
                       }}
@@ -3335,6 +3113,21 @@ export default function Reader({
               <div className="prog-lbl">
                 {currentPage + 1}/{totalPages}
               </div>
+              <input
+                className="page-slider"
+                type="range"
+                min="0"
+                max={Math.max(totalPages - 1, 0)}
+                step="1"
+                value={Math.min(currentPage, Math.max(totalPages - 1, 0))}
+                disabled={totalPages <= 1}
+                aria-label="Przesun do strony"
+                onChange={handlePageSliderChange}
+                onPointerUp={handlePageSliderCommit}
+                onMouseUp={handlePageSliderCommit}
+                onTouchEnd={handlePageSliderCommit}
+                onKeyUp={handlePageSliderCommit}
+              />
             </div>
           )}
 

@@ -18,9 +18,6 @@ const DEFAULTS = {
   targetLangFlag: '🇪🇸',
   polyglotModel: 'deepseek-chat',
   fontSize: 19,
-  alwaysShowTranslations: false,
-  tooltipMode: 'click',
-  tooltipMaskStrength: 55,
   syncIntervalMinutes: 30,
   ttsMode: 'mixed',
   ttsVoiceName: '',        // SpeechSynthesisVoice.name for pl-PL, '' = auto

@@ -993,9 +993,9 @@ html, body, #root {
 
 /* Bottom nav */
 .bottombar {
-  height: 58px; border-top: 1px solid var(--border-soft);
+  min-height: 64px; border-top: 1px solid var(--border-soft);
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 40px; flex-shrink: 0; gap: 16px;
+  padding: 6px 40px; flex-shrink: 0; gap: 16px;
 }
 .nav-btn {
   display: flex; align-items: center; gap: 8px;
@@ -1007,10 +1007,26 @@ html, body, #root {
 }
 .nav-btn:hover:not(:disabled) { border-color: var(--txt-2); color: var(--txt-1); }
 .nav-btn:disabled { opacity: .2; cursor: default; }
-.prog-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.prog-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
 .prog-lbl { font-size: 10.5px; color: var(--txt-3); letter-spacing: .1em; }
 .prog-track { width: 100%; max-width: 280px; height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; }
 .prog-fill { height: 100%; background: var(--gold); border-radius: 1px; transition: width .35s ease; }
+.page-slider {
+  width: min(320px, 100%);
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+.page-slider:disabled {
+  cursor: default;
+  opacity: .4;
+}
 
 /* ════════════════ POLYGLOT WORDS ════════════════ */
 
@@ -1089,61 +1105,6 @@ html, body, #root {
   visibility: hidden;
 }
 .pw.open .pw-target { background: rgba(192,144,80,.22); border-bottom-color: rgba(192,144,80,.5); }
-
-.ch-body.hide-tooltips .pw-original { display: none !important; }
-.ch-body[data-compact-preparing="true"] .pw,
-.ch-body.reveal-all .pw {
-  isolation: isolate;
-}
-.ch-body[data-compact-preparing="true"] .pw-original,
-.ch-body.reveal-all .pw-original {
-  display: block !important;
-  position: absolute;
-  top: var(--pw-compact-top, 0px);
-  left: var(--pw-compact-left, 0px);
-  transform: scale(var(--pw-compact-scale, 1));
-  transform-origin: center center;
-  max-width: min(16ch, calc(100vw - 32px));
-  padding: 2px 8px 3px;
-  border-radius: 4px;
-  border: 1px solid rgba(192,144,80,.24);
-  border-bottom-color: rgba(192,144,80,.34);
-  font-size: .65em;
-  font-family: inherit;
-  color: rgba(238,225,200,.9);
-  line-height: 1.12;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  text-wrap: balance;
-  z-index: 2;
-  box-shadow: none;
-  background:
-    linear-gradient(
-      180deg,
-      rgba(64,52,37,var(--pw-compact-bg-alpha, .9)) 0%,
-      rgba(41,34,25,var(--pw-compact-bg-alpha, .9)) 100%
-    );
-}
-.ch-body[data-compact-preparing="true"] .pw-original {
-  visibility: hidden;
-}
-.ch-body[data-compact-preparing="true"] .pw-original::after,
-.ch-body.reveal-all .pw-original::after {
-  display: none;
-}
-.ch-body.reveal-all .pw-target {
-  background: rgba(192,144,80,.06) !important;
-  border-bottom-color: rgba(192,144,80,.14) !important;
-  color: rgba(206,196,178,var(--pw-mask-text-opacity, .28)) !important;
-  opacity: 1;
-  filter: blur(var(--pw-mask-blur, 2.1px)) saturate(.7);
-}
-.ch-body.reveal-all .pw:hover .pw-target,
-.ch-body.reveal-all .pw.open .pw-target {
-  background: rgba(192,144,80,.06) !important;
-  border-bottom-color: rgba(192,144,80,.14) !important;
-}
-
 
 /* ════════════════ POLYGLOT LOADING ════════════════ */
 
@@ -1352,7 +1313,7 @@ html, body, #root {
     width: calc(100% - 24px);
   }
   .ch-inner  { padding-left: 18px; padding-right: 18px; }
-  .bottombar { padding: 0 12px; }
+  .bottombar { padding: 6px 12px; }
   .nav-btn span { display: none; }
   .lib-header { width: calc(100% - 36px); padding: 14px 0; }
   .lib-body   { padding: 24px 18px 48px; }
@@ -1662,7 +1623,11 @@ html, body, #root {
   top: 52px;
   z-index: 205;
   width: min(420px, calc(100% - 24px));
+  max-height: min(78vh, calc(100dvh - 76px));
+  display: flex;
+  flex-direction: column;
   padding: 14px;
+  overflow: hidden;
   background: linear-gradient(180deg, #1f1a16, #171411);
   border: 1px solid rgba(255,255,255,.08);
   border-radius: 16px;
@@ -1679,6 +1644,9 @@ html, body, #root {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 .shortcuts-grid div {
   display: flex;
