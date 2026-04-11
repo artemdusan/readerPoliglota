@@ -165,6 +165,7 @@ export default function Reader({
   const userChangedLangRef = useRef(false); // true only when user explicitly switched lang
   const currentPageRef = useRef(0);
   const totalPagesRef = useRef(1);
+  const scrollRetryTokenRef = useRef(0); // incremented each layout to cancel stale retries
   const flippingRef = useRef(false);
   const pageTurnTimerRef = useRef(null);
   const desiredLangRef = useRef(null); // lang to carry over when changing chapter
@@ -535,6 +536,7 @@ export default function Reader({
         totalPagesRef.current = total;
         setTotalPages(total);
 
+        let finalPage;
         if (pendingProgressRef.current !== null) {
           // Initial load or chapter navigation — restore saved progress (device-independent)
           const restoreProgress = pendingProgressRef.current;
@@ -547,6 +549,16 @@ export default function Reader({
           // we see a multi-page layout, otherwise they get collapsed to page 1.
           if (restoreProgress === 0 || total > 1) {
             pendingProgressRef.current = null;
+          } else {
+            // total=1 but we have pending progress: the multi-column layout
+            // may not have been computed yet (iOS Safari lazy compositing).
+            // Schedule a fallback re-layout after the animation frame budget.
+            const token = ++scrollRetryTokenRef.current;
+            setTimeout(() => {
+              if (scrollRetryTokenRef.current === token && pendingProgressRef.current !== null) {
+                setLayoutKey((k) => k + 1);
+              }
+            }, 250);
           }
           setCurrentPage(targetPage);
           currentPageRef.current = targetPage;
@@ -554,6 +566,7 @@ export default function Reader({
           // Pass pw so scrollLeft uses the same column width that was applied
           // in the first rAF — avoids mismatch if clientWidth changed meanwhile.
           syncPageViewport(targetPage, pw);
+          finalPage = targetPage;
         } else {
           // Re-layout only (font change or polyMode switch) — keep current page
           const cur = Math.min(currentPageRef.current, total - 1);
@@ -563,7 +576,26 @@ export default function Reader({
           }
           inner.style.transition = "";
           syncPageViewport(cur, pw);
+          finalPage = cur;
         }
+
+        // Retry loop: iOS Safari can silently clamp scrollLeft to 0 when the
+        // compositing layer (will-change:transform) hasn't settled yet, or when
+        // scrollWidth was wrong (total=1 scenario above).  Re-apply up to 8
+        // frames (~133ms) until the value sticks or the user navigates away.
+        const expectedLeft = Math.max(0, finalPage) * pw;
+        const retryToken = ++scrollRetryTokenRef.current;
+        let attempts = 8;
+        const retryScroll = () => {
+          if (!attempts-- || scrollRetryTokenRef.current !== retryToken) return;
+          const c = chScrollRef.current;
+          if (!c || currentPageRef.current !== finalPage) return;
+          if (Math.abs(c.scrollLeft - expectedLeft) > 2) {
+            c.scrollLeft = expectedLeft;
+            requestAnimationFrame(retryScroll);
+          }
+        };
+        requestAnimationFrame(retryScroll);
       });
     });
   }, [

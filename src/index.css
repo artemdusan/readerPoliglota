@@ -688,8 +688,11 @@ html, body, #root {
 .ch-columns { height: 100%; column-gap: 0; will-change: transform; }
 .ch-inner { max-width: 668px; margin: 0 auto; padding: 24px 0 48px; }
 .ch-body p:empty { display: none; }
-.ch-anim { opacity: 1; animation: riseup .22s ease both; }
-@keyframes riseup { from { transform: translateY(8px); } to { transform: none; } }
+.ch-anim { animation: riseup .22s ease both; }
+/* Use opacity-only fade — a translateY here creates a nested compositing context
+   inside .ch-columns (will-change:transform) which causes iOS Safari to report
+   incorrect scrollWidth during the animation, breaking the initial position restore. */
+@keyframes riseup { from { opacity: 0; } to { opacity: 1; } }
 
 .ch-title {
   font-family: 'EB Garamond', serif;
