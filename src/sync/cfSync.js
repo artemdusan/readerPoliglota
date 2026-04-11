@@ -44,6 +44,7 @@ function toRemoteData(local) {
     chapterIndex: local.chapterIndex,
     scrollTop:    local.progress   ?? 0,
     activeLang:   local.activeLang ?? null,
+    bookmarks:    Array.isArray(local.bookmarks) ? local.bookmarks : [],
     sentenceIdx:  local.sentenceIdx ?? -1,
     updatedAt:    local.updatedAt  ?? Date.now(),
   };
@@ -55,7 +56,10 @@ async function applyRemote(remote) {
     remote.chapterIndex,
     remote.scrollTop   ?? 0,
     remote.activeLang  ?? null,
-    remote.sentenceIdx ?? -1,
+    {
+      bookmarks: remote.bookmarks ?? [],
+      updatedAt: remote.updatedAt ?? Date.now(),
+    },
   );
 }
 

@@ -1,6 +1,8 @@
 -- Run once: wrangler d1 execute reader-db --file=schema.sql --remote
 -- Migration (run separately if DB already exists):
 --   wrangler d1 execute reader-db --command="ALTER TABLE book_manifest ADD COLUMN chapter_count INTEGER NOT NULL DEFAULT 0" --remote
+--   wrangler d1 execute reader-db --command="ALTER TABLE reading_positions ADD COLUMN active_lang TEXT" --remote
+--   wrangler d1 execute reader-db --command="ALTER TABLE reading_positions ADD COLUMN bookmarks_json TEXT NOT NULL DEFAULT '[]'" --remote
 
 CREATE TABLE IF NOT EXISTS users (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,6 +27,8 @@ CREATE TABLE IF NOT EXISTS reading_positions (
   book_id      TEXT    NOT NULL,
   chapter_idx  INTEGER NOT NULL DEFAULT 0,
   scroll_top   REAL    NOT NULL DEFAULT 0,
+  active_lang  TEXT,
+  bookmarks_json TEXT  NOT NULL DEFAULT '[]',
   poly_mode    INTEGER NOT NULL DEFAULT 0,  -- 0/1 boolean
   sentence_idx INTEGER NOT NULL DEFAULT -1,
   updated_at   INTEGER NOT NULL,

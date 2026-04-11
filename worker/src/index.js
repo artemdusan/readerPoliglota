@@ -67,6 +67,16 @@ function err(msg, status = 400) {
   return json({ error: msg }, status);
 }
 
+function parseBookmarksJson(value) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function normalizeAuthIdentifier(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -421,6 +431,7 @@ async function handleDeleteBook(request, env, userId, bookId) {
 async function handleGetProgress(env, userId) {
   const { results } = await env.DB.prepare(
     `SELECT rp.book_id as bookId, rp.chapter_idx as chapterIndex, rp.scroll_top as scrollTop,
+            rp.active_lang as activeLang, rp.bookmarks_json as bookmarksJson,
             rp.poly_mode as polyMode, rp.sentence_idx as sentenceIdx, rp.updated_at as updatedAt
      FROM reading_positions rp
      LEFT JOIN book_manifest bm
@@ -429,23 +440,46 @@ async function handleGetProgress(env, userId) {
      WHERE rp.user_id = ?
        AND (bm.book_id IS NULL OR bm.deleted_at IS NULL)`,
   ).bind(userId).all();
-  return json(results);
+  return json(results.map(row => {
+    const { bookmarksJson, ...rest } = row;
+    return {
+      ...rest,
+      activeLang: typeof row.activeLang === 'string' && row.activeLang ? row.activeLang : null,
+      bookmarks: parseBookmarksJson(bookmarksJson),
+    };
+  }));
 }
 
 async function handleUpsertProgress(request, env, userId, bookId) {
-  const { chapterIndex = 0, scrollTop = 0, polyMode = false, sentenceIdx = -1, updatedAt } =
-    await request.json().catch(() => ({}));
+  const body = await request.json().catch(() => ({}));
+  const {
+    chapterIndex = 0,
+    scrollTop = 0,
+    polyMode = false,
+    sentenceIdx = -1,
+    updatedAt,
+  } = body;
+  const activeLang =
+    typeof body.activeLang === 'string' && body.activeLang.trim()
+      ? body.activeLang.trim()
+      : null;
+  const bookmarks = Array.isArray(body.bookmarks) ? body.bookmarks : [];
 
   await env.DB.prepare(
-    `INSERT INTO reading_positions (user_id, book_id, chapter_idx, scroll_top, poly_mode, sentence_idx, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO reading_positions (
+       user_id, book_id, chapter_idx, scroll_top, active_lang,
+       bookmarks_json, poly_mode, sentence_idx, updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (user_id, book_id) DO UPDATE SET
        chapter_idx = excluded.chapter_idx, scroll_top = excluded.scroll_top,
+       active_lang = excluded.active_lang, bookmarks_json = excluded.bookmarks_json,
        poly_mode = excluded.poly_mode, sentence_idx = excluded.sentence_idx,
        updated_at = excluded.updated_at`,
   ).bind(
     userId, bookId,
-    chapterIndex, scrollTop, polyMode ? 1 : 0, sentenceIdx,
+    chapterIndex, scrollTop, activeLang, JSON.stringify(bookmarks),
+    polyMode ? 1 : 0, sentenceIdx,
     updatedAt || Date.now(),
   ).run();
 

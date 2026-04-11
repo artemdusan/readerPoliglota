@@ -19,7 +19,7 @@ import {
   estimatePolyglotGeneration,
 } from "../lib/polyglotApi";
 import { isLoggedIn } from "../sync/cfAuth";
-import { triggerSync } from "../sync/cfSync";
+import { triggerSync, syncBook } from "../sync/cfSync";
 import { parseStoredPolyglot } from "../lib/polyglotParser";
 import { annotateParagraphsInHtml } from "../lib/sentenceWrapper";
 import { extractPolyglotTtsData, SentenceTtsPlayer } from "../lib/ttsFragments";
@@ -30,6 +30,14 @@ const LANGUAGE_META = Object.fromEntries(
 const LANGUAGE_ORDER = new Map(
   LANGUAGES.map((lang, index) => [lang.code, index]),
 );
+const BOOKMARK_COLORS = [
+  { id: "gold", label: "Zlota", dot: "#c09050" },
+  { id: "green", label: "Zielona", dot: "#7aaf7a" },
+  { id: "blue", label: "Niebieska", dot: "#6f93d6" },
+  { id: "rose", label: "Rozowa", dot: "#d07c78" },
+  { id: "plum", label: "Sliwkowa", dot: "#9a78c8" },
+];
+const SEARCH_BLOCK_SELECTOR = "p, h1, h2, h3, h4, h5, h6, li";
 
 /* ═══════════════════════════════════════════
    Helpers
@@ -78,6 +86,56 @@ function resetTooltipPosition(pw) {
   pw.style.removeProperty("--pw-tooltip-top");
   pw.style.removeProperty("--pw-tooltip-arrow-left");
   delete pw.dataset.tooltipPlacement;
+}
+
+function normalizeInlineText(value) {
+  return (value || "").replace(/\s+/g, " ").trim();
+}
+
+function buildSearchSnippet(text, query) {
+  const normalizedText = normalizeInlineText(text);
+  const normalizedQuery = normalizeInlineText(query).toLowerCase();
+  if (!normalizedText || !normalizedQuery) return normalizedText;
+
+  const idx = normalizedText.toLowerCase().indexOf(normalizedQuery);
+  if (idx === -1) return normalizedText.slice(0, 120);
+
+  const start = Math.max(0, idx - 36);
+  const end = Math.min(
+    normalizedText.length,
+    idx + normalizedQuery.length + 56,
+  );
+  return `${start > 0 ? "..." : ""}${normalizedText.slice(start, end)}${
+    end < normalizedText.length ? "..." : ""
+  }`;
+}
+
+function getBookmarkPageIndex(bookmark, totalPages) {
+  if (!totalPages || totalPages <= 1) return 0;
+  return Math.max(
+    0,
+    Math.min(
+      totalPages - 1,
+      Math.round((bookmark?.progress ?? 0) * (totalPages - 1)),
+    ),
+  );
+}
+
+function formatBookmarkPage(bookmark) {
+  if (
+    Number.isFinite(bookmark?.page) &&
+    Number.isFinite(bookmark?.totalPages) &&
+    bookmark.totalPages > 0
+  ) {
+    return `${bookmark.page + 1}/${bookmark.totalPages}`;
+  }
+  return `${Math.round(((bookmark?.progress ?? 0) + Number.EPSILON) * 100)}%`;
+}
+
+function getBookmarkColorMeta(colorId) {
+  return (
+    BOOKMARK_COLORS.find((color) => color.id === colorId) || BOOKMARK_COLORS[0]
+  );
 }
 
 /* ═══════════════════════════════════════════
@@ -132,6 +190,12 @@ export default function Reader({
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toolbarVisible, setToolbarVisible] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMatches, setSearchMatches] = useState([]);
+  const [activeSearchIdx, setActiveSearchIdx] = useState(0);
+  const [bookmarkMenuOpen, setBookmarkMenuOpen] = useState(false);
+  const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [fs, setFs] = useState(settings.fontSize ?? 19);
 
@@ -171,6 +235,9 @@ export default function Reader({
   const desiredLangRef = useRef(null); // lang to carry over when changing chapter
   const originalTtsPlayerRef = useRef(null);
   const ttsAutoStartRef = useRef(null); // 'original' | 'hybrid' | null
+  const searchInputRef = useRef(null);
+  const bookmarkMenuRef = useRef(null);
+  const bookmarkToggleRef = useRef(null);
   const settingsMenuRef = useRef(null);
   const settingsToggleRef = useRef(null);
 
@@ -329,6 +396,7 @@ export default function Reader({
       setChapterCount(b.chapterCount || 0);
       const pos = await getReadingPosition(bookId);
       setChapterIdx(pos?.chapterIndex ?? 0);
+      setBookmarks(pos?.bookmarks ?? []);
       // Build href → chapterIndex map for TOC badges
       const chs = await db.chapters.where("bookId").equals(bookId).toArray();
       const map = {};
@@ -352,6 +420,9 @@ export default function Reader({
     setPolyHtml("");
     setPolyError("");
     setPolyRescueNote("");
+    setSearchQuery("");
+    setSearchMatches([]);
+    setActiveSearchIdx(0);
     clearTimeout(tooltipTimerRef.current);
     resetTooltipPosition(openPwRef.current);
     openPwRef.current = null;
@@ -677,6 +748,76 @@ export default function Reader({
     [bookId, getCurrentProgress],
   );
 
+  const getElementPage = useCallback((element) => {
+    const scrollEl = chScrollRef.current;
+    if (!scrollEl || !element) return 0;
+
+    const pw = scrollEl.clientWidth || 1;
+    const containerRect = scrollEl.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    const absoluteLeft =
+      elementRect.left - containerRect.left + scrollEl.scrollLeft;
+
+    return Math.max(
+      0,
+      Math.min(totalPagesRef.current - 1, Math.floor(absoluteLeft / pw)),
+    );
+  }, []);
+
+  const getPagePreview = useCallback(
+    (page = currentPageRef.current) => {
+      const body = chapterBodyRef.current;
+      if (!body) return "";
+
+      const blocks = [...body.querySelectorAll(SEARCH_BLOCK_SELECTOR)];
+      for (const block of blocks) {
+        if (block.closest(".pw-original")) continue;
+        const text = normalizeInlineText(block.textContent || "");
+        if (!text) continue;
+        if (getElementPage(block) === page) return text.slice(0, 140);
+      }
+
+      return "";
+    },
+    [getElementPage],
+  );
+
+  const persistBookmarks = useCallback(
+    async (nextBookmarks) => {
+      if (!bookId || chapterIdxRef.current === null || chapterIdxRef.current === undefined) {
+        return;
+      }
+
+      setBookmarks(nextBookmarks);
+      await saveReadingPosition(
+        bookId,
+        chapterIdxRef.current,
+        getCurrentProgress(),
+        activeLangRef.current,
+        { bookmarks: nextBookmarks },
+      );
+
+      if (isLoggedIn()) {
+        void syncBook(bookId);
+      }
+    },
+    [bookId, getCurrentProgress],
+  );
+
+  const clearSearchHighlights = useCallback(() => {
+    const body = chapterBodyRef.current;
+    if (!body) return;
+
+    body
+      .querySelectorAll(".search-hit-block, .search-hit-active")
+      .forEach((el) =>
+        el.classList.remove("search-hit-block", "search-hit-active"),
+      );
+    body
+      .querySelectorAll("[data-search-block-id]")
+      .forEach((el) => el.removeAttribute("data-search-block-id"));
+  }, []);
+
   /* ── Re-sync viewport when app returns from background (visibilitychange / pageshow) ──
      On mobile browsers (especially iOS Safari) scrollLeft on overflow:hidden elements
      can be silently reset to 0 when the PWA is backgrounded and then brought back.
@@ -701,6 +842,106 @@ export default function Reader({
       window.removeEventListener("pageshow", resync);
     };
   }, []);
+
+  useEffect(() => {
+    function handleSynced() {
+      if (!bookId) return;
+      getReadingPosition(bookId).then((pos) => {
+        setBookmarks(pos?.bookmarks ?? []);
+      });
+    }
+
+    window.addEventListener("vocabapp:synced", handleSynced);
+    return () => window.removeEventListener("vocabapp:synced", handleSynced);
+  }, [bookId]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const timer = window.setTimeout(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [searchOpen, chapter?.id, activeLang]);
+
+  useEffect(() => {
+    clearSearchHighlights();
+
+    const normalizedQuery = normalizeInlineText(searchQuery);
+    if (!searchOpen || !normalizedQuery) {
+      setSearchMatches([]);
+      setActiveSearchIdx(0);
+      return;
+    }
+
+    const body = chapterBodyRef.current;
+    if (!body) {
+      setSearchMatches([]);
+      setActiveSearchIdx(0);
+      return;
+    }
+
+    const nextMatches = [];
+    let blockId = 0;
+    for (const block of body.querySelectorAll(SEARCH_BLOCK_SELECTOR)) {
+      if (block.closest(".pw-original")) continue;
+
+      const text = normalizeInlineText(block.textContent || "");
+      if (!text) continue;
+
+      const lowerText = text.toLowerCase();
+      const lowerQuery = normalizedQuery.toLowerCase();
+      const firstIdx = lowerText.indexOf(lowerQuery);
+      if (firstIdx === -1) continue;
+
+      let count = 0;
+      let scanIdx = firstIdx;
+      while (scanIdx !== -1) {
+        count += 1;
+        scanIdx = lowerText.indexOf(lowerQuery, scanIdx + lowerQuery.length);
+      }
+
+      const blockKey = String(blockId++);
+      block.dataset.searchBlockId = blockKey;
+      block.classList.add("search-hit-block");
+      nextMatches.push({
+        blockId: blockKey,
+        count,
+        page: getElementPage(block),
+        preview: buildSearchSnippet(text, normalizedQuery),
+      });
+    }
+
+    setSearchMatches(nextMatches);
+    setActiveSearchIdx((current) => {
+      if (!nextMatches.length) return 0;
+      return Math.min(current, nextMatches.length - 1);
+    });
+  }, [
+    searchOpen,
+    searchQuery,
+    chapter?.id,
+    renderedPolyHtml,
+    originalHtmlAnnotated,
+    getElementPage,
+    clearSearchHighlights,
+  ]);
+
+  useEffect(() => {
+    const body = chapterBodyRef.current;
+    if (!body) return;
+
+    body
+      .querySelectorAll(".search-hit-active")
+      .forEach((el) => el.classList.remove("search-hit-active"));
+
+    const activeMatch = searchMatches[activeSearchIdx];
+    if (!activeMatch) return;
+
+    body
+      .querySelector(`[data-search-block-id="${activeMatch.blockId}"]`)
+      ?.classList.add("search-hit-active");
+  }, [searchMatches, activeSearchIdx, currentPage]);
 
   /* ── Keep activeLangRef in sync; save position only on explicit user lang switch ── */
   useEffect(() => {
@@ -761,6 +1002,88 @@ export default function Reader({
     goToPage(currentPageRef.current + 1);
   }
 
+  function goToSearchMatch(index) {
+    if (!searchMatches.length) return;
+    const nextIndex =
+      ((index % searchMatches.length) + searchMatches.length) %
+      searchMatches.length;
+    const match = searchMatches[nextIndex];
+    const target = chapterBodyRef.current?.querySelector(
+      `[data-search-block-id="${match.blockId}"]`,
+    );
+
+    if (target) {
+      goToPage(getElementPage(target), false);
+    }
+
+    setActiveSearchIdx(nextIndex);
+  }
+
+  async function addBookmark(colorId) {
+    if (!bookId || chapterIdx === null) return;
+
+    const now = Date.now();
+    const page = currentPageRef.current;
+    const currentProgress = getCurrentProgress();
+    const currentPageBookmark = bookmarks.find(
+      (bookmark) =>
+        !bookmark.deletedAt &&
+        bookmark.chapterIndex === chapterIdx &&
+        getBookmarkPageIndex(bookmark, totalPagesRef.current) === page,
+    );
+
+    const nextBookmark = {
+      id:
+        currentPageBookmark?.id ||
+        (globalThis.crypto?.randomUUID?.() ??
+          `${bookId}-${chapterIdx}-${page}-${now}`),
+      chapterIndex: chapterIdx,
+      chapterTitle: chapterLabel,
+      color: colorId,
+      progress: currentProgress,
+      page,
+      totalPages: totalPagesRef.current,
+      preview: getPagePreview(page),
+      createdAt: currentPageBookmark?.createdAt ?? now,
+      updatedAt: now,
+      deletedAt: null,
+    };
+
+    const nextBookmarks = currentPageBookmark
+      ? bookmarks.map((bookmark) =>
+          bookmark.id === currentPageBookmark.id ? nextBookmark : bookmark,
+        )
+      : [...bookmarks, nextBookmark];
+
+    await persistBookmarks(nextBookmarks);
+    setBookmarkMenuOpen(false);
+  }
+
+  async function removeBookmark(bookmarkId) {
+    const now = Date.now();
+    const nextBookmarks = bookmarks.map((bookmark) =>
+      bookmark.id === bookmarkId
+        ? { ...bookmark, deletedAt: now, updatedAt: now }
+        : bookmark,
+    );
+
+    await persistBookmarks(nextBookmarks);
+  }
+
+  function jumpToBookmark(bookmark) {
+    if (!bookmark) return;
+
+    if (bookmark.chapterIndex === chapterIdx) {
+      goToPage(getBookmarkPageIndex(bookmark, totalPagesRef.current), false);
+      void persistPosition({ immediate: true, progress: bookmark.progress });
+    } else {
+      navigate(bookmark.chapterIndex, { progressOverride: bookmark.progress });
+    }
+
+    setBookmarkMenuOpen(false);
+    setSearchOpen(false);
+  }
+
   /* ── Font size sync ── */
   useEffect(() => {
     document.documentElement.style.setProperty("--fs", fs + "px");
@@ -781,6 +1104,8 @@ export default function Reader({
       }
       if (e.key === "Escape") {
         setSidebarOpen(false);
+        setSearchOpen(false);
+        setBookmarkMenuOpen(false);
         setSettingsMenuOpen(false);
       }
     }
@@ -804,6 +1129,22 @@ export default function Reader({
     document.addEventListener("mousedown", onOutside);
     return () => document.removeEventListener("mousedown", onOutside);
   }, [settingsMenuOpen]);
+
+  useEffect(() => {
+    if (!bookmarkMenuOpen) return;
+    function onOutside(e) {
+      if (
+        bookmarkMenuRef.current &&
+        !bookmarkMenuRef.current.contains(e.target) &&
+        bookmarkToggleRef.current &&
+        !bookmarkToggleRef.current.contains(e.target)
+      ) {
+        setBookmarkMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [bookmarkMenuOpen]);
 
   function navigate(idx, options = {}) {
     if (chapterIdx === null) return;
@@ -1476,6 +1817,30 @@ export default function Reader({
         : "Łączenie z API…";
   const chapterLabel =
     chapter?.title?.trim() || `Rozdzia\u0142 ${(chapterIdx ?? 0) + 1}`;
+  const visibleBookmarks = useMemo(
+    () => bookmarks.filter((bookmark) => !bookmark.deletedAt),
+    [bookmarks],
+  );
+  const currentPageBookmarks = useMemo(
+    () =>
+      visibleBookmarks.filter(
+        (bookmark) =>
+          bookmark.chapterIndex === chapterIdx &&
+          getBookmarkPageIndex(bookmark, totalPages) === currentPage,
+      ),
+    [visibleBookmarks, chapterIdx, totalPages, currentPage],
+  );
+  const bookmarkList = useMemo(
+    () =>
+      [...visibleBookmarks].sort((a, b) => {
+        if (a.chapterIndex !== b.chapterIndex) {
+          return a.chapterIndex - b.chapterIndex;
+        }
+        if (a.progress !== b.progress) return a.progress - b.progress;
+        return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+      }),
+    [visibleBookmarks],
+  );
   const currentChapterHref = (chapter?.href || "").split("#")[0];
   const tocItems = navigableTocItems(toc);
 
@@ -1621,15 +1986,215 @@ export default function Reader({
           </div>
           <div className="tb-controls">
             <button
+              className={`ctl${searchOpen ? " ctl-active" : ""}`}
+              onClick={() => {
+                setSearchOpen((open) => !open);
+                setBookmarkMenuOpen(false);
+                setSettingsMenuOpen(false);
+              }}
+              title="Szukaj w rozdziale"
+            >
+              Szukaj
+            </button>
+            <button
+              ref={bookmarkToggleRef}
+              className={`ctl${bookmarkMenuOpen || currentPageBookmarks.length ? " ctl-active" : ""}`}
+              onClick={() => {
+                setBookmarkMenuOpen((open) => !open);
+                setSearchOpen(false);
+                setSettingsMenuOpen(false);
+              }}
+              title="Zakladki"
+            >
+              Zakladki
+            </button>
+            <button
               ref={settingsToggleRef}
               className={`ctl ctl-icon${settingsMenuOpen ? " ctl-active" : ""}`}
-              onClick={() => setSettingsMenuOpen((v) => !v)}
+              onClick={() => {
+                setSettingsMenuOpen((v) => !v);
+                setSearchOpen(false);
+                setBookmarkMenuOpen(false);
+              }}
               title="Ustawienia"
             >
               ⚙
             </button>
           </div>
         </div>
+
+        {searchOpen && (
+          <div className="reader-search-strip">
+            <div className="reader-search-main">
+              <input
+                ref={searchInputRef}
+                className="reader-search-input"
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (!searchMatches.length) return;
+                    goToSearchMatch(
+                      activeSearchIdx + (e.shiftKey ? -1 : 1),
+                    );
+                  }
+                }}
+                placeholder="Szukaj tekstu w tym rozdziale"
+              />
+              <div className="reader-search-meta">
+                {searchQuery.trim()
+                  ? searchMatches.length
+                    ? `${activeSearchIdx + 1}/${searchMatches.length}`
+                    : "0 wynikow"
+                  : "Wpisz fraze"}
+              </div>
+              <button
+                className="ctl ctl-icon"
+                onClick={() => goToSearchMatch(activeSearchIdx - 1)}
+                disabled={!searchMatches.length}
+                title="Poprzedni wynik"
+              >
+                {"<"}
+              </button>
+              <button
+                className="ctl ctl-icon"
+                onClick={() => goToSearchMatch(activeSearchIdx + 1)}
+                disabled={!searchMatches.length}
+                title="Nastepny wynik"
+              >
+                {">"}
+              </button>
+              <button
+                className="ctl ctl-icon"
+                onClick={() => setSearchOpen(false)}
+                title="Zamknij wyszukiwanie"
+              >
+                x
+              </button>
+            </div>
+
+            {searchQuery.trim() && (
+              <div className="reader-search-results">
+                {searchMatches.length ? (
+                  searchMatches.map((match, index) => (
+                    <button
+                      key={`${match.blockId}-${index}`}
+                      type="button"
+                      className={`reader-search-result${
+                        index === activeSearchIdx ? " active" : ""
+                      }`}
+                      onClick={() => goToSearchMatch(index)}
+                    >
+                      <span className="reader-search-result-page">
+                        s. {match.page + 1}
+                      </span>
+                      <span className="reader-search-result-text">
+                        {match.preview}
+                      </span>
+                      {match.count > 1 && (
+                        <span className="reader-search-result-count">
+                          x{match.count}
+                        </span>
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  <div className="reader-search-empty">
+                    Brak trafien w tym rozdziale.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {bookmarkMenuOpen && (
+          <div className="bookmark-menu" ref={bookmarkMenuRef}>
+            <div className="bookmark-menu-head">
+              <div>
+                <div className="bookmark-menu-title">Zakladki</div>
+                <div className="bookmark-menu-sub">
+                  Zapisz biezaca strone i zsynchronizuj ja z kontem.
+                </div>
+              </div>
+              <div className="bookmark-menu-page">
+                {currentPage + 1}/{totalPages}
+              </div>
+            </div>
+
+            <div className="bookmark-color-row">
+              {BOOKMARK_COLORS.map((color) => (
+                <button
+                  key={color.id}
+                  type="button"
+                  className={`bookmark-color-btn${
+                    currentPageBookmarks.some(
+                      (bookmark) => bookmark.color === color.id,
+                    )
+                      ? " active"
+                      : ""
+                  }`}
+                  style={{ "--bookmark-dot": color.dot }}
+                  onClick={() => addBookmark(color.id)}
+                  title={`Zapisz zakladke: ${color.label}`}
+                >
+                  <span className="bookmark-color-swatch" />
+                  {color.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="bookmark-menu-list">
+              {bookmarkList.length ? (
+                bookmarkList.map((bookmark) => {
+                  const color = getBookmarkColorMeta(bookmark.color);
+                  return (
+                    <div key={bookmark.id} className="bookmark-item">
+                      <button
+                        type="button"
+                        className="bookmark-item-main"
+                        onClick={() => jumpToBookmark(bookmark)}
+                      >
+                        <span
+                          className="bookmark-item-dot"
+                          style={{ background: color.dot }}
+                        />
+                        <span className="bookmark-item-copy">
+                          <span className="bookmark-item-title">
+                            {bookmark.chapterTitle ||
+                              `Rozdzial ${bookmark.chapterIndex + 1}`}
+                          </span>
+                          <span className="bookmark-item-meta">
+                            Strona {formatBookmarkPage(bookmark)}
+                          </span>
+                          {bookmark.preview && (
+                            <span className="bookmark-item-preview">
+                              {bookmark.preview}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="bookmark-item-remove"
+                        onClick={() => removeBookmark(bookmark.id)}
+                        title="Usun zakladke"
+                      >
+                        x
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="bookmark-empty">
+                  Brak zapisanych zakladek.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Settings dropdown */}
         {settingsMenuOpen && (

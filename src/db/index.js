@@ -286,17 +286,103 @@ export async function deletePolyglotCache(chapterId, targetLang) {
 }
 
 export async function getReadingPosition(bookId) {
-  return db.readingPositions.get(bookId);
+  const row = await db.readingPositions.get(bookId);
+  return normalizeReadingPosition(row);
 }
 
-export async function saveReadingPosition(bookId, chapterIndex, progress = 0, activeLang = null) {
-  const existing = await db.readingPositions.get(bookId);
+function clampProgress(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.min(1, num));
+}
+
+function normalizeBookmark(bookmark) {
+  if (!bookmark || typeof bookmark !== 'object') return null;
+
+  const id = typeof bookmark.id === 'string' ? bookmark.id.trim() : '';
+  if (!id) return null;
+
+  const chapterIndex = Number(bookmark.chapterIndex);
+  if (!Number.isFinite(chapterIndex)) return null;
+
+  const createdAt = Number(bookmark.createdAt) || Date.now();
+  const updatedAt = Number(bookmark.updatedAt) || createdAt;
+  const deletedAt =
+    bookmark.deletedAt === null || bookmark.deletedAt === undefined
+      ? null
+      : Number(bookmark.deletedAt) || updatedAt;
+
+  return {
+    id,
+    chapterIndex: Math.max(0, Math.floor(chapterIndex)),
+    progress: clampProgress(bookmark.progress ?? 0),
+    color: typeof bookmark.color === 'string' && bookmark.color.trim()
+      ? bookmark.color.trim()
+      : 'gold',
+    chapterTitle: typeof bookmark.chapterTitle === 'string' ? bookmark.chapterTitle : '',
+    preview: typeof bookmark.preview === 'string' ? bookmark.preview : '',
+    page: Number.isFinite(Number(bookmark.page)) ? Math.max(0, Math.floor(Number(bookmark.page))) : null,
+    totalPages: Number.isFinite(Number(bookmark.totalPages))
+      ? Math.max(1, Math.floor(Number(bookmark.totalPages)))
+      : null,
+    createdAt,
+    updatedAt,
+    deletedAt,
+  };
+}
+
+function normalizeBookmarks(value) {
+  let raw = value;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = [];
+    }
+  }
+
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map(normalizeBookmark)
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.chapterIndex !== b.chapterIndex) return a.chapterIndex - b.chapterIndex;
+      if (a.progress !== b.progress) return a.progress - b.progress;
+      return (a.createdAt ?? 0) - (b.createdAt ?? 0);
+    });
+}
+
+function normalizeReadingPosition(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    progress: clampProgress(row.progress ?? 0),
+    activeLang: typeof row.activeLang === 'string' && row.activeLang ? row.activeLang : null,
+    bookmarks: normalizeBookmarks(row.bookmarks),
+  };
+}
+
+export async function saveReadingPosition(
+  bookId,
+  chapterIndex,
+  progress = 0,
+  activeLang = null,
+  extras = {},
+) {
+  const existing = normalizeReadingPosition(await db.readingPositions.get(bookId));
   await db.readingPositions.put({
     ...(existing || { bookId }),
     chapterIndex,
-    progress,
-    activeLang,
-    updatedAt: Date.now(),
+    progress: clampProgress(progress),
+    activeLang:
+      typeof activeLang === 'string' && activeLang.trim() ? activeLang : null,
+    bookmarks: normalizeBookmarks(
+      Object.prototype.hasOwnProperty.call(extras, 'bookmarks')
+        ? extras.bookmarks
+        : existing?.bookmarks,
+    ),
+    updatedAt: Number(extras.updatedAt) || Date.now(),
   });
 }
 
