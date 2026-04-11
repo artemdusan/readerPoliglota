@@ -1,4 +1,11 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   db,
   getBook,
@@ -88,6 +95,14 @@ function resetTooltipPosition(pw) {
   pw.style.removeProperty("--pw-tooltip-top");
   pw.style.removeProperty("--pw-tooltip-arrow-left");
   delete pw.dataset.tooltipPlacement;
+  delete pw.dataset.tooltipPending;
+}
+
+function resetCompactTooltipLayout(pw) {
+  if (!pw) return;
+  pw.style.removeProperty("--pw-compact-left");
+  pw.style.removeProperty("--pw-compact-top");
+  pw.style.removeProperty("--pw-compact-scale");
 }
 
 function normalizeInlineText(value) {
@@ -1013,15 +1028,14 @@ export default function Reader({
     if (!body) return;
 
     body.querySelectorAll(".pw").forEach((pw) => {
-      resetTooltipPosition(pw);
-      pw.style.removeProperty("--pw-compact-scale");
+      resetCompactTooltipLayout(pw);
     });
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     clearRevealAllLayout();
 
-    if (!polyMode || polyState !== "done" || !revealAllTranslations) return;
+    if (!polyMode || polyState !== "done") return;
 
     const body = chapterBodyRef.current;
     const scrollEl = chScrollRef.current;
@@ -1029,11 +1043,10 @@ export default function Reader({
 
     const token = ++revealLayoutTokenRef.current;
     const laneGap = 8;
-    let raf1 = 0;
-    let raf2 = 0;
 
     const runLayout = () => {
       if (token !== revealLayoutTokenRef.current) return;
+      body.dataset.compactPreparing = "true";
 
       const viewportRect = scrollEl.getBoundingClientRect();
       const pageWidth = scrollEl.clientWidth || 1;
@@ -1043,8 +1056,7 @@ export default function Reader({
         const tooltip = pw.querySelector(".pw-original");
         if (!tooltip) return;
 
-        resetTooltipPosition(pw);
-
+        resetCompactTooltipLayout(pw);
         const pwRect = pw.getBoundingClientRect();
         const tooltipRect = tooltip.getBoundingClientRect();
         if (!tooltipRect.width || !tooltipRect.height) return;
@@ -1062,7 +1074,6 @@ export default function Reader({
           Math.max(preferredLeft, minLeft),
           maxLeft,
         );
-
         const rowKey = `${pageIndex}:${Math.round(pwRect.top)}`;
         const lanes = laneMap.get(rowKey) ?? [];
         const startX = clampedLeft;
@@ -1073,26 +1084,25 @@ export default function Reader({
         laneMap.set(rowKey, lanes);
 
         const compactScale = lane === 0 ? 1 : lane === 1 ? 0.94 : 0.88;
-        const localLeft = pageLeft + clampedLeft - absoluteLeft;
         const centeredTop =
           (pwRect.height - tooltipRect.height * compactScale) / 2 -
           lane * (tooltipRect.height * compactScale + 4);
 
-        pw.style.setProperty("--pw-tooltip-left", `${localLeft}px`);
-        pw.style.setProperty("--pw-tooltip-top", `${centeredTop}px`);
+        const localLeft = pageLeft + clampedLeft - absoluteLeft;
+
+        pw.style.setProperty("--pw-compact-left", `${localLeft}px`);
+        pw.style.setProperty("--pw-compact-top", `${centeredTop}px`);
         pw.style.setProperty("--pw-compact-scale", String(compactScale));
-        pw.dataset.tooltipPlacement = "compact";
       });
+
+      delete body.dataset.compactPreparing;
     };
 
-    raf1 = window.requestAnimationFrame(() => {
-      raf2 = window.requestAnimationFrame(runLayout);
-    });
+    runLayout();
 
     return () => {
       revealLayoutTokenRef.current += 1;
-      window.cancelAnimationFrame(raf1);
-      window.cancelAnimationFrame(raf2);
+      delete body.dataset.compactPreparing;
       clearRevealAllLayout();
     };
   }, [
@@ -1104,7 +1114,6 @@ export default function Reader({
     polyMode,
     polyState,
     renderedPolyHtml,
-    revealAllTranslations,
   ]);
 
   useEffect(() => {
@@ -2150,16 +2159,18 @@ export default function Reader({
     if (!tooltip || !scrollEl) return;
 
     resetTooltipPosition(pw);
+    pw.dataset.tooltipPending = "true";
 
-    window.requestAnimationFrame(() => {
-      if (!pw.isConnected || !pw.classList.contains("open")) return;
+    const applyPosition = () => {
+      if (!pw.isConnected || !pw.classList.contains("open")) return true;
 
       const viewportRect = scrollEl.getBoundingClientRect();
       const pwRect = pw.getBoundingClientRect();
       const tooltipRect = tooltip.getBoundingClientRect();
+      if (!tooltipRect.width || !tooltipRect.height) return false;
+
       const viewportPadding = 10;
       const gap = 7;
-
       const centerX = pwRect.left + pwRect.width / 2;
       const minLeft = viewportRect.left + viewportPadding;
       const maxLeft = viewportRect.right - viewportPadding - tooltipRect.width;
@@ -2195,6 +2206,15 @@ export default function Reader({
       pw.style.setProperty("--pw-tooltip-arrow-left", `${arrowLeft}px`);
       pw.dataset.tooltipPlacement =
         clampedTop >= pwRect.bottom ? "bottom" : "top";
+      delete pw.dataset.tooltipPending;
+      return true;
+    };
+
+    if (applyPosition()) return;
+
+    window.requestAnimationFrame(() => {
+      if (applyPosition()) return;
+      delete pw.dataset.tooltipPending;
     });
   }
 

@@ -1084,46 +1084,64 @@ html, body, #root {
 }
 
 .pw.open .pw-original { display: block; }
+.pw[data-tooltip-pending="true"] .pw-original {
+  display: block;
+  visibility: hidden;
+}
 .pw.open .pw-target { background: rgba(192,144,80,.22); border-bottom-color: rgba(192,144,80,.5); }
 
 .ch-body.hide-tooltips .pw-original { display: none !important; }
+.ch-body[data-compact-preparing="true"] .pw,
 .ch-body.reveal-all .pw {
   isolation: isolate;
 }
+.ch-body[data-compact-preparing="true"] .pw-original,
 .ch-body.reveal-all .pw-original {
   display: block !important;
   position: absolute;
-  top: var(--pw-tooltip-top);
-  left: var(--pw-tooltip-left);
+  top: var(--pw-compact-top, 0px);
+  left: var(--pw-compact-left, 0px);
   transform: scale(var(--pw-compact-scale, 1));
   transform-origin: center center;
   max-width: min(16ch, calc(100vw - 32px));
-  padding: 3px 7px;
+  padding: 2px 8px 3px;
   border-radius: 4px;
-  font-size: .64em;
-  line-height: 1.15;
+  border: 1px solid rgba(192,144,80,.24);
+  border-bottom-color: rgba(192,144,80,.34);
+  font-size: .65em;
+  font-family: inherit;
+  color: rgba(238,225,200,.9);
+  line-height: 1.12;
   white-space: normal;
   overflow-wrap: anywhere;
   text-wrap: balance;
   z-index: 2;
-  box-shadow: 0 4px 14px rgba(0,0,0,.35);
-  background: rgba(28,25,22,var(--pw-compact-bg-alpha, .78));
-  backdrop-filter: blur(6px);
+  box-shadow: none;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(64,52,37,var(--pw-compact-bg-alpha, .9)) 0%,
+      rgba(41,34,25,var(--pw-compact-bg-alpha, .9)) 100%
+    );
 }
+.ch-body[data-compact-preparing="true"] .pw-original {
+  visibility: hidden;
+}
+.ch-body[data-compact-preparing="true"] .pw-original::after,
 .ch-body.reveal-all .pw-original::after {
   display: none;
 }
 .ch-body.reveal-all .pw-target {
-  background: rgba(192,144,80,.08) !important;
-  border-bottom-color: transparent !important;
+  background: rgba(192,144,80,.06) !important;
+  border-bottom-color: rgba(192,144,80,.14) !important;
   color: rgba(206,196,178,var(--pw-mask-text-opacity, .28)) !important;
   opacity: 1;
   filter: blur(var(--pw-mask-blur, 2.1px)) saturate(.7);
 }
 .ch-body.reveal-all .pw:hover .pw-target,
 .ch-body.reveal-all .pw.open .pw-target {
-  background: rgba(192,144,80,.08) !important;
-  border-bottom-color: transparent !important;
+  background: rgba(192,144,80,.06) !important;
+  border-bottom-color: rgba(192,144,80,.14) !important;
 }
 
 
