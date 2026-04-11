@@ -236,6 +236,15 @@ async function handleLogin(request, env) {
   return json({ token });
 }
 
+async function handleAuthMe(env, userId) {
+  const user = await env.DB.prepare(
+    'SELECT email FROM users WHERE id = ?',
+  ).bind(userId).first();
+
+  if (!user?.email) return err('Nie znaleziono użytkownika', 404);
+  return json({ username: user.email });
+}
+
 async function handleTranslate(request, env) {
   const { model, messages, max_tokens } = await request.json().catch(() => ({}));
   if (!model || !Array.isArray(messages)) return err('model i messages są wymagane');
@@ -566,6 +575,7 @@ async function handleRequest(request, env) {
     const userId = await requireAuth(request, env);
     if (!userId) return err('Unauthorized', 401);
 
+    if (method === 'GET' && path === '/auth/me') return handleAuthMe(env, userId);
     if (method === 'POST' && path === '/translate') return handleTranslate(request, env);
 
     if (method === 'GET' && path === '/books')    return handleGetBooks(env, userId);

@@ -208,6 +208,10 @@ html, body, #root {
   color: var(--txt-2);
 }
 
+.lib-sync-account {
+  color: var(--gold-hi);
+}
+
 .lib-sync-actions {
   display: flex;
   align-items: center;
@@ -1758,6 +1762,12 @@ html, body, #root {
 .settings-account-badge {
   font-size: 13px;
   color: var(--gold);
+}
+
+.settings-account-name {
+  font-size: 13px;
+  color: var(--txt-1);
+  font-weight: 600;
 }
 
 .settings-auth-form {

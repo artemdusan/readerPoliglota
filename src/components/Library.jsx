@@ -12,7 +12,7 @@ import BatchGenModal from "./BatchGenModal";
 import BookMetadataDialog from "./BookMetadataDialog";
 import ImportDialog from "./ImportDialog";
 import { version } from "../../package.json";
-import { isLoggedIn, onAuthChange } from "../sync/cfAuth";
+import { getUsername, isLoggedIn, onAuthChange } from "../sync/cfAuth";
 import { syncAll, uploadBook, deleteRemoteBook } from "../sync/cfSync";
 
 function getDroppedFiles(dataTransfer) {
@@ -86,6 +86,7 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const [editingBook, setEditingBook] = useState(null);
   const [ctxBookId, setCtxBookId] = useState(null);
   const [cfConnected, setCfConnected] = useState(() => isLoggedIn());
+  const [accountName, setAccountName] = useState(() => getUsername());
   const [syncStatus, setSyncStatus] = useState(null);
   const [syncProgress, setSyncProgress] = useState(null);
   const [syncNow, setSyncNow] = useState(() => Date.now());
@@ -95,7 +96,13 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
   });
   const fileInputRef = useRef(null);
 
-  useEffect(() => onAuthChange(setCfConnected), []);
+  useEffect(
+    () => onAuthChange((loggedIn, nextUsername) => {
+      setCfConnected(loggedIn);
+      setAccountName(nextUsername);
+    }),
+    [],
+  );
 
   useEffect(() => {
     const timer = window.setInterval(() => setSyncNow(Date.now()), 60 * 1000);
@@ -401,6 +408,9 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                     : "Konto niepołączone"}
                 </div>
                 <div className="lib-sync-meta">
+                  {cfConnected && accountName && (
+                    <span className="lib-sync-account">Konto: {accountName}</span>
+                  )}
                   <span>
                     Ostatni sync: {formatLastSync(lastSync)}
                     {lastSync

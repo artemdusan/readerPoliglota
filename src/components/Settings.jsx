@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { isLoggedIn, onAuthChange, login, register, logout } from '../sync/cfAuth';
+import { getUsername, isLoggedIn, onAuthChange, login, register, logout } from '../sync/cfAuth';
 import { syncAll } from '../sync/cfSync';
 
 const SYNC_INTERVAL_OPTIONS = [
@@ -24,6 +24,7 @@ function formatTransfer(bytes, fallbackMB = 0) {
 
 export default function Settings({ settings, onUpdateSetting, onClose }) {
   const [cfConnected, setCfConnected] = useState(isLoggedIn());
+  const [accountName, setAccountName] = useState(() => getUsername());
   const [authMode, setAuthMode] = useState('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -36,7 +37,13 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
     return value ? Number(value) : null;
   });
 
-  useEffect(() => onAuthChange(setCfConnected), []);
+  useEffect(
+    () => onAuthChange((loggedIn, nextUsername) => {
+      setCfConnected(loggedIn);
+      setAccountName(nextUsername);
+    }),
+    [],
+  );
 
   useEffect(() => {
     function handleSynced() {
@@ -101,6 +108,9 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
             {cfConnected ? (
               <>
                 <div className="settings-account-row">
+                  {accountName && (
+                    <span className="settings-account-name">{accountName}</span>
+                  )}
                   <span className="settings-account-badge">● Połączono</span>
                   <button className="btn-ghost" onClick={logout}>Wyloguj</button>
                   <button
@@ -111,6 +121,12 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                     {syncStatus === 'syncing' ? 'Synchronizuję...' : 'Synchronizuj teraz'}
                   </button>
                 </div>
+
+                {accountName && (
+                  <p className="settings-inline-note">
+                    Zalogowane konto: <strong>{accountName}</strong>
+                  </p>
+                )}
 
                 <p className="settings-inline-note">
                   Ostatni sync: {formatLastSync(lastSync)}
