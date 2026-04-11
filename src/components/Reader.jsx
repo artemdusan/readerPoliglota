@@ -38,6 +38,8 @@ const BOOKMARK_COLORS = [
   { id: "plum", label: "Sliwkowa", dot: "#9a78c8" },
 ];
 const SEARCH_BLOCK_SELECTOR = "p, h1, h2, h3, h4, h5, h6, li";
+const FONT_SIZE_MIN = 13;
+const FONT_SIZE_MAX = 30;
 
 /* ═══════════════════════════════════════════
    Helpers
@@ -138,6 +140,17 @@ function getBookmarkColorMeta(colorId) {
   );
 }
 
+function isShortcutTargetBlocked(target) {
+  return (
+    target instanceof Element &&
+    Boolean(
+      target.closest(
+        'input, textarea, select, button, [contenteditable="true"], [role="textbox"]',
+      ),
+    )
+  );
+}
+
 /* ═══════════════════════════════════════════
    Reader component
 ═══════════════════════════════════════════ */
@@ -198,6 +211,28 @@ export default function Reader({
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [fs, setFs] = useState(settings.fontSize ?? 19);
+  const [tooltipMode, setTooltipModeState] = useState(
+    settings.tooltipMode ||
+      (settings.alwaysShowTranslations ? "compact" : "click"),
+  );
+  const [tooltipMaskStrength, setTooltipMaskStrength] = useState(
+    Number(settings.tooltipMaskStrength ?? 55),
+  );
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(
+    () => typeof document !== "undefined" && Boolean(document.fullscreenElement),
+  );
+  const orderedCachedLangs = useMemo(
+    () =>
+      [...cachedLangs].sort(
+        (a, b) =>
+          (LANGUAGE_ORDER.get(a.code) ?? Number.MAX_SAFE_INTEGER) -
+          (LANGUAGE_ORDER.get(b.code) ?? Number.MAX_SAFE_INTEGER),
+      ),
+    [cachedLangs],
+  );
+  const revealAllTranslations = tooltipMode === "compact";
+  const tooltipClickEnabled = tooltipMode === "click";
 
   // Page state
   const [currentPage, setCurrentPage] = useState(0);
@@ -240,8 +275,37 @@ export default function Reader({
   const bookmarkToggleRef = useRef(null);
   const settingsMenuRef = useRef(null);
   const settingsToggleRef = useRef(null);
+  const readerLayoutRef = useRef(null);
+  const modifierTapRef = useRef({ Control: false, Shift: false });
+  const ttsPagePauseModeRef = useRef(null);
+  const revealLayoutTokenRef = useRef(0);
 
   useWakeLock(polyState === "loading");
+
+  useEffect(() => {
+    setFs(settings.fontSize ?? 19);
+  }, [settings.fontSize]);
+
+  useEffect(() => {
+    setTooltipModeState(
+      settings.tooltipMode ||
+        (settings.alwaysShowTranslations ? "compact" : "click"),
+    );
+  }, [settings.alwaysShowTranslations, settings.tooltipMode]);
+
+  useEffect(() => {
+    setTooltipMaskStrength(Number(settings.tooltipMaskStrength ?? 55));
+  }, [settings.tooltipMaskStrength]);
+
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
 
   // Hybrid TTS state (polyglot mode — Web Speech API, no Polly)
   const [ttsPlaying, setTtsPlaying] = useState(false);
@@ -944,6 +1008,105 @@ export default function Reader({
   }, [searchMatches, activeSearchIdx, currentPage]);
 
   /* ── Keep activeLangRef in sync; save position only on explicit user lang switch ── */
+  const clearRevealAllLayout = useCallback(() => {
+    const body = chapterBodyRef.current;
+    if (!body) return;
+
+    body.querySelectorAll(".pw").forEach((pw) => {
+      resetTooltipPosition(pw);
+      pw.style.removeProperty("--pw-compact-scale");
+    });
+  }, []);
+
+  useEffect(() => {
+    clearRevealAllLayout();
+
+    if (!polyMode || polyState !== "done" || !revealAllTranslations) return;
+
+    const body = chapterBodyRef.current;
+    const scrollEl = chScrollRef.current;
+    if (!body || !scrollEl) return;
+
+    const token = ++revealLayoutTokenRef.current;
+    const laneGap = 8;
+    let raf1 = 0;
+    let raf2 = 0;
+
+    const runLayout = () => {
+      if (token !== revealLayoutTokenRef.current) return;
+
+      const viewportRect = scrollEl.getBoundingClientRect();
+      const pageWidth = scrollEl.clientWidth || 1;
+      const laneMap = new Map();
+
+      body.querySelectorAll(".pw").forEach((pw) => {
+        const tooltip = pw.querySelector(".pw-original");
+        if (!tooltip) return;
+
+        resetTooltipPosition(pw);
+
+        const pwRect = pw.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        if (!tooltipRect.width || !tooltipRect.height) return;
+
+        const absoluteLeft =
+          pwRect.left - viewportRect.left + scrollEl.scrollLeft;
+        const pageIndex = Math.max(0, Math.floor(absoluteLeft / pageWidth));
+        const pageLeft = pageIndex * pageWidth;
+        const wordLeft = absoluteLeft - pageLeft;
+        const minLeft = 6;
+        const maxLeft = Math.max(minLeft, pageWidth - tooltipRect.width - 6);
+        const preferredLeft =
+          wordLeft + pwRect.width / 2 - tooltipRect.width / 2;
+        const clampedLeft = Math.min(
+          Math.max(preferredLeft, minLeft),
+          maxLeft,
+        );
+
+        const rowKey = `${pageIndex}:${Math.round(pwRect.top)}`;
+        const lanes = laneMap.get(rowKey) ?? [];
+        const startX = clampedLeft;
+        const endX = clampedLeft + tooltipRect.width;
+        let lane = lanes.findIndex((lastEnd) => startX > lastEnd + laneGap);
+        if (lane === -1) lane = lanes.length;
+        lanes[lane] = endX;
+        laneMap.set(rowKey, lanes);
+
+        const compactScale = lane === 0 ? 1 : lane === 1 ? 0.94 : 0.88;
+        const localLeft = pageLeft + clampedLeft - absoluteLeft;
+        const centeredTop =
+          (pwRect.height - tooltipRect.height * compactScale) / 2 -
+          lane * (tooltipRect.height * compactScale + 4);
+
+        pw.style.setProperty("--pw-tooltip-left", `${localLeft}px`);
+        pw.style.setProperty("--pw-tooltip-top", `${centeredTop}px`);
+        pw.style.setProperty("--pw-compact-scale", String(compactScale));
+        pw.dataset.tooltipPlacement = "compact";
+      });
+    };
+
+    raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(runLayout);
+    });
+
+    return () => {
+      revealLayoutTokenRef.current += 1;
+      window.cancelAnimationFrame(raf1);
+      window.cancelAnimationFrame(raf2);
+      clearRevealAllLayout();
+    };
+  }, [
+    activeLang,
+    clearRevealAllLayout,
+    currentPage,
+    fs,
+    layoutKey,
+    polyMode,
+    polyState,
+    renderedPolyHtml,
+    revealAllTranslations,
+  ]);
+
   useEffect(() => {
     activeLangRef.current = activeLang;
     if (!bookId || !userChangedLangRef.current) return;
@@ -952,7 +1115,9 @@ export default function Reader({
   }, [activeLang, bookId, persistPosition]);
 
   /* ── Page navigation with Kindle flash ── */
-  function goToPage(page, animate = true) {
+  function goToPage(page, options = {}) {
+    const { animate = true, pauseTts = false } =
+      typeof options === "boolean" ? { animate: options } : options;
     const inner = chInnerRef.current;
     const container = chScrollRef.current;
     if (!inner || !container) return;
@@ -960,6 +1125,7 @@ export default function Reader({
     const clampedPage = Math.max(0, Math.min(page, total - 1));
 
     clearPageTurnState();
+    if (pauseTts) pauseTtsForManualPageTurn();
 
     if (animate) {
       flippingRef.current = true;
@@ -991,7 +1157,7 @@ export default function Reader({
       navigate((chapterIdx ?? 0) - 1, { progressOverride: 1 });
       return;
     }
-    goToPage(currentPageRef.current - 1);
+    goToPage(currentPageRef.current - 1, { pauseTts: true });
   }
   function nextPage() {
     if (currentPageRef.current >= totalPagesRef.current - 1) {
@@ -999,7 +1165,7 @@ export default function Reader({
       navigate((chapterIdx ?? 0) + 1);
       return;
     }
-    goToPage(currentPageRef.current + 1);
+    goToPage(currentPageRef.current + 1, { pauseTts: true });
   }
 
   function goToSearchMatch(index) {
@@ -1013,7 +1179,7 @@ export default function Reader({
     );
 
     if (target) {
-      goToPage(getElementPage(target), false);
+      goToPage(getElementPage(target), { animate: false, pauseTts: true });
     }
 
     setActiveSearchIdx(nextIndex);
@@ -1074,7 +1240,10 @@ export default function Reader({
     if (!bookmark) return;
 
     if (bookmark.chapterIndex === chapterIdx) {
-      goToPage(getBookmarkPageIndex(bookmark, totalPagesRef.current), false);
+      goToPage(getBookmarkPageIndex(bookmark, totalPagesRef.current), {
+        animate: false,
+        pauseTts: true,
+      });
       void persistPosition({ immediate: true, progress: bookmark.progress });
     } else {
       navigate(bookmark.chapterIndex, { progressOverride: bookmark.progress });
@@ -1091,27 +1260,187 @@ export default function Reader({
 
   /* ── Keyboard navigation ── */
   useEffect(() => {
+    function clearModifierTap(exceptKey = "") {
+      if (exceptKey !== "Control") modifierTapRef.current.Control = false;
+      if (exceptKey !== "Shift") modifierTapRef.current.Shift = false;
+    }
+
     function onKey(e) {
-      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")
+      if (isShortcutTargetBlocked(e.target)) return;
+
+      const isStandaloneControl =
+        !e.repeat &&
+        e.key === "Control" &&
+        !e.altKey &&
+        !e.metaKey &&
+        !e.shiftKey;
+      if (isStandaloneControl) {
+        modifierTapRef.current.Control = true;
         return;
+      }
+
+      const isStandaloneShift =
+        !e.repeat && e.key === "Shift" && !e.altKey && !e.metaKey && !e.ctrlKey;
+      if (isStandaloneShift) {
+        modifierTapRef.current.Shift = true;
+        return;
+      }
+
+      clearModifierTap(e.key);
+
       if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
         e.preventDefault();
         prevPage();
+        return;
       }
+
       if (e.key === "ArrowRight" || e.key === "ArrowDown") {
         e.preventDefault();
         nextPage();
+        return;
       }
+
       if (e.key === "Escape") {
         setSidebarOpen(false);
         setSearchOpen(false);
         setBookmarkMenuOpen(false);
         setSettingsMenuOpen(false);
+        setShortcutsOpen(false);
+        return;
+      }
+
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        void handleBackToLibrary();
+        return;
+      }
+
+      if (e.code === "Space" || e.key === " ") {
+        e.preventDefault();
+        toggleCurrentTts();
+        return;
+      }
+
+      if (e.key === "," || e.key === "<") {
+        e.preventDefault();
+        jumpCurrentTts(-1);
+        return;
+      }
+
+      if (e.key === "." || e.key === ">") {
+        e.preventDefault();
+        jumpCurrentTts(1);
+        return;
+      }
+
+      if (e.key === "{" || e.key === "[") {
+        e.preventDefault();
+        changeFontSize(-1);
+        return;
+      }
+
+      if (e.key === "}" || e.key === "]") {
+        e.preventDefault();
+        changeFontSize(1);
+        return;
+      }
+
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === "?") {
+        e.preventDefault();
+        openShortcutsPanel();
+        return;
+      }
+
+      switch (e.key.toLowerCase()) {
+        case "j":
+          e.preventDefault();
+          openSearchPanel();
+          break;
+        case "z":
+          e.preventDefault();
+          openBookmarksPanel();
+          break;
+        case "n":
+          e.preventDefault();
+          nextChapterDirect();
+          break;
+        case "p":
+          e.preventDefault();
+          prevChapter();
+          break;
+        case "q":
+          e.preventDefault();
+          setSidebarOpen((open) => !open);
+          break;
+        case "f":
+          e.preventDefault();
+          void toggleFullscreen();
+          break;
+        default:
+          break;
       }
     }
+
+    function onKeyUp(e) {
+      if (isShortcutTargetBlocked(e.target)) return;
+
+      if (e.key === "Control") {
+        const shouldToggle = modifierTapRef.current.Control;
+        modifierTapRef.current.Control = false;
+        if (shouldToggle) {
+          e.preventDefault();
+          cycleTranslationReveal();
+        }
+        return;
+      }
+
+      if (e.key === "Shift") {
+        const shouldCycle = modifierTapRef.current.Shift;
+        modifierTapRef.current.Shift = false;
+        if (shouldCycle) {
+          e.preventDefault();
+          cycleChapterVersion();
+        }
+      }
+    }
+
+    function resetModifierTap() {
+      clearModifierTap();
+    }
+
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [nextPage, prevPage]);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", resetModifierTap);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", resetModifierTap);
+    };
+  }, [
+    activeLang,
+    changeFontSize,
+    chapterCount,
+    chapterIdx,
+    cycleChapterVersion,
+    cycleTranslationReveal,
+    handleBackToLibrary,
+    nextPage,
+    nextChapterDirect,
+    openBookmarksPanel,
+    openSearchPanel,
+    openShortcutsPanel,
+    orderedCachedLangs,
+    polyMode,
+    polyState,
+    prevPage,
+    prevChapter,
+    jumpCurrentTts,
+    tooltipMode,
+    toggleCurrentTts,
+    toggleFullscreen,
+  ]);
 
   /* ── Close settings menu on outside click ── */
   useEffect(() => {
@@ -1184,7 +1513,7 @@ export default function Reader({
     if (lang === activeLang) return;
     clearPageTurnState();
     userChangedLangRef.current = true;
-    pendingProgressRef.current = 0;
+    pendingProgressRef.current = getCurrentProgress();
     // Reset audio when switching language — old audio/marks belong to the previous version
     stopOriginalTts();
     setOriginalHtmlAnnotated("");
@@ -1219,6 +1548,82 @@ export default function Reader({
         setActiveLang(lang);
       }
     });
+  }
+
+  function setTooltipMode(nextModeOrUpdater) {
+    setTooltipModeState((current) => {
+      const nextMode =
+        typeof nextModeOrUpdater === "function"
+          ? nextModeOrUpdater(current)
+          : nextModeOrUpdater;
+
+      if (!["off", "click", "compact"].includes(nextMode)) return current;
+      if (nextMode === current) return current;
+
+      if (nextMode !== "click" && openPwRef.current) {
+        clearTimeout(tooltipTimerRef.current);
+        openPwRef.current.classList.remove("open");
+        resetTooltipPosition(openPwRef.current);
+        openPwRef.current = null;
+      }
+
+      void onUpdateSetting?.("tooltipMode", nextMode);
+      void onUpdateSetting?.(
+        "alwaysShowTranslations",
+        nextMode === "compact",
+      );
+      return nextMode;
+    });
+  }
+
+  function cycleTranslationReveal() {
+    setTooltipMode((current) =>
+      current === "compact" ? "click" : "compact",
+    );
+  }
+
+  function updateTooltipMaskStrength(nextValue) {
+    const clamped = Math.max(0, Math.min(100, Number(nextValue) || 0));
+    setTooltipMaskStrength(clamped);
+    void onUpdateSetting?.("tooltipMaskStrength", clamped);
+  }
+
+  function changeFontSize(delta) {
+    setFs((current) => {
+      const next = Math.max(
+        FONT_SIZE_MIN,
+        Math.min(FONT_SIZE_MAX, current + delta),
+      );
+      if (next !== current) {
+        void onUpdateSetting?.("fontSize", next);
+      }
+      return next;
+    });
+  }
+
+  function openSearchPanel() {
+    setSearchOpen(true);
+    setBookmarkMenuOpen(false);
+    setSettingsMenuOpen(false);
+    setShortcutsOpen(false);
+    window.setTimeout(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    }, 0);
+  }
+
+  function openBookmarksPanel() {
+    setBookmarkMenuOpen(true);
+    setSearchOpen(false);
+    setSettingsMenuOpen(false);
+    setShortcutsOpen(false);
+  }
+
+  function openShortcutsPanel() {
+    setShortcutsOpen(true);
+    setSearchOpen(false);
+    setBookmarkMenuOpen(false);
+    setSettingsMenuOpen(false);
   }
 
   function requestGenerate() {
@@ -1332,7 +1737,9 @@ export default function Reader({
     const el = body.querySelector(`[data-word-id="${wordId}"]`);
     if (!el) return;
     el.classList.add("tts-active");
-    openTooltip(el, true);
+    if (tooltipClickEnabled) {
+      openTooltip(el, true);
+    }
     const scrollEl = chScrollRef.current;
     if (scrollEl) {
       const pw = scrollEl.clientWidth;
@@ -1408,6 +1815,8 @@ export default function Reader({
   function stopHybridTts() {
     ttsPlayerRef.current?.stop();
     ttsPlayerRef.current = null;
+    ttsPagePauseModeRef.current =
+      ttsPagePauseModeRef.current === "hybrid" ? null : ttsPagePauseModeRef.current;
     setTtsPlaying(false);
     setTtsPaused(false);
     setActivePolyPid(-1);
@@ -1418,6 +1827,8 @@ export default function Reader({
   function stopOriginalTts() {
     originalTtsPlayerRef.current?.stop();
     originalTtsPlayerRef.current = null;
+    ttsPagePauseModeRef.current =
+      ttsPagePauseModeRef.current === "original" ? null : ttsPagePauseModeRef.current;
     setOriginalTtsPlaying(false);
     setOriginalTtsPaused(false);
     setActiveSid(-1);
@@ -1428,7 +1839,23 @@ export default function Reader({
   function stopAllTts() {
     stopOriginalTts();
     stopHybridTts();
+    ttsPagePauseModeRef.current = null;
     window.speechSynthesis?.cancel();
+  }
+
+  function pauseTtsForManualPageTurn() {
+    if (originalTtsPlaying || originalTtsPaused) {
+      originalTtsPlayerRef.current?.pause();
+      setOriginalTtsPaused(true);
+      ttsPagePauseModeRef.current = "original";
+      return;
+    }
+
+    if (ttsPlaying || ttsPaused) {
+      ttsPlayerRef.current?.pause();
+      setTtsPaused(true);
+      ttsPagePauseModeRef.current = "hybrid";
+    }
   }
 
   async function handleBackToLibrary() {
@@ -1461,6 +1888,7 @@ export default function Reader({
 
     stopHybridTts();
     stopOriginalTts();
+    ttsPagePauseModeRef.current = null;
 
     const player = new SentenceTtsPlayer({
       fragments: originalTtsFragments,
@@ -1504,6 +1932,13 @@ export default function Reader({
 
   function toggleOriginalTts() {
     if (!originalTtsPlaying) {
+      ttsPagePauseModeRef.current = null;
+      startOriginalTts(getFirstSidOnCurrentPage());
+      return;
+    }
+
+    if (ttsPagePauseModeRef.current === "original") {
+      ttsPagePauseModeRef.current = null;
       startOriginalTts(getFirstSidOnCurrentPage());
       return;
     }
@@ -1522,6 +1957,7 @@ export default function Reader({
     if (!polyTtsParagraphs.length) return;
     stopOriginalTts();
     stopHybridTts();
+    ttsPagePauseModeRef.current = null;
     const player = new SentenceTtsPlayer({
       fragments: polyTtsParagraphs,
       lang: book?.lang || "en",
@@ -1563,6 +1999,13 @@ export default function Reader({
 
   function toggleHybridTts() {
     if (!ttsPlaying) {
+      ttsPagePauseModeRef.current = null;
+      startHybridTts(getFirstSidOnCurrentPage());
+      return;
+    }
+
+    if (ttsPagePauseModeRef.current === "hybrid") {
+      ttsPagePauseModeRef.current = null;
       startHybridTts(getFirstSidOnCurrentPage());
       return;
     }
@@ -1575,6 +2018,81 @@ export default function Reader({
 
     ttsPlayerRef.current?.pause();
     setTtsPaused(true);
+  }
+
+  function toggleCurrentTts() {
+    if (polyMode) {
+      if (polyState === "done") toggleHybridTts();
+      return;
+    }
+    toggleOriginalTts();
+  }
+
+  function jumpCurrentTts(delta) {
+    if (ttsPagePauseModeRef.current === "original") {
+      const base = getFirstSidOnCurrentPage();
+      startOriginalTts(
+        Math.max(
+          0,
+          Math.min(originalTtsFragments.length - 1, base + delta),
+        ),
+      );
+      return;
+    }
+
+    if (ttsPagePauseModeRef.current === "hybrid") {
+      const base = getFirstSidOnCurrentPage();
+      startHybridTts(
+        Math.max(
+          0,
+          Math.min(polyTtsParagraphs.length - 1, base + delta),
+        ),
+      );
+      return;
+    }
+
+    if (originalTtsPlaying || originalTtsPaused) {
+      jumpSentence(delta);
+      return;
+    }
+    if (ttsPlaying || ttsPaused) {
+      jumpPolyParagraph(delta);
+    }
+  }
+
+  function prevChapter() {
+    if (chapterIdx === null || chapterIdx <= 0) return;
+    navigate(chapterIdx - 1);
+  }
+
+  function nextChapterDirect() {
+    if (chapterIdx === null || chapterIdx >= chapterCount - 1) return;
+    navigate(chapterIdx + 1);
+  }
+
+  function cycleChapterVersion() {
+    const versionCodes = [null, ...orderedCachedLangs.map((lang) => lang.code)];
+    if (versionCodes.length < 2) return;
+
+    const currentIdx = versionCodes.indexOf(activeLang);
+    const baseIdx = currentIdx >= 0 ? currentIdx : 0;
+    const nextLang = versionCodes[(baseIdx + 1) % versionCodes.length];
+    switchToLang(nextLang);
+  }
+
+  async function toggleFullscreen() {
+    const target = readerLayoutRef.current || document.documentElement;
+    if (!document.fullscreenElement && !target?.requestFullscreen) return;
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await target.requestFullscreen?.();
+      }
+    } catch {
+      // Ignore browser fullscreen permission/state errors.
+    }
   }
 
   function playSingleWord(wordId) {
@@ -1732,7 +2250,9 @@ export default function Reader({
     if (polyMode) {
       const pw = e.target.closest(".pw");
       if (pw) {
-        openTooltip(pw);
+        if (tooltipClickEnabled) {
+          openTooltip(pw);
+        }
         const wordId = Number.parseInt(pw.dataset.wordId, 10);
         if (Number.isInteger(wordId)) playSingleWord(wordId);
         return;
@@ -1842,6 +2362,17 @@ export default function Reader({
     [visibleBookmarks],
   );
   const currentChapterHref = (chapter?.href || "").split("#")[0];
+  const compactTooltipStyle = useMemo(() => {
+    const strength = Math.max(0, Math.min(100, tooltipMaskStrength));
+    const textOpacity = 0.58 - (strength / 100) * 0.38;
+    const blurPx = 0.4 + (strength / 100) * 3.2;
+    const bgAlpha = 0.52 + (strength / 100) * 0.28;
+    return {
+      "--pw-mask-text-opacity": String(Math.max(0.12, textOpacity)),
+      "--pw-mask-blur": `${blurPx.toFixed(2)}px`,
+      "--pw-compact-bg-alpha": bgAlpha.toFixed(2),
+    };
+  }, [tooltipMaskStrength]);
   const tocItems = navigableTocItems(toc);
 
   if (!book && !chapterLoading) {
@@ -1856,7 +2387,10 @@ export default function Reader({
   }
 
   return (
-    <div className={`reader-layout ${toolbarVisible ? "" : "toolbar-hidden"}`}>
+    <div
+      ref={readerLayoutRef}
+      className={`reader-layout ${toolbarVisible ? "" : "toolbar-hidden"}`}
+    >
       {/* ── Sidebar ── */}
       <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="sb-top">
@@ -1956,7 +2490,7 @@ export default function Reader({
                 }}
               >
                 <option value="">{`${chapterLabel} \u2014 Orygina\u0142`}</option>
-                {cachedLangs.map((l) => (
+                {orderedCachedLangs.map((l) => (
                   <option key={`display-${l.code}`} value={l.code}>
                     {`${chapterLabel} \u2014 ${l.name}`}
                   </option>
@@ -1991,8 +2525,9 @@ export default function Reader({
                 setSearchOpen((open) => !open);
                 setBookmarkMenuOpen(false);
                 setSettingsMenuOpen(false);
+                setShortcutsOpen(false);
               }}
-              title="Szukaj w rozdziale"
+              title="Szukaj w rozdziale (J)"
             >
               Szukaj
             </button>
@@ -2003,8 +2538,9 @@ export default function Reader({
                 setBookmarkMenuOpen((open) => !open);
                 setSearchOpen(false);
                 setSettingsMenuOpen(false);
+                setShortcutsOpen(false);
               }}
-              title="Zakladki"
+              title="Zakladki (Z)"
             >
               Zakladki
             </button>
@@ -2015,10 +2551,23 @@ export default function Reader({
                 setSettingsMenuOpen((v) => !v);
                 setSearchOpen(false);
                 setBookmarkMenuOpen(false);
+                setShortcutsOpen(false);
               }}
               title="Ustawienia"
             >
               ⚙
+            </button>
+            <button
+              className={`ctl ctl-icon${shortcutsOpen ? " ctl-active" : ""}`}
+              onClick={() => {
+                setShortcutsOpen((open) => !open);
+                setSearchOpen(false);
+                setBookmarkMenuOpen(false);
+                setSettingsMenuOpen(false);
+              }}
+              title="Skroty (?)"
+            >
+              ?
             </button>
           </div>
         </div>
@@ -2204,16 +2753,81 @@ export default function Reader({
               <div className="settings-menu-ctrl">
                 <button
                   className="ctl"
-                  onClick={() => setFs((f) => Math.max(13, f - 1))}
+                  onClick={() => changeFontSize(-1)}
                 >
                   A−
                 </button>
                 <span className="fs-val">{fs}</span>
                 <button
                   className="ctl"
-                  onClick={() => setFs((f) => Math.min(30, f + 1))}
+                  onClick={() => changeFontSize(1)}
                 >
                   A+
+                </button>
+              </div>
+            </div>
+            <div className="settings-menu-row">
+              <span className="settings-menu-label">Dymki</span>
+              <div className="settings-menu-ctrl">
+                <button
+                  className={`ctl${tooltipMode === "off" ? " ctl-active" : ""}`}
+                  onClick={() => setTooltipMode("off")}
+                  title="Ukryj dymki"
+                >
+                  Off
+                </button>
+                <button
+                  className={`ctl${tooltipMode === "click" ? " ctl-active" : ""}`}
+                  onClick={() => setTooltipMode("click")}
+                  title="Pokazuj po kliknieciu"
+                >
+                  Klik
+                </button>
+                <button
+                  className={`ctl${tooltipMode === "compact" ? " ctl-active" : ""}`}
+                  onClick={() => setTooltipMode("compact")}
+                  title="Zwarty overlay dymkow (Control)"
+                >
+                  Compact
+                </button>
+              </div>
+            </div>
+            <div className="settings-menu-row settings-menu-row-stack">
+              <span className="settings-menu-label">Maska slowa</span>
+              <div className="settings-menu-slider">
+                <input
+                  className="settings-range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={tooltipMaskStrength}
+                  onChange={(e) => updateTooltipMaskStrength(e.target.value)}
+                />
+                <span className="settings-range-val">{tooltipMaskStrength}%</span>
+              </div>
+            </div>
+            <div className="settings-menu-row">
+              <span className="settings-menu-label">Pelny ekran</span>
+              <div className="settings-menu-ctrl">
+                <button
+                  className={`ctl${isFullscreen ? " ctl-active" : ""}`}
+                  onClick={() => void toggleFullscreen()}
+                  title="Przelacz pelny ekran (F)"
+                >
+                  {isFullscreen ? "Wyjdz" : "Wejdz"}
+                </button>
+              </div>
+            </div>
+            <div className="settings-menu-row">
+              <span className="settings-menu-label">Skroty</span>
+              <div className="settings-menu-ctrl">
+                <button
+                  className={`ctl${shortcutsOpen ? " ctl-active" : ""}`}
+                  onClick={openShortcutsPanel}
+                  title="Pokaz skróty (?)"
+                >
+                  ?
                 </button>
               </div>
             </div>
@@ -2363,6 +2977,44 @@ export default function Reader({
                 </>
               );
             })()}
+          </div>
+        )}
+
+        {shortcutsOpen && (
+          <div className="shortcuts-panel">
+            <div className="shortcuts-head">
+              <div>
+                <div className="bookmark-menu-title">Skroty</div>
+                <div className="bookmark-menu-sub">
+                  Nawigacja, TTS i podglad tlumaczen.
+                </div>
+              </div>
+              <button
+                className="ctl ctl-icon"
+                onClick={() => setShortcutsOpen(false)}
+                title="Zamknij"
+              >
+                x
+              </button>
+            </div>
+            <div className="shortcuts-grid">
+              <div><kbd>Control</kbd><span>klik / compact</span></div>
+              <div><kbd>Shift</kbd><span>oryginal / tlumaczenie</span></div>
+              <div><kbd>?</kbd><span>pokaz te sciage</span></div>
+              <div><kbd>Space</kbd><span>play / pause TTS</span></div>
+              <div><kbd>,</kbd><span>poprzedni fragment TTS</span></div>
+              <div><kbd>.</kbd><span>nastepny fragment TTS</span></div>
+              <div><kbd>J</kbd><span>wyszukiwarka</span></div>
+              <div><kbd>Z</kbd><span>zakladki</span></div>
+              <div><kbd>Q</kbd><span>sidebar</span></div>
+              <div><kbd>F</kbd><span>pelny ekran</span></div>
+              <div><kbd>N</kbd><span>nastepny rozdzial</span></div>
+              <div><kbd>P</kbd><span>poprzedni rozdzial</span></div>
+              <div><kbd>Backspace</kbd><span>powrot do biblioteki</span></div>
+              <div><kbd>[</kbd><span>mniejsza czcionka</span></div>
+              <div><kbd>]</kbd><span>wieksza czcionka</span></div>
+              <div><kbd>← →</kbd><span>zmiana strony</span></div>
+            </div>
           </div>
         )}
 
@@ -2554,7 +3206,8 @@ export default function Reader({
                     <div
                       key={activeLang}
                       ref={chapterBodyRef}
-                      className={`ch-body ch-anim${polyWordFragments.length ? " tts-ready" : ""}${ttsPlaying ? " audio-ready" : ""}`}
+                      className={`ch-body ch-anim${polyWordFragments.length ? " tts-ready" : ""}${ttsPlaying ? " audio-ready" : ""}${revealAllTranslations ? " reveal-all" : ""}${tooltipMode === "off" ? " hide-tooltips" : ""}`}
+                      style={compactTooltipStyle}
                       dangerouslySetInnerHTML={{
                         __html: renderedPolyHtml,
                       }}
@@ -2597,7 +3250,7 @@ export default function Reader({
                 className="tts-bar-btn"
                 onClick={() => jumpSentence(-1)}
                 disabled={activeSid <= 0}
-                title="Poprzedni akapit"
+                title="Poprzedni fragment (,)"
               >
                 ⏮
               </button>
@@ -2630,7 +3283,7 @@ export default function Reader({
                 className="tts-bar-btn"
                 onClick={() => jumpPolyParagraph(-1)}
                 disabled={activePolyPid <= 0}
-                title="Poprzedni akapit"
+                title="Poprzedni fragment (,)"
               >
                 ⏮
               </button>

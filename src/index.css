@@ -1086,8 +1086,45 @@ html, body, #root {
 .pw.open .pw-original { display: block; }
 .pw.open .pw-target { background: rgba(192,144,80,.22); border-bottom-color: rgba(192,144,80,.5); }
 
-.ch-body.reveal-all .pw-original { display: block !important; }
-.ch-body.reveal-all .pw-target { background: rgba(192,144,80,.06) !important; border-bottom-color: transparent !important; }
+.ch-body.hide-tooltips .pw-original { display: none !important; }
+.ch-body.reveal-all .pw {
+  isolation: isolate;
+}
+.ch-body.reveal-all .pw-original {
+  display: block !important;
+  position: absolute;
+  top: var(--pw-tooltip-top);
+  left: var(--pw-tooltip-left);
+  transform: scale(var(--pw-compact-scale, 1));
+  transform-origin: center center;
+  max-width: min(16ch, calc(100vw - 32px));
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: .64em;
+  line-height: 1.15;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  z-index: 2;
+  box-shadow: 0 4px 14px rgba(0,0,0,.35);
+  background: rgba(28,25,22,var(--pw-compact-bg-alpha, .78));
+  backdrop-filter: blur(6px);
+}
+.ch-body.reveal-all .pw-original::after {
+  display: none;
+}
+.ch-body.reveal-all .pw-target {
+  background: rgba(192,144,80,.08) !important;
+  border-bottom-color: transparent !important;
+  color: rgba(206,196,178,var(--pw-mask-text-opacity, .28)) !important;
+  opacity: 1;
+  filter: blur(var(--pw-mask-blur, 2.1px)) saturate(.7);
+}
+.ch-body.reveal-all .pw:hover .pw-target,
+.ch-body.reveal-all .pw.open .pw-target {
+  background: rgba(192,144,80,.08) !important;
+  border-bottom-color: transparent !important;
+}
 
 
 /* ════════════════ POLYGLOT LOADING ════════════════ */
@@ -1567,11 +1604,32 @@ html, body, #root {
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 16px; gap: 12px;
 }
+.settings-menu-row.settings-menu-row-stack {
+  align-items: stretch;
+  flex-direction: column;
+}
 .settings-menu-label {
   font-size: 11px; color: var(--txt-3); letter-spacing: .1em;
   text-transform: uppercase; flex-shrink: 0;
 }
 .settings-menu-ctrl { display: flex; align-items: center; gap: 4px; }
+.settings-menu-slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+}
+.settings-range {
+  width: 100%;
+  accent-color: var(--gold);
+}
+.settings-range-val {
+  font-size: 11px;
+  color: var(--gold);
+  min-width: 40px;
+  text-align: right;
+}
 .settings-menu-divider { height: 1px; background: var(--border-soft); margin: 5px 0; }
 .settings-menu-action {
   width: 100%; padding: 8px 16px; background: none; border: none;
@@ -1579,6 +1637,61 @@ html, body, #root {
   text-align: left; cursor: pointer; transition: color .15s;
 }
 .settings-menu-action:hover { color: var(--txt-1); }
+
+.shortcuts-panel {
+  position: absolute;
+  right: 16px;
+  top: 52px;
+  z-index: 205;
+  width: min(420px, calc(100% - 24px));
+  padding: 14px;
+  background: linear-gradient(180deg, #1f1a16, #171411);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 16px;
+  box-shadow: 0 20px 48px rgba(0,0,0,.42);
+}
+.shortcuts-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+.shortcuts-grid div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.02);
+  border: 1px solid rgba(255,255,255,.04);
+}
+.shortcuts-grid span {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--txt-2);
+  text-align: right;
+}
+.shortcuts-grid kbd {
+  padding: 4px 7px;
+  border-radius: 7px;
+  border: 1px solid rgba(192,144,80,.22);
+  background: rgba(192,144,80,.07);
+  color: var(--gold);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  letter-spacing: .04em;
+}
+
+@media (max-width: 720px) {
+  .shortcuts-grid { grid-template-columns: 1fr; }
+}
 
 .lib-footer {
   text-align: center;
