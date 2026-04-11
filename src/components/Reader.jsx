@@ -156,6 +156,7 @@ export default function Reader({
   const tooltipTimerRef = useRef(null);
   const openPwRef = useRef(null);
   const activeLangRef = useRef(null);
+  const chapterIdxRef = useRef(null);
   const pendingProgressRef = useRef(null); // progress (0-1) to restore after layout (null = no pending restore)
   const pendingChapterProgressOverrideRef = useRef(null); // one-shot progress override for the next chapter load
   const userChangedLangRef = useRef(false); // true only when user explicitly switched lang
@@ -562,6 +563,10 @@ export default function Reader({
     return () => window.cancelAnimationFrame(rafId);
   }, [polyMode, polyState, renderedPolyHtml]);
 
+  useEffect(() => {
+    chapterIdxRef.current = chapterIdx;
+  }, [chapterIdx]);
+
   /* ── Re-layout on container resize ── */
   useEffect(() => {
     const container = chScrollRef.current;
@@ -582,31 +587,49 @@ export default function Reader({
     return () => observer.disconnect();
   }, []);
 
+  const getCurrentProgress = useCallback(
+    () => currentPageRef.current / Math.max(1, totalPagesRef.current - 1),
+    [],
+  );
+
+  /* ── Save reading position ── */
+  const persistPosition = useCallback(
+    ({
+      immediate = false,
+      chapterIndex = chapterIdxRef.current,
+      progress = getCurrentProgress(),
+      activeLang = activeLangRef.current,
+    } = {}) => {
+      if (!bookId || chapterIndex === null || chapterIndex === undefined) {
+        return Promise.resolve();
+      }
+
+      clearTimeout(saveTimerRef.current);
+
+      const writePosition = () =>
+        saveReadingPosition(bookId, chapterIndex, progress, activeLang);
+
+      if (immediate) {
+        saveTimerRef.current = null;
+        return writePosition();
+      }
+
+      saveTimerRef.current = setTimeout(() => {
+        saveTimerRef.current = null;
+        void writePosition();
+      }, 800);
+      return Promise.resolve();
+    },
+    [bookId, getCurrentProgress],
+  );
+
   /* ── Keep activeLangRef in sync; save position only on explicit user lang switch ── */
   useEffect(() => {
     activeLangRef.current = activeLang;
     if (!bookId || !userChangedLangRef.current) return;
     userChangedLangRef.current = false;
-    saveReadingPosition(
-      bookId,
-      chapterIdx,
-      currentPageRef.current / Math.max(1, totalPagesRef.current - 1),
-      activeLang,
-    );
-  }, [bookId, chapterIdx, activeLang]);
-
-  /* ── Save reading position (debounced) ── */
-  const persistPosition = useCallback(() => {
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveReadingPosition(
-        bookId,
-        chapterIdx,
-        currentPageRef.current / Math.max(1, totalPagesRef.current - 1),
-        activeLangRef.current,
-      );
-    }, 800);
-  }, [bookId, chapterIdx]);
+    void persistPosition({ immediate: true, activeLang });
+  }, [activeLang, bookId, persistPosition]);
 
   /* ── Page navigation with Kindle flash ── */
   function goToPage(page, animate = true) {
@@ -706,8 +729,14 @@ export default function Reader({
   function navigate(idx, options = {}) {
     if (chapterIdx === null) return;
     const { progressOverride = null } = options;
+    const nextChapterIdx = Math.max(0, Math.min(idx, chapterCount - 1));
     clearPageTurnState();
-    persistPosition();
+    void persistPosition({
+      immediate: true,
+      chapterIndex: nextChapterIdx,
+      progress: progressOverride ?? 0,
+      activeLang: activeLangRef.current,
+    });
     pendingChapterProgressOverrideRef.current = progressOverride;
     // Carry current language to next chapter
     desiredLangRef.current = activeLangRef.current;
@@ -715,7 +744,7 @@ export default function Reader({
     if (activeLangRef.current && bookId) {
       saveChapterLang(bookId, chapterIdx, activeLangRef.current);
     }
-    setChapterIdx(Math.max(0, Math.min(idx, chapterCount - 1)));
+    setChapterIdx(nextChapterIdx);
   }
 
   /* ─────────────────────────────────────────
@@ -965,8 +994,8 @@ export default function Reader({
     window.speechSynthesis?.cancel();
   }
 
-  function handleBackToLibrary() {
-    persistPosition();
+  async function handleBackToLibrary() {
+    await persistPosition({ immediate: true });
     stopAllTts();
     onBack();
   }
