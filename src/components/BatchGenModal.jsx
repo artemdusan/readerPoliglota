@@ -3,6 +3,7 @@ import { getBookChaptersWithCacheStatus, savePolyglotCache } from '../db';
 import { generatePolyglot } from '../lib/polyglotApi';
 import { triggerSync } from '../sync/cfSync';
 import { LANGUAGES } from '../hooks/useSettings';
+import { useWakeLock } from '../hooks/useWakeLock';
 
 /* Cost table: USD per 1M tokens */
 const MODEL_PRICES = {
@@ -47,6 +48,9 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
   const [genStep, setGenStep]     = useState(null);  // { chIdx, total, batchDone, batchTotal }
   const [errors, setErrors]       = useState({});    // chapterId → message
   const [done, setDone]           = useState(false);
+  const [rescueNote, setRescueNote] = useState('');
+
+  useWakeLock(generating);
 
   useEffect(() => {
     setLoading(true);
@@ -87,21 +91,33 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
     setGenerating(true);
     setErrors({});
     setDone(false);
+    setRescueNote('');
     localStorage.setItem('vocabapp:lastLang', selectedLang.code);
 
     for (let i = 0; i < toGenerate.length; i++) {
       const ch = toGenerate[i];
       setGenStep({ chIdx: i, total: toGenerate.length, phase: 'patch', batchDone: 0, batchTotal: 0 });
+      setRescueNote('');
       try {
         const { cacheValue } = await generatePolyglot(
           { text: ch.text, html: ch.html },
-          { targetLangName: selectedLang.name, sourceLangName: book?.lang || '', model: settings.polyglotModel },
-          progress => setGenStep(s => ({
-            ...s,
-            phase: progress.phase,
-            batchDone: progress.done,
-            batchTotal: progress.total,
-          }))
+          {
+            targetLangName: selectedLang.name,
+            sourceLangName: book?.lang || '',
+            model: settings.polyglotModel,
+            onRescue: ({ retryAttempt, maxRetries }) => {
+              setRescueNote(`Brak postepu. Ponawiam probe (${retryAttempt}/${maxRetries})...`);
+            },
+          },
+          progress => {
+            setRescueNote('');
+            setGenStep(s => ({
+              ...s,
+              phase: progress.phase,
+              batchDone: progress.done,
+              batchTotal: progress.total,
+            }));
+          }
         );
         await savePolyglotCache(ch.id, selectedLang.code, cacheValue);
         triggerSync();
@@ -116,6 +132,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
 
     setGenerating(false);
     setGenStep(null);
+    setRescueNote('');
     setDone(true);
   }
 
@@ -228,6 +245,14 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
                       style={{ width: `${(genStep.chIdx / genStep.total) * 100}%`, background: 'rgba(192,144,80,.35)' }}
                     />
                   </div>
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--txt-2)' }}>
+                    Ekran pozostaje aktywny podczas generowania. Gdyby API utknelo bez postepu, aplikacja automatycznie ponowi probe.
+                  </div>
+                  {rescueNote && (
+                    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--amber, #c09050)' }}>
+                      {rescueNote}
+                    </div>
+                  )}
                 </div>
               )}
 

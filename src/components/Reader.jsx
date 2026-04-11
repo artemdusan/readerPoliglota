@@ -12,6 +12,7 @@ import {
   getChapterStatusMap,
 } from "../db";
 import { LANGUAGES } from "../hooks/useSettings";
+import { useWakeLock } from "../hooks/useWakeLock";
 import {
   generatePolyglot,
   MODEL_PRICING,
@@ -114,6 +115,7 @@ export default function Reader({
     secs: 0,
   });
   const [polyLiveSecs, setPolyLiveSecs] = useState(0);
+  const [polyRescueNote, setPolyRescueNote] = useState("");
   const [confirmLang, setConfirmLang] = useState("");
   // derived
   const polyMode = activeLang !== null;
@@ -153,6 +155,7 @@ export default function Reader({
   const animKeyRef = useRef(0);
   const saveTimerRef = useRef(null);
   const genTokenRef = useRef(0);
+  const genAbortRef = useRef(null);
   const tooltipTimerRef = useRef(null);
   const openPwRef = useRef(null);
   const activeLangRef = useRef(null);
@@ -169,6 +172,8 @@ export default function Reader({
   const ttsAutoStartRef = useRef(null); // 'original' | 'hybrid' | null
   const settingsMenuRef = useRef(null);
   const settingsToggleRef = useRef(null);
+
+  useWakeLock(polyState === "loading");
 
   // Hybrid TTS state (polyglot mode — Web Speech API, no Polly)
   const [ttsPlaying, setTtsPlaying] = useState(false);
@@ -286,6 +291,8 @@ export default function Reader({
 
   useEffect(
     () => () => {
+      genAbortRef.current?.abort();
+      genAbortRef.current = null;
       clearPageTurnState();
       stopAllTts();
     },
@@ -329,6 +336,8 @@ export default function Reader({
   useEffect(() => {
     if (!bookId || chapterIdx === null) return;
     genTokenRef.current++;
+    genAbortRef.current?.abort();
+    genAbortRef.current = null;
     userChangedLangRef.current = false;
     clearPageTurnState();
     setChapterLoading(true);
@@ -337,6 +346,7 @@ export default function Reader({
     setPolyState("idle");
     setPolyHtml("");
     setPolyError("");
+    setPolyRescueNote("");
     clearTimeout(tooltipTimerRef.current);
     resetTooltipPosition(openPwRef.current);
     openPwRef.current = null;
@@ -837,10 +847,14 @@ export default function Reader({
         ? forcedLangCode
         : confirmLang;
     if (!langCode) return;
+    genAbortRef.current?.abort();
+    const controller = new AbortController();
+    genAbortRef.current = controller;
     const langObj = LANGUAGES.find((l) => l.code === langCode) ?? LANGUAGES[0];
     setPolyState("loading");
     setPolyProgress({ phase: "patch", done: 0, total: 0, cost: 0, secs: 0 });
     setPolyError("");
+    setPolyRescueNote("");
 
     try {
       const { cacheValue } = await generatePolyglot(
@@ -849,9 +863,18 @@ export default function Reader({
           targetLangName: langObj.name,
           sourceLangName: book?.lang || "",
           model: settings.polyglotModel,
+          signal: controller.signal,
+          onRescue: ({ retryAttempt, maxRetries }) => {
+            setPolyRescueNote(
+              `Brak postepu. Ponawiam probe (${retryAttempt}/${maxRetries})...`,
+            );
+          },
         },
         (progress) => {
-          if (token === genTokenRef.current) setPolyProgress(progress);
+          if (token === genTokenRef.current) {
+            setPolyRescueNote("");
+            setPolyProgress(progress);
+          }
         },
       );
 
@@ -867,9 +890,13 @@ export default function Reader({
       triggerSync();
 
       applyPolyEntry(cacheValue, chapter.html);
+      genAbortRef.current = null;
+      setPolyRescueNote("");
       setPolyState("done");
     } catch (err) {
       if (token !== genTokenRef.current) return;
+      genAbortRef.current = null;
+      setPolyRescueNote("");
       setPolyError(err.message || "Błąd API.");
       setPolyState("error");
     }
@@ -1841,6 +1868,18 @@ export default function Reader({
                       Możesz zmienić rozdział — tekst zostanie zapisany w tle.
                       */}
                       </p>
+                      <p className="poly-loading-hint">
+                        Ekran pozostaje aktywny podczas generowania. Jesli API
+                        utknie bez postepu, aplikacja automatycznie ponowi probe.
+                      </p>
+                      {polyRescueNote && (
+                        <p
+                          className="poly-loading-hint"
+                          style={{ color: "var(--amber, #c09050)" }}
+                        >
+                          {polyRescueNote}
+                        </p>
+                      )}
                     </div>
                   )}
 

@@ -3,6 +3,10 @@ import { getWorkerUrl } from "../config/workerUrl";
 import { buildSentencePatchSource } from "./polyglotStructure";
 
 const WORKER_URL = getWorkerUrl();
+const REQUEST_TIMEOUT_MS = 90_000;
+const STALL_TIMEOUT_MS = 150_000;
+const STALL_RETRY_LIMIT = 1;
+const STALL_CHECK_INTERVAL_MS = 10_000;
 
 /** Approximate pricing in USD per 1 000 tokens (input / output) */
 export const MODEL_PRICING = {
@@ -94,13 +98,120 @@ export function estimatePolyglotGeneration(chapterInput) {
   };
 }
 
-async function processBatch(messages, model, maxTokens = 4096) {
+function createAbortError(message) {
+  const error = new Error(message);
+  error.name = "AbortError";
+  return error;
+}
+
+function attachAbortSignal(signal, controller) {
+  if (!signal) return () => {};
+
+  const abortWithReason = () => {
+    controller.abort(signal.reason ?? createAbortError("Generowanie anulowano."));
+  };
+
+  if (signal.aborted) {
+    abortWithReason();
+    return () => {};
+  }
+
+  signal.addEventListener("abort", abortWithReason, { once: true });
+  return () => {
+    signal.removeEventListener("abort", abortWithReason);
+  };
+}
+
+function createTimedController(timeoutMs, message, signal) {
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  const detachSignal = attachAbortSignal(signal, controller);
+
+  const abortIfExpired = () => {
+    if (controller.signal.aborted) return;
+    if (Date.now() - startedAt >= timeoutMs) {
+      controller.abort(createAbortError(message));
+    }
+  };
+
+  const timeoutId = setTimeout(() => {
+    controller.abort(createAbortError(message));
+  }, timeoutMs);
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", abortIfExpired);
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("focus", abortIfExpired);
+    window.addEventListener("pageshow", abortIfExpired);
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup() {
+      clearTimeout(timeoutId);
+      detachSignal();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", abortIfExpired);
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", abortIfExpired);
+        window.removeEventListener("pageshow", abortIfExpired);
+      }
+    },
+  };
+}
+
+function createStallMonitor(stallMs, onStall) {
+  let lastActivityAt = Date.now();
+
+  const touch = () => {
+    lastActivityAt = Date.now();
+  };
+
+  const check = () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden")
+      return;
+    if (Date.now() - lastActivityAt >= stallMs) {
+      onStall(Date.now() - lastActivityAt);
+    }
+  };
+
+  const intervalId = setInterval(check, STALL_CHECK_INTERVAL_MS);
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", check);
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("focus", check);
+    window.addEventListener("pageshow", check);
+  }
+
+  return {
+    touch,
+    cleanup() {
+      clearInterval(intervalId);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", check);
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", check);
+        window.removeEventListener("pageshow", check);
+      }
+    },
+  };
+}
+
+async function processBatch(messages, model, maxTokens = 4096, { signal } = {}) {
   const token = getToken();
   if (!token)
     throw new Error("Nie jestes zalogowany. Zaloguj sie w Ustawieniach.");
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90_000);
+  const timedSignal = createTimedController(
+    REQUEST_TIMEOUT_MS,
+    "Przekroczono limit czasu (90s). Sprawdz polaczenie z API.",
+    signal,
+  );
 
   try {
     const resp = await fetch(`${WORKER_URL}/translate`, {
@@ -114,7 +225,7 @@ async function processBatch(messages, model, maxTokens = 4096) {
         max_tokens: maxTokens,
         messages,
       }),
-      signal: controller.signal,
+      signal: timedSignal.signal,
     });
 
     if (!resp.ok) {
@@ -130,39 +241,45 @@ async function processBatch(messages, model, maxTokens = 4096) {
     };
   } catch (err) {
     if (err.name === "AbortError")
-      throw new Error(
-        "Przekroczono limit czasu (90s). Sprawdz polaczenie z API.",
-      );
+      throw timedSignal.signal.reason instanceof Error
+        ? timedSignal.signal.reason
+        : new Error("Przekroczono limit czasu (90s). Sprawdz polaczenie z API.");
     throw err;
   } finally {
-    clearTimeout(timeout);
+    timedSignal.cleanup();
   }
 }
 
 async function processBatchWithRetry(
-  { messages, model, maxTokens, label, batchIdx },
+  { messages, model, maxTokens, label, batchIdx, signal, onActivity },
   attempt = 0,
 ) {
   const startedAt = Date.now();
+  onActivity?.();
   console.log(
     `[Polyglot] ${label} ${batchIdx + 1} -> wysylam (${model}, max_tokens=${maxTokens})`,
   );
 
   try {
-    const result = await processBatch(messages, model, maxTokens);
+    const result = await processBatch(messages, model, maxTokens, { signal });
+    onActivity?.();
     const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
     console.log(
       `[Polyglot] ${label} ${batchIdx + 1} ok - ${secs}s, in:${result.promptTokens} out:${result.completionTokens}`,
     );
     return result;
   } catch (err) {
+    onActivity?.();
     console.warn(
       `[Polyglot] ${label} ${batchIdx + 1} blad (proba ${attempt + 1}): ${err.message}`,
     );
+    if (signal?.aborted) {
+      throw err;
+    }
     if (attempt < 1) {
       await new Promise((resolve) => setTimeout(resolve, 3000));
       return processBatchWithRetry(
-        { messages, model, maxTokens, label, batchIdx },
+        { messages, model, maxTokens, label, batchIdx, signal, onActivity },
         attempt + 1,
       );
     }
@@ -604,6 +721,8 @@ async function generateSentenceBatchWithRecovery(
   const { text, promptTokens, completionTokens } = await processBatchWithRetry({
     ...request,
     batchIdx: trace.batchIdx,
+    signal: options.signal,
+    onActivity: options.onActivity,
   });
   const ownCost = estimateBatchCost(pricing, promptTokens, completionTokens);
   const ownElapsedMs = Date.now() - startedAt;
@@ -825,7 +944,13 @@ async function verifySentenceChangesLocally(
 
 async function generateStructuredPolyglot(
   chapterHtml,
-  { targetLangName, sourceLangName = "", model = "deepseek-chat" },
+  {
+    targetLangName,
+    sourceLangName = "",
+    model = "deepseek-chat",
+    signal,
+    onActivity,
+  },
   onProgress,
 ) {
   const source = buildSentencePatchSource(chapterHtml);
@@ -851,9 +976,12 @@ async function generateStructuredPolyglot(
       targetLangName,
       sourceLangName,
       model,
+      signal,
+      onActivity,
     },
     pricing,
     (done, total, currentCost, secs) => {
+      onActivity?.();
       onProgress?.({
         phase: "patch",
         done,
@@ -905,5 +1033,53 @@ export async function generatePolyglot(chapterInput, opts, onProgress) {
     );
   }
 
-  return generateStructuredPolyglot(chapterHtml, opts, onProgress);
+  const { signal, onRescue, ...generationOptions } = opts ?? {};
+  let rescueCount = 0;
+
+  while (true) {
+    const attemptController = new AbortController();
+    const detachSignal = attachAbortSignal(signal, attemptController);
+    let rescued = false;
+    const stallMonitor = createStallMonitor(STALL_TIMEOUT_MS, () => {
+      if (attemptController.signal.aborted) return;
+      rescued = true;
+      attemptController.abort(
+        createAbortError("Generowanie utknelo zbyt dlugo bez postepu."),
+      );
+    });
+
+    stallMonitor.touch();
+
+    try {
+      return await generateStructuredPolyglot(
+        chapterHtml,
+        {
+          ...generationOptions,
+          signal: attemptController.signal,
+          onActivity: stallMonitor.touch,
+        },
+        (progress) => {
+          stallMonitor.touch();
+          onProgress?.(progress);
+        },
+      );
+    } catch (error) {
+      if (!rescued || rescueCount >= STALL_RETRY_LIMIT || signal?.aborted) {
+        throw error;
+      }
+
+      rescueCount += 1;
+      console.warn(
+        `[Polyglot] Stall detected, retrying generation (${rescueCount}/${STALL_RETRY_LIMIT})`,
+      );
+      onRescue?.({
+        retryAttempt: rescueCount,
+        maxRetries: STALL_RETRY_LIMIT,
+        error,
+      });
+    } finally {
+      stallMonitor.cleanup();
+      detachSignal();
+    }
+  }
 }
