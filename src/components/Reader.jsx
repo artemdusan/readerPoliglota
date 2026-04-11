@@ -1474,6 +1474,8 @@ export default function Reader({
           ? `Wysyłam ${polyProgress.total} ${patchUnitLabel}…`
           : `Przetworzono ${polyProgress.done} / ${polyProgress.total} ${patchUnitLabel}`
         : "Łączenie z API…";
+  const chapterLabel =
+    chapter?.title?.trim() || `Rozdzia\u0142 ${(chapterIdx ?? 0) + 1}`;
   const currentChapterHref = (chapter?.href || "").split("#")[0];
   const tocItems = navigableTocItems(toc);
 
@@ -1581,6 +1583,22 @@ export default function Reader({
           </button>
           <div className="tb-chapter">
             {chapter ? (
+              <select
+                className="tb-ver-select"
+                value={activeLang ?? ""}
+                onChange={(e) => {
+                  switchToLang(e.target.value || null);
+                }}
+              >
+                <option value="">{`${chapterLabel} \u2014 Orygina\u0142`}</option>
+                {cachedLangs.map((l) => (
+                  <option key={`display-${l.code}`} value={l.code}>
+                    {`${chapterLabel} \u2014 ${l.name}`}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {false ? (
               <select
                 className="tb-ver-select"
                 value={activeLang ?? ""}
