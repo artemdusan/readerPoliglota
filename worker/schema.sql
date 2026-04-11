@@ -1,12 +1,8 @@
 -- Run once: wrangler d1 execute reader-db --file=schema.sql --remote
--- Migration (run separately if DB already exists):
---   wrangler d1 execute reader-db --command="ALTER TABLE book_manifest ADD COLUMN chapter_count INTEGER NOT NULL DEFAULT 0" --remote
---   wrangler d1 execute reader-db --command="ALTER TABLE reading_positions ADD COLUMN active_lang TEXT" --remote
---   wrangler d1 execute reader-db --command="ALTER TABLE reading_positions ADD COLUMN bookmarks_json TEXT NOT NULL DEFAULT '[]'" --remote
 
 CREATE TABLE IF NOT EXISTS users (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  email      TEXT    NOT NULL UNIQUE, -- legacy column name; stores username/login identifier
+  email      TEXT    NOT NULL UNIQUE,
   hash       TEXT    NOT NULL,   -- "saltHex:iterations:derivedKeyHex" (PBKDF2-SHA256)
   created_at INTEGER NOT NULL
 );

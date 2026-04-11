@@ -2,75 +2,12 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('ReaderDB');
 
-db.version(1).stores({
-  // books: metadata + TOC; cover is base64 data URL stored here
-  books: 'id, title, createdAt, deletedAt',
-  // chapters: parsed HTML/text content per chapter
-  chapters: 'id, bookId, chapterIndex, [bookId+chapterIndex]',
-  // polyglotCache: LLM output cached per chapter + target language
-  polyglotCache: 'id, chapterId, targetLang, [chapterId+targetLang]',
-  // readingPositions: one record per book, bookId is primary key
-  readingPositions: 'bookId',
-  // settings: key-value store for app settings
-  settings: 'key',
-});
-
-// v2: add pendingSyncFlag index to chapters for delta sync tracking
-db.version(2).stores({
+db.version(6).stores({
   books:            'id, title, createdAt, deletedAt',
   chapters:         'id, bookId, chapterIndex, [bookId+chapterIndex], pendingSyncFlag',
   polyglotCache:    'id, chapterId, targetLang, [chapterId+targetLang]',
   readingPositions: 'bookId',
   settings:         'key',
-}).upgrade(async tx => {
-  // Mark all existing chapters as pending (meta + all cached langs) so they
-  // get re-uploaded to the new UUID-based R2 structure on next syncAll.
-  const allChapters = await tx.table('chapters').toArray();
-  const allPolys    = await tx.table('polyglotCache').toArray();
-  const polysByChapter = {};
-  for (const p of allPolys) (polysByChapter[p.chapterId] ??= []).push(p.targetLang);
-  for (const ch of allChapters) {
-    const langs = polysByChapter[ch.id] ?? [];
-    await tx.table('chapters').update(ch.id, {
-      pendingSync:     { meta: true, langs },
-      pendingSyncFlag: 1,
-    });
-  }
-});
-
-// v3: add audioCache for Polly TTS (legacy)
-db.version(3).stores({
-  books:            'id, title, createdAt, deletedAt',
-  chapters:         'id, bookId, chapterIndex, [bookId+chapterIndex], pendingSyncFlag',
-  polyglotCache:    'id, chapterId, targetLang, [chapterId+targetLang]',
-  readingPositions: 'bookId',
-  settings:         'key',
-  audioCache:       '[chapterId+voiceId], chapterId',
-});
-
-// v4: remove legacy Polly audio cache
-db.version(4).stores({
-  books:            'id, title, createdAt, deletedAt',
-  chapters:         'id, bookId, chapterIndex, [bookId+chapterIndex], pendingSyncFlag',
-  polyglotCache:    'id, chapterId, targetLang, [chapterId+targetLang]',
-  readingPositions: 'bookId',
-  settings:         'key',
-});
-
-// v5: drop unsupported legacy polyglot translations
-db.version(5).stores({
-  books:            'id, title, createdAt, deletedAt',
-  chapters:         'id, bookId, chapterIndex, [bookId+chapterIndex], pendingSyncFlag',
-  polyglotCache:    'id, chapterId, targetLang, [chapterId+targetLang]',
-  readingPositions: 'bookId',
-  settings:         'key',
-}).upgrade(async tx => {
-  const allPolys = await tx.table('polyglotCache').toArray();
-  for (const poly of allPolys) {
-    if (!isSupportedPolyglotValue(poly)) {
-      await tx.table('polyglotCache').delete(poly.id);
-    }
-  }
 });
 
 // ─── Pending sync helpers ─────────────────────────────────────────────────────
@@ -316,9 +253,6 @@ function normalizeBookmark(bookmark) {
     id,
     chapterIndex: Math.max(0, Math.floor(chapterIndex)),
     progress: clampProgress(bookmark.progress ?? 0),
-    color: typeof bookmark.color === 'string' && bookmark.color.trim()
-      ? bookmark.color.trim()
-      : 'gold',
     chapterTitle: typeof bookmark.chapterTitle === 'string' ? bookmark.chapterTitle : '',
     preview: typeof bookmark.preview === 'string' ? bookmark.preview : '',
     page: Number.isFinite(Number(bookmark.page)) ? Math.max(0, Math.floor(Number(bookmark.page))) : null,

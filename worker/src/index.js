@@ -81,34 +81,6 @@ function normalizeAuthIdentifier(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-let readingPositionsSchemaPromise = null;
-
-async function getReadingPositionsSchema(env) {
-  if (!readingPositionsSchemaPromise) {
-    readingPositionsSchemaPromise = env.DB.prepare(
-      "PRAGMA table_info('reading_positions')",
-    )
-      .all()
-      .then(({ results }) => {
-        const columns = new Set((results || []).map((row) => row.name));
-        return {
-          hasActiveLang: columns.has('active_lang'),
-          hasBookmarksJson: columns.has('bookmarks_json'),
-          hasPolyMode: columns.has('poly_mode'),
-          hasSentenceIdx: columns.has('sentence_idx'),
-        };
-      })
-      .catch(() => ({
-        hasActiveLang: true,
-        hasBookmarksJson: true,
-        hasPolyMode: true,
-        hasSentenceIdx: true,
-      }));
-  }
-
-  return readingPositionsSchemaPromise;
-}
-
 // ─── JWT (HMAC-SHA256, stateless) ────────────────────────────────────────────
 
 function b64url(buf) {
@@ -457,19 +429,16 @@ async function handleDeleteBook(request, env, userId, bookId) {
 // ─── PROGRESS ─────────────────────────────────────────────────────────────────
 
 async function handleGetProgress(env, userId) {
-  const schema = await getReadingPositionsSchema(env);
-  const selectColumns = [
-    'rp.book_id as bookId',
-    'rp.chapter_idx as chapterIndex',
-    'rp.scroll_top as scrollTop',
-    schema.hasActiveLang ? 'rp.active_lang as activeLang' : 'NULL as activeLang',
-    schema.hasBookmarksJson ? 'rp.bookmarks_json as bookmarksJson' : "'[]' as bookmarksJson",
-    schema.hasPolyMode ? 'rp.poly_mode as polyMode' : '0 as polyMode',
-    schema.hasSentenceIdx ? 'rp.sentence_idx as sentenceIdx' : '-1 as sentenceIdx',
-    'rp.updated_at as updatedAt',
-  ].join(', ');
   const { results } = await env.DB.prepare(
-    `SELECT ${selectColumns}
+    `SELECT
+       rp.book_id as bookId,
+       rp.chapter_idx as chapterIndex,
+       rp.scroll_top as scrollTop,
+       rp.active_lang as activeLang,
+       rp.bookmarks_json as bookmarksJson,
+       rp.poly_mode as polyMode,
+       rp.sentence_idx as sentenceIdx,
+       rp.updated_at as updatedAt
      FROM reading_positions rp
      LEFT JOIN book_manifest bm
        ON bm.user_id = rp.user_id
@@ -488,7 +457,6 @@ async function handleGetProgress(env, userId) {
 }
 
 async function handleUpsertProgress(request, env, userId, bookId) {
-  const schema = await getReadingPositionsSchema(env);
   const body = await request.json().catch(() => ({}));
   const {
     chapterIndex = 0,
@@ -502,28 +470,28 @@ async function handleUpsertProgress(request, env, userId, bookId) {
       ? body.activeLang.trim()
       : null;
   const bookmarks = Array.isArray(body.bookmarks) ? body.bookmarks : [];
-  const columns = ['user_id', 'book_id', 'chapter_idx', 'scroll_top'];
-  const values = [userId, bookId, chapterIndex, scrollTop];
-
-  if (schema.hasActiveLang) {
-    columns.push('active_lang');
-    values.push(activeLang);
-  }
-  if (schema.hasBookmarksJson) {
-    columns.push('bookmarks_json');
-    values.push(JSON.stringify(bookmarks));
-  }
-  if (schema.hasPolyMode) {
-    columns.push('poly_mode');
-    values.push(polyMode ? 1 : 0);
-  }
-  if (schema.hasSentenceIdx) {
-    columns.push('sentence_idx');
-    values.push(sentenceIdx);
-  }
-
-  columns.push('updated_at');
-  values.push(updatedAt || Date.now());
+  const columns = [
+    'user_id',
+    'book_id',
+    'chapter_idx',
+    'scroll_top',
+    'active_lang',
+    'bookmarks_json',
+    'poly_mode',
+    'sentence_idx',
+    'updated_at',
+  ];
+  const values = [
+    userId,
+    bookId,
+    chapterIndex,
+    scrollTop,
+    activeLang,
+    JSON.stringify(bookmarks),
+    polyMode ? 1 : 0,
+    sentenceIdx,
+    updatedAt || Date.now(),
+  ];
 
   const updateColumns = columns.filter(
     (column) => column !== 'user_id' && column !== 'book_id',

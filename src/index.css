@@ -772,49 +772,40 @@ html, body, #root {
   font-size: 12px;
   line-height: 1.5;
 }
-.bookmark-menu-page {
-  flex-shrink: 0;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(192,144,80,.08);
-  color: var(--gold);
-  font-size: 11px;
-  letter-spacing: .08em;
-}
-.bookmark-color-row {
+.bookmark-save-btn {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.bookmark-color-btn {
-  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 999px;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
   border: 1px solid rgba(255,255,255,.06);
   background: rgba(255,255,255,.02);
-  color: var(--txt-2);
+  color: var(--txt-1);
   cursor: pointer;
   font-family: 'DM Sans', sans-serif;
-  font-size: 12px;
-  transition: border-color .15s, background .15s, color .15s;
+  text-align: left;
+  transition: border-color .15s, background .15s, transform .15s;
 }
-.bookmark-color-btn:hover {
+.bookmark-save-btn:hover {
   border-color: rgba(255,255,255,.14);
-  color: var(--txt-1);
+  background: rgba(255,255,255,.035);
 }
-.bookmark-color-btn.active {
-  border-color: var(--bookmark-dot);
-  background: rgba(192,144,80,.08);
-  color: var(--txt-1);
+.bookmark-save-btn.active {
+  border-color: rgba(192,144,80,.28);
+  background: rgba(192,144,80,.07);
 }
-.bookmark-color-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--bookmark-dot);
-  box-shadow: 0 0 0 4px rgba(255,255,255,.04);
+.bookmark-save-btn-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.bookmark-save-btn-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--gold);
 }
 .bookmark-menu-list {
   display: flex;
@@ -824,18 +815,13 @@ html, body, #root {
   min-height: 0;
 }
 .bookmark-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: stretch;
+  position: relative;
 }
 .bookmark-item-main {
+  width: 100%;
   min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
-  align-items: flex-start;
-  padding: 12px;
+  display: block;
+  padding: 12px 52px 12px 12px;
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,.05);
   background: rgba(255,255,255,.02);
@@ -847,12 +833,6 @@ html, body, #root {
 .bookmark-item-main:hover {
   border-color: rgba(192,144,80,.22);
   background: rgba(192,144,80,.05);
-}
-.bookmark-item-dot {
-  width: 10px;
-  height: 10px;
-  margin-top: 5px;
-  border-radius: 50%;
 }
 .bookmark-item-copy {
   min-width: 0;
@@ -881,6 +861,13 @@ html, body, #root {
   overflow: hidden;
 }
 .bookmark-item-remove {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 32px;
   height: 32px;
   border-radius: 10px;

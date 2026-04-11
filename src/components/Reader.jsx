@@ -36,13 +36,6 @@ const LANGUAGE_META = Object.fromEntries(
 const LANGUAGE_ORDER = new Map(
   LANGUAGES.map((lang, index) => [lang.code, index]),
 );
-const BOOKMARK_COLORS = [
-  { id: "gold", label: "Zlota", dot: "#c09050" },
-  { id: "green", label: "Zielona", dot: "#7aaf7a" },
-  { id: "blue", label: "Niebieska", dot: "#6f93d6" },
-  { id: "rose", label: "Rozowa", dot: "#d07c78" },
-  { id: "plum", label: "Sliwkowa", dot: "#9a78c8" },
-];
 const SEARCH_BLOCK_SELECTOR = "p, h1, h2, h3, h4, h5, h6, li";
 const FONT_SIZE_MIN = 13;
 const FONT_SIZE_MAX = 30;
@@ -139,12 +132,6 @@ function formatBookmarkPage(bookmark) {
     return `${bookmark.page + 1}/${bookmark.totalPages}`;
   }
   return `${Math.round(((bookmark?.progress ?? 0) + Number.EPSILON) * 100)}%`;
-}
-
-function getBookmarkColorMeta(colorId) {
-  return (
-    BOOKMARK_COLORS.find((color) => color.id === colorId) || BOOKMARK_COLORS[0]
-  );
 }
 
 function isShortcutTargetBlocked(target) {
@@ -1074,7 +1061,7 @@ export default function Reader({
     setActiveSearchIdx(nextIndex);
   }
 
-  async function addBookmark(colorId) {
+  async function addBookmark() {
     if (!bookId || chapterIdx === null) return;
 
     const now = Date.now();
@@ -1094,7 +1081,6 @@ export default function Reader({
           `${bookId}-${chapterIdx}-${page}-${now}`),
       chapterIndex: chapterIdx,
       chapterTitle: chapterLabel,
-      color: colorId,
       progress: currentProgress,
       page,
       totalPages: totalPagesRef.current,
@@ -2199,6 +2185,7 @@ export default function Reader({
       ),
     [visibleBookmarks, chapterIdx, totalPages, currentPage],
   );
+  const hasCurrentPageBookmark = currentPageBookmarks.length > 0;
   const bookmarkList = useMemo(
     () =>
       [...visibleBookmarks].sort((a, b) => {
@@ -2509,74 +2496,59 @@ export default function Reader({
                   Zapisz biezaca strone i zsynchronizuj ja z kontem.
                 </div>
               </div>
-              <div className="bookmark-menu-page">
-                {currentPage + 1}/{totalPages}
-              </div>
             </div>
 
-            <div className="bookmark-color-row">
-              {BOOKMARK_COLORS.map((color) => (
-                <button
-                  key={color.id}
-                  type="button"
-                  className={`bookmark-color-btn${
-                    currentPageBookmarks.some(
-                      (bookmark) => bookmark.color === color.id,
-                    )
-                      ? " active"
-                      : ""
-                  }`}
-                  style={{ "--bookmark-dot": color.dot }}
-                  onClick={() => addBookmark(color.id)}
-                  title={`Zapisz zakladke: ${color.label}`}
-                >
-                  <span className="bookmark-color-swatch" />
-                  {color.label}
-                </button>
-              ))}
-            </div>
+            <button
+              type="button"
+              className={`bookmark-save-btn${hasCurrentPageBookmark ? " active" : ""}`}
+              onClick={() => addBookmark()}
+              title="Zapisz zakladke"
+            >
+              <span className="bookmark-save-btn-label">
+                {hasCurrentPageBookmark
+                  ? "Zapisano te strone"
+                  : "Zapisz zakladke"}
+              </span>
+              <span className="bookmark-save-btn-meta">
+                Strona {currentPage + 1}/{totalPages}
+              </span>
+            </button>
 
             <div className="bookmark-menu-list">
               {bookmarkList.length ? (
-                bookmarkList.map((bookmark) => {
-                  const color = getBookmarkColorMeta(bookmark.color);
-                  return (
-                    <div key={bookmark.id} className="bookmark-item">
-                      <button
-                        type="button"
-                        className="bookmark-item-main"
-                        onClick={() => jumpToBookmark(bookmark)}
-                      >
-                        <span
-                          className="bookmark-item-dot"
-                          style={{ background: color.dot }}
-                        />
-                        <span className="bookmark-item-copy">
-                          <span className="bookmark-item-title">
-                            {bookmark.chapterTitle ||
-                              `Rozdzial ${bookmark.chapterIndex + 1}`}
-                          </span>
-                          <span className="bookmark-item-meta">
-                            Strona {formatBookmarkPage(bookmark)}
-                          </span>
-                          {bookmark.preview && (
-                            <span className="bookmark-item-preview">
-                              {bookmark.preview}
-                            </span>
-                          )}
+                bookmarkList.map((bookmark) => (
+                  <div key={bookmark.id} className="bookmark-item">
+                    <button
+                      type="button"
+                      className="bookmark-item-main"
+                      onClick={() => jumpToBookmark(bookmark)}
+                    >
+                      <span className="bookmark-item-copy">
+                        <span className="bookmark-item-title">
+                          {bookmark.chapterTitle ||
+                            `Rozdzial ${bookmark.chapterIndex + 1}`}
                         </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="bookmark-item-remove"
-                        onClick={() => removeBookmark(bookmark.id)}
-                        title="Usun zakladke"
-                      >
-                        x
-                      </button>
-                    </div>
-                  );
-                })
+                        <span className="bookmark-item-meta">
+                          Strona {formatBookmarkPage(bookmark)}
+                        </span>
+                        {bookmark.preview && (
+                          <span className="bookmark-item-preview">
+                            {bookmark.preview}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="bookmark-item-remove"
+                      onClick={() => removeBookmark(bookmark.id)}
+                      title="Usun zakladke"
+                      aria-label="Usun zakladke"
+                    >
+                      x
+                    </button>
+                  </div>
+                ))
               ) : (
                 <div className="bookmark-empty">
                   Brak zapisanych zakladek.

@@ -1,182 +1,321 @@
-// Generates public/icon-192.png and public/icon-512.png from scratch using Node built-ins only.
-import zlib from 'zlib';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import zlib from 'zlib';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// CRC32 table
 const crcTable = (() => {
-  const t = new Uint32Array(256);
-  for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let k = 0; k < 8; k++) c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[i] = c;
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    let value = i;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value & 1) ? (0xedb88320 ^ (value >>> 1)) : (value >>> 1);
+    }
+    table[i] = value >>> 0;
   }
-  return t;
+  return table;
 })();
 
-function crc32(buf) {
-  let c = 0xffffffff;
-  for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
+function crc32(buffer) {
+  let value = 0xffffffff;
+  for (const byte of buffer) {
+    value = crcTable[(value ^ byte) & 0xff] ^ (value >>> 8);
+  }
+  return (value ^ 0xffffffff) >>> 0;
 }
 
-function chunk(type, data) {
+function pngChunk(type, data) {
   const typeBytes = Buffer.from(type, 'ascii');
-  const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
-  const crcBuf = Buffer.concat([typeBytes, data]);
-  const crcVal = Buffer.alloc(4); crcVal.writeUInt32BE(crc32(crcBuf));
-  return Buffer.concat([len, typeBytes, data, crcVal]);
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBytes, data])), 0);
+  return Buffer.concat([length, typeBytes, data, crc]);
+}
+
+function mix(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function insideRoundedRect(x, y, left, top, width, height, radius) {
+  const right = left + width;
+  const bottom = top + height;
+  const clampedX = Math.max(left + radius, Math.min(x, right - radius));
+  const clampedY = Math.max(top + radius, Math.min(y, bottom - radius));
+  const dx = x - clampedX;
+  const dy = y - clampedY;
+  return dx * dx + dy * dy <= radius * radius;
 }
 
 function makePNG(size) {
-  const s = size;
-  // RGBA pixels
-  const pixels = new Uint8Array(s * s * 4);
+  const pixels = new Uint8Array(size * size * 4);
+  const scale = size / 512;
 
   function setPixel(x, y, r, g, b, a = 255) {
-    if (x < 0 || x >= s || y < 0 || y >= s) return;
-    const i = (y * s + x) * 4;
-    // alpha blending over existing
-    const ao = pixels[i + 3] / 255;
-    const an = a / 255;
-    const out = an + ao * (1 - an);
-    if (out === 0) return;
-    pixels[i]     = Math.round((r * an + pixels[i]     * ao * (1 - an)) / out);
-    pixels[i + 1] = Math.round((g * an + pixels[i + 1] * ao * (1 - an)) / out);
-    pixels[i + 2] = Math.round((b * an + pixels[i + 2] * ao * (1 - an)) / out);
-    pixels[i + 3] = Math.round(out * 255);
+    if (x < 0 || x >= size || y < 0 || y >= size) return;
+    const index = (y * size + x) * 4;
+    const baseAlpha = pixels[index + 3] / 255;
+    const nextAlpha = a / 255;
+    const outAlpha = nextAlpha + (baseAlpha * (1 - nextAlpha));
+    if (outAlpha <= 0) return;
+
+    pixels[index] = Math.round(((r * nextAlpha) + (pixels[index] * baseAlpha * (1 - nextAlpha))) / outAlpha);
+    pixels[index + 1] = Math.round(((g * nextAlpha) + (pixels[index + 1] * baseAlpha * (1 - nextAlpha))) / outAlpha);
+    pixels[index + 2] = Math.round(((b * nextAlpha) + (pixels[index + 2] * baseAlpha * (1 - nextAlpha))) / outAlpha);
+    pixels[index + 3] = Math.round(outAlpha * 255);
   }
 
-  // Scale factor: design is 512x512
-  const sc = s / 512;
+  function toPx(value) {
+    return value * scale;
+  }
 
-  // Background: #0e0d0b with rounded corners (rx=96 scaled)
-  const rx = Math.round(96 * sc);
-  for (let y = 0; y < s; y++) {
-    for (let x = 0; x < s; x++) {
-      // Check rounded corners
-      let inCorner = false;
-      const cx = x < rx ? rx : x > s - 1 - rx ? s - 1 - rx : x;
-      const cy = y < rx ? rx : y > s - 1 - rx ? s - 1 - rx : y;
-      const dx = x - cx, dy = y - cy;
-      if (dx * dx + dy * dy > rx * rx) inCorner = true;
-      if (!inCorner) setPixel(x, y, 0x0e, 0x0d, 0x0b);
+  function drawRoundedRect(left, top, width, height, radius, colorAt) {
+    const x0 = Math.max(0, Math.floor(toPx(left)));
+    const y0 = Math.max(0, Math.floor(toPx(top)));
+    const x1 = Math.min(size - 1, Math.ceil(toPx(left + width)));
+    const y1 = Math.min(size - 1, Math.ceil(toPx(top + height)));
+    const radiusPx = toPx(radius);
+
+    for (let y = y0; y <= y1; y += 1) {
+      for (let x = x0; x <= x1; x += 1) {
+        if (!insideRoundedRect(x, y, toPx(left), toPx(top), toPx(width), toPx(height), radiusPx)) {
+          continue;
+        }
+        const color = colorAt(x / scale, y / scale);
+        setPixel(x, y, color[0], color[1], color[2], color[3] ?? 255);
+      }
     }
   }
 
-  // Translate to center (256,256) -> (s/2, s/2)
-  const ox = s / 2, oy = s / 2;
+  function strokeRoundedRect(left, top, width, height, radius, strokeWidth, color) {
+    const x0 = Math.max(0, Math.floor(toPx(left)));
+    const y0 = Math.max(0, Math.floor(toPx(top)));
+    const x1 = Math.min(size - 1, Math.ceil(toPx(left + width)));
+    const y1 = Math.min(size - 1, Math.ceil(toPx(top + height)));
+    const outerLeft = toPx(left);
+    const outerTop = toPx(top);
+    const outerWidth = toPx(width);
+    const outerHeight = toPx(height);
+    const outerRadius = toPx(radius);
+    const innerLeft = toPx(left + strokeWidth);
+    const innerTop = toPx(top + strokeWidth);
+    const innerWidth = toPx(width - strokeWidth * 2);
+    const innerHeight = toPx(height - strokeWidth * 2);
+    const innerRadius = toPx(Math.max(0, radius - strokeWidth));
 
-  function sc2px(vx, vy) { return [ox + vx * sc, oy + vy * sc]; }
+    for (let y = y0; y <= y1; y += 1) {
+      for (let x = x0; x <= x1; x += 1) {
+        const inOuter = insideRoundedRect(x, y, outerLeft, outerTop, outerWidth, outerHeight, outerRadius);
+        const inInner =
+          innerWidth > 0 &&
+          innerHeight > 0 &&
+          insideRoundedRect(x, y, innerLeft, innerTop, innerWidth, innerHeight, innerRadius);
+        if (inOuter && !inInner) {
+          setPixel(x, y, color[0], color[1], color[2], color[3] ?? 255);
+        }
+      }
+    }
+  }
 
-  // Draw filled polygon
-  function fillPoly(points, r, g, b, a) {
-    // find bounding box
-    let minY = Infinity, maxY = -Infinity;
-    for (const [, py] of points) { minY = Math.min(minY, py); maxY = Math.max(maxY, py); }
-    minY = Math.max(0, Math.floor(minY));
-    maxY = Math.min(s - 1, Math.ceil(maxY));
-    for (let y = minY; y <= maxY; y++) {
-      const intersects = [];
-      for (let i = 0; i < points.length; i++) {
-        const [x1, y1] = points[i];
-        const [x2, y2] = points[(i + 1) % points.length];
+  function fillEllipse(cx, cy, rx, ry, color, alpha = 255) {
+    const left = Math.max(0, Math.floor(toPx(cx - rx)));
+    const top = Math.max(0, Math.floor(toPx(cy - ry)));
+    const right = Math.min(size - 1, Math.ceil(toPx(cx + rx)));
+    const bottom = Math.min(size - 1, Math.ceil(toPx(cy + ry)));
+    const cxPx = toPx(cx);
+    const cyPx = toPx(cy);
+    const rxPx = toPx(rx);
+    const ryPx = toPx(ry);
+
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const dx = (x - cxPx) / rxPx;
+        const dy = (y - cyPx) / ryPx;
+        const distance = dx * dx + dy * dy;
+        if (distance > 1) continue;
+        const strength = Math.pow(1 - distance, 1.35);
+        setPixel(x, y, color[0], color[1], color[2], Math.round(alpha * strength));
+      }
+    }
+  }
+
+  function fillPolygon(points, colorAt) {
+    const scaledPoints = points.map(([x, y]) => [toPx(x), toPx(y)]);
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const [, y] of scaledPoints) {
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+    const startY = Math.max(0, Math.floor(minY));
+    const endY = Math.min(size - 1, Math.ceil(maxY));
+
+    for (let y = startY; y <= endY; y += 1) {
+      const intersections = [];
+      for (let index = 0; index < scaledPoints.length; index += 1) {
+        const [x1, y1] = scaledPoints[index];
+        const [x2, y2] = scaledPoints[(index + 1) % scaledPoints.length];
         if ((y1 <= y && y2 > y) || (y2 <= y && y1 > y)) {
-          intersects.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1));
+          intersections.push(x1 + ((y - y1) / (y2 - y1)) * (x2 - x1));
         }
       }
-      intersects.sort((a, b) => a - b);
-      for (let k = 0; k < intersects.length; k += 2) {
-        const x0 = Math.max(0, Math.ceil(intersects[k]));
-        const x1 = Math.min(s - 1, Math.floor(intersects[k + 1]));
-        for (let x = x0; x <= x1; x++) setPixel(x, y, r, g, b, a);
-      }
-    }
-  }
-
-  // Left page: M-140,-90 C-140,-90 -80,-80 -20,-60 L-20,130 C-80,110 -140,120 -140,120
-  // Approximate with polygon
-  const leftPage = [
-    sc2px(-140, -90), sc2px(-80, -80), sc2px(-20, -60),
-    sc2px(-20, 130), sc2px(-80, 110), sc2px(-140, 120),
-  ];
-  fillPoly(leftPage, 0xf5, 0xf0, 0xe8, Math.round(0.95 * 255));
-
-  // Right page
-  const rightPage = [
-    sc2px(140, -90), sc2px(80, -80), sc2px(20, -60),
-    sc2px(20, 130), sc2px(80, 110), sc2px(140, 120),
-  ];
-  fillPoly(rightPage, 0xf5, 0xf0, 0xe8, Math.round(0.85 * 255));
-
-  // Spine: rect x=-8 y=-65 w=16 h=200 rx=4
-  const spineX = ox - 8 * sc, spineY = oy - 65 * sc;
-  const spineW = 16 * sc, spineH = 200 * sc;
-  for (let y = Math.floor(spineY); y <= Math.ceil(spineY + spineH); y++) {
-    for (let x = Math.floor(spineX); x <= Math.ceil(spineX + spineW); x++) {
-      setPixel(x, y, 0xc8, 0xb8, 0x9a);
-    }
-  }
-
-  // Lines (left page)
-  const lineData = [
-    [-120, -30, -30, -20], [-120, 0, -30, 8], [-120, 30, -30, 36], [-120, 60, -30, 64],
-    [120, -30, 30, -20],   [120, 0, 30, 8],   [120, 30, 30, 36],   [120, 60, 30, 64],
-  ];
-  const lw = Math.max(2, Math.round(6 * sc));
-  for (const [x1, y1, x2, y2] of lineData) {
-    const [px1, py1] = sc2px(x1, y1);
-    const [px2, py2] = sc2px(x2, y2);
-    const steps = Math.ceil(Math.sqrt((px2-px1)**2 + (py2-py1)**2));
-    for (let t = 0; t <= steps; t++) {
-      const fx = px1 + (px2-px1)*t/steps;
-      const fy = py1 + (py2-py1)*t/steps;
-      for (let dy = -lw/2; dy <= lw/2; dy++) {
-        for (let dx = -lw/2; dx <= lw/2; dx++) {
-          if (dx*dx + dy*dy <= (lw/2)*(lw/2))
-            setPixel(Math.round(fx+dx), Math.round(fy+dy), 0xc8, 0xb8, 0x9a);
+      intersections.sort((a, b) => a - b);
+      for (let index = 0; index < intersections.length; index += 2) {
+        const startX = Math.max(0, Math.ceil(intersections[index]));
+        const endX = Math.min(size - 1, Math.floor(intersections[index + 1]));
+        for (let x = startX; x <= endX; x += 1) {
+          const color = colorAt(x / scale, y / scale);
+          setPixel(x, y, color[0], color[1], color[2], color[3] ?? 255);
         }
       }
     }
   }
 
-  // Build raw PNG image data (RGBA)
-  const rowSize = s * 4 + 1;
-  const raw = Buffer.alloc(s * rowSize);
-  for (let y = 0; y < s; y++) {
-    raw[y * rowSize] = 0; // filter none
-    for (let x = 0; x < s; x++) {
-      const src = (y * s + x) * 4;
+  function fillRect(left, top, width, height, colorAt) {
+    const x0 = Math.max(0, Math.floor(toPx(left)));
+    const y0 = Math.max(0, Math.floor(toPx(top)));
+    const x1 = Math.min(size - 1, Math.ceil(toPx(left + width)));
+    const y1 = Math.min(size - 1, Math.ceil(toPx(top + height)));
+    for (let y = y0; y <= y1; y += 1) {
+      for (let x = x0; x <= x1; x += 1) {
+        const color = colorAt(x / scale, y / scale);
+        setPixel(x, y, color[0], color[1], color[2], color[3] ?? 255);
+      }
+    }
+  }
+
+  function drawLine(x1, y1, x2, y2, width, color, alpha = 255) {
+    const sx1 = toPx(x1);
+    const sy1 = toPx(y1);
+    const sx2 = toPx(x2);
+    const sy2 = toPx(y2);
+    const radius = Math.max(1, toPx(width) / 2);
+    const steps = Math.ceil(Math.hypot(sx2 - sx1, sy2 - sy1));
+    for (let step = 0; step <= steps; step += 1) {
+      const t = steps === 0 ? 0 : step / steps;
+      const cx = mix(sx1, sx2, t);
+      const cy = mix(sy1, sy2, t);
+      const left = Math.max(0, Math.floor(cx - radius));
+      const top = Math.max(0, Math.floor(cy - radius));
+      const right = Math.min(size - 1, Math.ceil(cx + radius));
+      const bottom = Math.min(size - 1, Math.ceil(cy + radius));
+      for (let y = top; y <= bottom; y += 1) {
+        for (let x = left; x <= right; x += 1) {
+          const dx = x - cx;
+          const dy = y - cy;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance > radius) continue;
+          const strength = Math.pow(1 - (distance / radius), 1.2);
+          setPixel(x, y, color[0], color[1], color[2], Math.round(alpha * strength));
+        }
+      }
+    }
+  }
+
+  drawRoundedRect(0, 0, 512, 512, 104, (_x, y) => {
+    const t = y / 512;
+    return [
+      Math.round(mix(0x2f, 0x10, t)),
+      Math.round(mix(0x20, 0x0b, t)),
+      Math.round(mix(0x17, 0x08, t)),
+      255,
+    ];
+  });
+
+  fillEllipse(256, 188, 168, 132, [0xf1, 0xc9, 0x8c], 62);
+  strokeRoundedRect(28, 28, 456, 456, 86, 4, [0xff, 0xf4, 0xe4, 22]);
+  fillEllipse(256, 396, 158, 30, [0x00, 0x00, 0x00], 46);
+
+  const coverGradient = (_x, y) => {
+    const t = Math.max(0, Math.min(1, (y - 146) / 260));
+    return [
+      Math.round(mix(0x2a, 0x18, t)),
+      Math.round(mix(0x1a, 0x10, t)),
+      Math.round(mix(0x12, 0x0c, t)),
+      255,
+    ];
+  };
+  const pageGradient = (_x, y) => {
+    const t = Math.max(0, Math.min(1, (y - 160) / 208));
+    return [
+      Math.round(mix(0xfb, 0xe7, t)),
+      Math.round(mix(0xf3, 0xd5, t)),
+      Math.round(mix(0xe7, 0xb6, t)),
+      255,
+    ];
+  };
+
+  fillPolygon([[112, 156], [178, 128], [250, 138], [250, 408], [180, 386], [112, 418]], coverGradient);
+  fillPolygon([[400, 156], [334, 128], [262, 138], [262, 408], [332, 386], [400, 418]], coverGradient);
+  fillPolygon([[134, 161], [176, 148], [212, 142], [242, 148], [242, 378], [192, 364], [134, 392]], pageGradient);
+  fillPolygon([[378, 161], [336, 148], [300, 142], [270, 148], [270, 378], [320, 364], [378, 392]], pageGradient);
+
+  fillPolygon([[246, 100], [266, 100], [266, 274], [256, 288], [246, 274]], (_x, y) => {
+    const t = Math.max(0, Math.min(1, (y - 100) / 188));
+    return [
+      Math.round(mix(0xd8, 0x9c, t)),
+      Math.round(mix(0x89, 0x4f, t)),
+      Math.round(mix(0x4f, 0x27, t)),
+      255,
+    ];
+  });
+
+  drawRoundedRect(242, 136, 28, 248, 14, (_x, y) => {
+    const t = Math.max(0, Math.min(1, (y - 136) / 248));
+    return [
+      Math.round(mix(0xeb, 0xbc, t)),
+      Math.round(mix(0xcb, 0x85, t)),
+      Math.round(mix(0x97, 0x50, t)),
+      255,
+    ];
+  });
+
+  const lineColor = [0xb6, 0x92, 0x67];
+  [
+    [158, 206, 226, 194],
+    [158, 244, 226, 234],
+    [158, 282, 226, 274],
+    [158, 320, 226, 314],
+    [354, 206, 286, 194],
+    [354, 244, 286, 234],
+    [354, 282, 286, 274],
+    [354, 320, 286, 314],
+  ].forEach(([x1, y1, x2, y2]) => drawLine(x1, y1, x2, y2, 6, lineColor, 180));
+
+  fillRect(246, 100, 20, 16, () => [0xef, 0xb3, 0x77, 70]);
+
+  const rowSize = size * 4 + 1;
+  const raw = Buffer.alloc(size * rowSize);
+  for (let y = 0; y < size; y += 1) {
+    raw[y * rowSize] = 0;
+    for (let x = 0; x < size; x += 1) {
+      const src = (y * size + x) * 4;
       const dst = y * rowSize + 1 + x * 4;
-      raw[dst]   = pixels[src];
-      raw[dst+1] = pixels[src+1];
-      raw[dst+2] = pixels[src+2];
-      raw[dst+3] = pixels[src+3];
+      raw[dst] = pixels[src];
+      raw[dst + 1] = pixels[src + 1];
+      raw[dst + 2] = pixels[src + 2];
+      raw[dst + 3] = pixels[src + 3];
     }
   }
 
-  const compressed = zlib.deflateSync(raw, { level: 6 });
-
-  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  const ihdrData = Buffer.alloc(13);
-  ihdrData.writeUInt32BE(s, 0); ihdrData.writeUInt32BE(s, 4);
-  ihdrData[8] = 8; ihdrData[9] = 6; // 8-bit RGBA
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header[8] = 8;
+  header[9] = 6;
 
   return Buffer.concat([
-    sig,
-    chunk('IHDR', ihdrData),
-    chunk('IDAT', compressed),
-    chunk('IEND', Buffer.alloc(0)),
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', zlib.deflateSync(raw, { level: 6 })),
+    pngChunk('IEND', Buffer.alloc(0)),
   ]);
 }
 
 const outDir = path.join(__dirname, 'public');
 for (const size of [192, 512]) {
-  const buf = makePNG(size);
-  const out = path.join(outDir, `icon-${size}.png`);
-  fs.writeFileSync(out, buf);
-  console.log(`Written ${out} (${buf.length} bytes)`);
+  const output = path.join(outDir, `icon-${size}.png`);
+  fs.writeFileSync(output, makePNG(size));
+  console.log(`Written ${output}`);
 }
