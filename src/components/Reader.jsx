@@ -194,14 +194,18 @@ export default function Reader({
     chScrollRef.current?.classList.remove("page-turning");
   }, []);
 
-  const syncPageViewport = useCallback((page) => {
+  const syncPageViewport = useCallback((page, colWidth) => {
     const container = chScrollRef.current;
     const inner = chInnerRef.current;
     if (!container || !inner) return;
 
     // Page by scrollLeft (not transform) to avoid Blink/WebKit multi-column repaint bugs.
     inner.style.removeProperty("transform");
-    container.scrollLeft = Math.max(0, page) * container.clientWidth;
+    // Use the explicitly supplied column width when available (avoids a mismatch
+    // if clientWidth changed between the rAF that set column-width and the rAF
+    // that syncs scrollLeft — common during mobile address-bar transitions).
+    const cw = colWidth ?? container.clientWidth;
+    container.scrollLeft = Math.max(0, page) * cw;
   }, []);
 
   /* ── Load Web Speech API voices (async, fires voiceschanged) ── */
@@ -374,15 +378,21 @@ export default function Reader({
       setChapterLoading(false);
       animKeyRef.current += 1;
 
-      // Defer paragraph annotation so chapter HTML renders immediately
+      // Defer paragraph annotation so chapter HTML renders first and the
+      // initial layout rAFs (double rAF) complete before the annotated HTML
+      // triggers a second layout pass. Using double-rAF here places this AFTER
+      // the layout effect's own rAF2, eliminating the race where originalHtmlAnnotated
+      // could change between rAF1 and rAF2 of the first layout.
       if (ch?.html) {
         const chHtml = ch.html;
-        setTimeout(() => {
-          const { html: annotated, fragments } =
-            annotateParagraphsInHtml(chHtml);
-          setOriginalHtmlAnnotated(annotated);
-          setOriginalTtsFragments(fragments);
-        }, 0);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const { html: annotated, fragments } =
+              annotateParagraphsInHtml(chHtml);
+            setOriginalHtmlAnnotated(annotated);
+            setOriginalTtsFragments(fragments);
+          });
+        });
       }
 
       if (ch?.id) {
@@ -530,7 +540,9 @@ export default function Reader({
           setCurrentPage(targetPage);
           currentPageRef.current = targetPage;
           inner.style.transition = "";
-          syncPageViewport(targetPage);
+          // Pass pw so scrollLeft uses the same column width that was applied
+          // in the first rAF — avoids mismatch if clientWidth changed meanwhile.
+          syncPageViewport(targetPage, pw);
         } else {
           // Re-layout only (font change or polyMode switch) — keep current page
           const cur = Math.min(currentPageRef.current, total - 1);
@@ -539,7 +551,7 @@ export default function Reader({
             currentPageRef.current = cur;
           }
           inner.style.transition = "";
-          syncPageViewport(cur);
+          syncPageViewport(cur, pw);
         }
       });
     });
@@ -580,6 +592,31 @@ export default function Reader({
     });
     observer.observe(container);
     return () => observer.disconnect();
+  }, []);
+
+  /* ── Re-sync viewport when app returns from background (visibilitychange / pageshow) ──
+     On mobile browsers (especially iOS Safari) scrollLeft on overflow:hidden elements
+     can be silently reset to 0 when the PWA is backgrounded and then brought back.
+     Re-trigger a full layout so position is correctly restored from refs.          ── */
+  useEffect(() => {
+    const resync = () => {
+      if (document.hidden) return;
+      if (pendingProgressRef.current === null) {
+        const progress =
+          totalPagesRef.current > 1
+            ? currentPageRef.current / (totalPagesRef.current - 1)
+            : 0;
+        pendingProgressRef.current = progress;
+      }
+      setLayoutKey((k) => k + 1);
+    };
+    document.addEventListener("visibilitychange", resync);
+    // pageshow fires on bfcache restore (iOS Safari back-navigation)
+    window.addEventListener("pageshow", resync);
+    return () => {
+      document.removeEventListener("visibilitychange", resync);
+      window.removeEventListener("pageshow", resync);
+    };
   }, []);
 
   /* ── Keep activeLangRef in sync; save position only on explicit user lang switch ── */
