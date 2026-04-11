@@ -2199,8 +2199,7 @@ export default function Reader({
     return inputK * p.input + outputK * p.output;
   })();
   const estimatedSecs = chapter?.text
-    ? Math.ceil(chapter.text.length / 3500) *
-      (settings.polyglotModel?.includes("reasoner") ? 45 : 12)
+    ? Math.max(4, Math.ceil(estimatedFragments / 12) * 8)
     : 0;
   const polyDisplaySecs =
     polyState === "loading"
@@ -2208,16 +2207,16 @@ export default function Reader({
       : polyProgress.secs;
   const patchUnitLabel =
     polyProgress.total === 1
-      ? "fragment"
+      ? "zdanie"
       : polyProgress.total < 5
-        ? "fragmenty"
-        : "fragmentów";
+        ? "zdania"
+        : "zdań";
   const verifyUnitLabel =
     polyProgress.total === 1
-      ? "partia"
+      ? "zdanie"
       : polyProgress.total < 5
-        ? "partie"
-        : "partii";
+        ? "zdania"
+        : "zdań";
   const polyLoadingText =
     polyProgress.phase === "verify"
       ? polyProgress.total > 0
@@ -2991,10 +2990,10 @@ export default function Reader({
                         <strong>
                           {estimatedFragments}{" "}
                           {estimatedFragments === 1
-                            ? "fragment"
+                            ? "zdanie"
                             : estimatedFragments < 5
-                              ? "fragmenty"
-                              : "fragmentów"}
+                              ? "zdania"
+                              : "zdań"}
                         </strong>
                         {" · ~"}
                         {estimatedSecs < 60
