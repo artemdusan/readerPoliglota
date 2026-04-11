@@ -5,7 +5,7 @@ compatibility_date = "2024-09-23"
 [[d1_databases]]
 binding = "DB"
 database_name = "reader-db"
-database_id   = "d0e1eddd-93c9-44fd-871b-a80181728c1c"
+database_id   = "efe0a67c-2eea-4d05-a972-1f743310d57e"
 
 [[r2_buckets]]
 bucket_name = "reader-books"

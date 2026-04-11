@@ -201,6 +201,11 @@ export default function Reader({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMatches, setSearchMatches] = useState([]);
   const [activeSearchIdx, setActiveSearchIdx] = useState(0);
+  const searchLayoutMode = searchOpen
+    ? searchQuery.trim()
+      ? "expanded"
+      : "compact"
+    : "closed";
   const [bookmarkMenuOpen, setBookmarkMenuOpen] = useState(false);
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
@@ -251,6 +256,7 @@ export default function Reader({
   const currentPageRef = useRef(0);
   const totalPagesRef = useRef(1);
   const scrollRetryTokenRef = useRef(0); // incremented each layout to cancel stale retries
+  const prevSearchLayoutModeRef = useRef(searchLayoutMode);
   const flippingRef = useRef(false);
   const pageTurnTimerRef = useRef(null);
   const desiredLangRef = useRef(null); // lang to carry over when changing chapter
@@ -319,6 +325,20 @@ export default function Reader({
     const cw = colWidth ?? container.clientWidth;
     container.scrollLeft = Math.max(0, page) * cw;
   }, []);
+
+  const queuePaginationRelayout = useCallback(() => {
+    if (!chapter?.id) return;
+    const progress =
+      totalPagesRef.current > 1
+        ? currentPageRef.current / (totalPagesRef.current - 1)
+        : 0;
+    // Keep explicit chapter-transition restores intact; only capture
+    // current progress when no restore is already queued.
+    if (pendingProgressRef.current === null) {
+      pendingProgressRef.current = progress;
+    }
+    setLayoutKey((k) => k + 1);
+  }, [chapter?.id]);
 
   /* ── Load Web Speech API voices (async, fires voiceschanged) ── */
   useEffect(() => {
@@ -735,20 +755,64 @@ export default function Reader({
     const container = chScrollRef.current;
     if (!container) return;
     const observer = new ResizeObserver(() => {
-      const progress =
-        totalPagesRef.current > 1
-          ? currentPageRef.current / (totalPagesRef.current - 1)
-          : 0;
-      // Keep explicit chapter-transition restores intact; only capture
-      // current progress when no restore is already queued.
-      if (pendingProgressRef.current === null) {
-        pendingProgressRef.current = progress;
-      }
-      setLayoutKey((k) => k + 1);
+      queuePaginationRelayout();
     });
     observer.observe(container);
     return () => observer.disconnect();
-  }, []);
+  }, [queuePaginationRelayout]);
+
+  useEffect(() => {
+    let rafId = 0;
+    let settleTimer = 0;
+    const viewport = window.visualViewport;
+
+    const scheduleRelayout = (withSettlePass = false) => {
+      if (!rafId) {
+        rafId = window.requestAnimationFrame(() => {
+          rafId = 0;
+          queuePaginationRelayout();
+        });
+      }
+      if (!withSettlePass) return;
+      if (settleTimer) {
+        window.clearTimeout(settleTimer);
+      }
+      // Mobile browsers often finish resizing a moment after orientationchange.
+      settleTimer = window.setTimeout(() => {
+        settleTimer = 0;
+        queuePaginationRelayout();
+      }, 180);
+    };
+
+    const handleResize = () => scheduleRelayout();
+    const handleOrientationChange = () => scheduleRelayout(true);
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleOrientationChange);
+    viewport?.addEventListener("resize", handleResize);
+
+    return () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+      if (settleTimer) {
+        window.clearTimeout(settleTimer);
+      }
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleOrientationChange);
+      viewport?.removeEventListener("resize", handleResize);
+    };
+  }, [queuePaginationRelayout]);
+
+  useEffect(() => {
+    if (prevSearchLayoutModeRef.current === searchLayoutMode) return;
+    prevSearchLayoutModeRef.current = searchLayoutMode;
+
+    const rafId = window.requestAnimationFrame(() => {
+      queuePaginationRelayout();
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [searchLayoutMode, queuePaginationRelayout]);
 
   const getCurrentProgress = useCallback(
     () => currentPageRef.current / Math.max(1, totalPagesRef.current - 1),
@@ -863,14 +927,7 @@ export default function Reader({
   useEffect(() => {
     const resync = () => {
       if (document.hidden) return;
-      if (pendingProgressRef.current === null) {
-        const progress =
-          totalPagesRef.current > 1
-            ? currentPageRef.current / (totalPagesRef.current - 1)
-            : 0;
-        pendingProgressRef.current = progress;
-      }
-      setLayoutKey((k) => k + 1);
+      queuePaginationRelayout();
     };
     document.addEventListener("visibilitychange", resync);
     // pageshow fires on bfcache restore (iOS Safari back-navigation)
@@ -879,7 +936,7 @@ export default function Reader({
       document.removeEventListener("visibilitychange", resync);
       window.removeEventListener("pageshow", resync);
     };
-  }, []);
+  }, [queuePaginationRelayout]);
 
   useEffect(() => {
     function handleSynced() {
@@ -2594,7 +2651,7 @@ export default function Reader({
                 <span className="settings-tool-text">Zakładki</span>
               </button>
               <button
-                className={`settings-tool${shortcutsOpen ? " settings-tool-active" : ""}`}
+                className={`settings-tool settings-tool-desktop-only${shortcutsOpen ? " settings-tool-active" : ""}`}
                 onClick={openShortcutsPanel}
                 title="Pokaz skróty (?)"
               >

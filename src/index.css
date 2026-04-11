@@ -1299,6 +1299,12 @@ html, body, #root {
     grid-column: 1 / -1;
     order: 1;
   }
+  .settings-menu-toolbar {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .settings-tool-desktop-only {
+    display: none;
+  }
   .bookmark-menu {
     right: 12px;
     width: calc(100% - 24px);
@@ -1626,6 +1632,9 @@ html, body, #root {
   line-height: 1;
   color: currentColor;
 }
+.settings-tool-desktop-only {
+  display: inline-flex;
+}
 .settings-menu-row {
   display: flex; align-items: center; justify-content: space-between;
   padding: 7px 14px; gap: 12px;
@@ -1679,7 +1688,7 @@ html, body, #root {
     width: calc(100vw - 20px);
   }
   .settings-menu-toolbar {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
