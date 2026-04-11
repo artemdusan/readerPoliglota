@@ -290,7 +290,14 @@ export async function getReadingPosition(bookId) {
 }
 
 export async function saveReadingPosition(bookId, chapterIndex, progress = 0, activeLang = null) {
-  await db.readingPositions.put({ bookId, chapterIndex, progress, activeLang, updatedAt: Date.now() });
+  const existing = await db.readingPositions.get(bookId);
+  await db.readingPositions.put({
+    ...(existing || { bookId }),
+    chapterIndex,
+    progress,
+    activeLang,
+    updatedAt: Date.now(),
+  });
 }
 
 export async function getBookWithChapters(bookId) {
