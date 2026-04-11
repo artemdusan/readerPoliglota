@@ -2212,6 +2212,46 @@ export default function Reader({
   );
   const currentChapterHref = (chapter?.href || "").split("#")[0];
   const tocItems = navigableTocItems(toc);
+  const ttsButtonTitle =
+    polyMode && polyState === "done"
+      ? ttsPlaying
+        ? ttsPaused
+          ? "Wznów czytanie"
+          : "Zatrzymaj czytanie"
+        : "Odtwórz TTS"
+      : originalTtsPlaying
+        ? originalTtsPaused
+          ? "Wznów czytanie"
+          : "Zatrzymaj czytanie"
+        : "Odtwórz TTS";
+  const ttsButtonLabel =
+    polyMode && polyState === "done"
+      ? ttsPlaying
+        ? ttsPaused
+          ? "Wznów"
+          : "Pauza"
+        : "Play"
+      : originalTtsPlaying
+        ? originalTtsPaused
+          ? "Wznów"
+          : "Pauza"
+        : "Play";
+  const ttsButtonIcon =
+    polyMode && polyState === "done"
+      ? ttsPlaying
+        ? ttsPaused
+          ? ">"
+          : "||"
+        : ">"
+      : originalTtsPlaying
+        ? originalTtsPaused
+          ? ">"
+          : "||"
+        : ">";
+  const hasTtsAvailable =
+    polyMode && polyState === "done"
+      ? polyTtsParagraphs.length > 0
+      : originalTtsFragments.length > 0;
 
   if (!book && !chapterLoading) {
     return (
@@ -2549,126 +2589,86 @@ export default function Reader({
         {/* Settings dropdown */}
         {settingsMenuOpen && (
           <div className="settings-menu" ref={settingsMenuRef}>
-            <div className="settings-menu-row">
-              <span className="settings-menu-label">Szukaj</span>
-              <div className="settings-menu-ctrl">
-                <button
-                  className={`ctl${searchOpen ? " ctl-active" : ""}`}
-                  onClick={() => {
-                    if (searchOpen) {
-                      setSearchOpen(false);
-                      setSettingsMenuOpen(false);
-                      return;
-                    }
-                    openSearchPanel();
-                  }}
-                  title="Szukaj w rozdziale (J)"
-                >
-                  {searchOpen ? "Ukryj" : "Otworz"}
-                </button>
-              </div>
+            <div className="settings-menu-toolbar">
+              <button
+                className={`settings-tool${searchOpen ? " settings-tool-active" : ""}`}
+                onClick={() => {
+                  if (searchOpen) {
+                    setSearchOpen(false);
+                    setSettingsMenuOpen(false);
+                    return;
+                  }
+                  openSearchPanel();
+                }}
+                title="Szukaj w rozdziale (J)"
+              >
+                <span className="settings-tool-icon">/</span>
+                <span className="settings-tool-text">Szukaj</span>
+              </button>
+              <button
+                ref={bookmarkToggleRef}
+                className={`settings-tool${bookmarkMenuOpen || currentPageBookmarks.length ? " settings-tool-active" : ""}`}
+                onClick={() => {
+                  if (bookmarkMenuOpen) {
+                    setBookmarkMenuOpen(false);
+                    setSettingsMenuOpen(false);
+                    return;
+                  }
+                  openBookmarksPanel();
+                }}
+                title="Zakladki (Z)"
+              >
+                <span className="settings-tool-icon">*</span>
+                <span className="settings-tool-text">Zakładki</span>
+              </button>
+              <button
+                className={`settings-tool${shortcutsOpen ? " settings-tool-active" : ""}`}
+                onClick={openShortcutsPanel}
+                title="Pokaz skróty (?)"
+              >
+                <span className="settings-tool-icon">?</span>
+                <span className="settings-tool-text">Skróty</span>
+              </button>
+              <button
+                className={`settings-tool${isFullscreen ? " settings-tool-active" : ""}`}
+                onClick={() => void toggleFullscreen()}
+                title="Przelacz pelny ekran (F)"
+              >
+                <span className="settings-tool-icon">[]</span>
+                <span className="settings-tool-text">Ekran</span>
+              </button>
+              <button
+                className={`settings-tool${(ttsPlaying && !ttsPaused) || (originalTtsPlaying && !originalTtsPaused) ? " settings-tool-active" : ""}`}
+                onClick={polyMode && polyState === "done" ? toggleHybridTts : toggleOriginalTts}
+                title={ttsButtonTitle}
+                disabled={!hasTtsAvailable}
+              >
+                <span className="settings-tool-icon">{ttsButtonIcon}</span>
+                <span className="settings-tool-text">{ttsButtonLabel}</span>
+              </button>
             </div>
-            <div className="settings-menu-row">
-              <span className="settings-menu-label">Zakladki</span>
-              <div className="settings-menu-ctrl">
-                <button
-                  ref={bookmarkToggleRef}
-                  className={`ctl${bookmarkMenuOpen || currentPageBookmarks.length ? " ctl-active" : ""}`}
-                  onClick={() => {
-                    if (bookmarkMenuOpen) {
-                      setBookmarkMenuOpen(false);
-                      setSettingsMenuOpen(false);
-                      return;
-                    }
-                    openBookmarksPanel();
-                  }}
-                  title="Zakladki (Z)"
-                >
-                  {bookmarkMenuOpen ? "Ukryj" : "Otworz"}
-                </button>
-              </div>
-            </div>
+
             <div className="settings-menu-divider" />
-            <div className="settings-menu-row">
+
+            <div className="settings-menu-row settings-menu-row-compact">
               <span className="settings-menu-label">Czcionka</span>
               <div className="settings-menu-ctrl">
-                <button
-                  className="ctl"
-                  onClick={() => changeFontSize(-1)}
-                >
-                  A−
+                <button className="ctl" onClick={() => changeFontSize(-1)}>
+                  A-
                 </button>
                 <span className="fs-val">{fs}</span>
-                <button
-                  className="ctl"
-                  onClick={() => changeFontSize(1)}
-                >
+                <button className="ctl" onClick={() => changeFontSize(1)}>
                   A+
                 </button>
               </div>
             </div>
-            <div className="settings-menu-row">
-              <span className="settings-menu-label">Pelny ekran</span>
-              <div className="settings-menu-ctrl">
-                <button
-                  className={`ctl${isFullscreen ? " ctl-active" : ""}`}
-                  onClick={() => void toggleFullscreen()}
-                  title="Przelacz pelny ekran (F)"
-                >
-                  {isFullscreen ? "Wyjdz" : "Wejdz"}
-                </button>
-              </div>
-            </div>
-            <div className="settings-menu-row">
-              <span className="settings-menu-label">Skroty</span>
-              <div className="settings-menu-ctrl">
-                <button
-                  className={`ctl${shortcutsOpen ? " ctl-active" : ""}`}
-                  onClick={openShortcutsPanel}
-                  title="Pokaz skróty (?)"
-                >
-                  ?
-                </button>
-              </div>
-            </div>
-            <div className="settings-menu-row">
-              <span className="settings-menu-label">Czytaj</span>
-              <div className="settings-menu-ctrl">
-                {polyMode && polyState === "done" ? (
-                  <button
-                    className="ctl ctl-icon"
-                    onClick={toggleHybridTts}
-                    title={
-                      ttsPlaying ? (ttsPaused ? "Wznów" : "Pauza") : "Odtwórz"
-                    }
-                    disabled={!polyTtsParagraphs.length}
-                  >
-                    {ttsPlaying ? (ttsPaused ? "▶" : "⏸") : "▶"}
-                  </button>
-                ) : (
-                  <button
-                    className="ctl ctl-icon"
-                    onClick={toggleOriginalTts}
-                    title={
-                      originalTtsPlaying
-                        ? originalTtsPaused
-                          ? "Wznów"
-                          : "Pauza"
-                        : "Odtwórz"
-                    }
-                    disabled={!originalTtsFragments.length}
-                  >
-                    {originalTtsPlaying ? (originalTtsPaused ? "▶" : "⏸") : "▶"}
-                  </button>
-                )}
-              </div>
-            </div>
+
             {!polyMode && chapter?.text && (
-              <div className="settings-menu-row">
-                <span className="settings-menu-label">Tłumacz</span>
+              <div className="settings-menu-row settings-menu-row-compact">
+                <span className="settings-menu-label">Tłumaczenie</span>
                 <div className="settings-menu-ctrl">
                   <button
-                    className="ctl"
+                    className="ctl ctl-gold"
                     onClick={() => {
                       requestGenerate();
                       setSettingsMenuOpen(false);
@@ -2683,7 +2683,7 @@ export default function Reader({
               polyState === "done" &&
               activeLang &&
               chapter?.text && (
-                <div className="settings-menu-row">
+                <div className="settings-menu-row settings-menu-row-compact">
                   <span className="settings-menu-label">Tłumaczenie</span>
                   <div className="settings-menu-ctrl">
                     <button
@@ -2695,6 +2695,7 @@ export default function Reader({
                   </div>
                 </div>
               )}
+            <div className="settings-menu-divider" />
             {(() => {
               const srcCode = (book?.lang || "en").split("-")[0].toLowerCase();
               const tgtCode = (activeLang || "es").split("-")[0].toLowerCase();
@@ -2706,10 +2707,8 @@ export default function Reader({
                 (polyMode && !tgtVoices.length);
               return (
                 <>
-                  <div className="settings-menu-row">
-                    <span className="settings-menu-label">
-                      Głos ({srcCode})
-                    </span>
+                  <div className="settings-menu-row settings-menu-row-compact settings-menu-row-select">
+                    <span className="settings-menu-label">{srcCode}</span>
                     <select
                       className="tts-voice-sel"
                       value={ttsSourceVoice}
@@ -2738,10 +2737,8 @@ export default function Reader({
                   </div>
 
                   {polyMode && (
-                    <div className="settings-menu-row">
-                      <span className="settings-menu-label">
-                        Głos ({tgtCode})
-                      </span>
+                    <div className="settings-menu-row settings-menu-row-compact settings-menu-row-select">
+                      <span className="settings-menu-label">{tgtCode}</span>
                       <select
                         className="tts-voice-sel"
                         value={ttsTargetVoice}
