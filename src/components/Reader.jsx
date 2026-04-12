@@ -206,11 +206,6 @@ export default function Reader({
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [fs, setFs] = useState(settings.fontSize ?? 19);
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(
-    () =>
-      typeof document !== "undefined" && Boolean(document.fullscreenElement),
-  );
   const orderedCachedLangs = useMemo(
     () =>
       [...cachedLangs].sort(
@@ -273,16 +268,6 @@ export default function Reader({
   useEffect(() => {
     setFs(settings.fontSize ?? 19);
   }, [settings.fontSize]);
-
-  useEffect(() => {
-    function handleFullscreenChange() {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    }
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () =>
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, []);
 
   // Hybrid TTS state (polyglot mode — Web Speech API, no Polly)
   const [ttsPlaying, setTtsPlaying] = useState(false);
@@ -1229,7 +1214,6 @@ export default function Reader({
         setSearchOpen(false);
         setBookmarkMenuOpen(false);
         setSettingsMenuOpen(false);
-        setShortcutsOpen(false);
         return;
       }
 
@@ -1271,12 +1255,6 @@ export default function Reader({
 
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      if (e.key === "?") {
-        e.preventDefault();
-        openShortcutsPanel();
-        return;
-      }
-
       switch (e.key.toLowerCase()) {
         case "j":
           e.preventDefault();
@@ -1297,10 +1275,6 @@ export default function Reader({
         case "q":
           e.preventDefault();
           setSidebarOpen((open) => !open);
-          break;
-        case "f":
-          e.preventDefault();
-          void toggleFullscreen();
           break;
         default:
           break;
@@ -1343,7 +1317,6 @@ export default function Reader({
     nextChapterDirect,
     openBookmarksPanel,
     openSearchPanel,
-    openShortcutsPanel,
     orderedCachedLangs,
     polyMode,
     polyState,
@@ -1351,7 +1324,6 @@ export default function Reader({
     prevChapter,
     jumpCurrentTts,
     toggleCurrentTts,
-    toggleFullscreen,
   ]);
 
   /* ── Close settings menu on outside click ── */
@@ -1377,8 +1349,8 @@ export default function Reader({
       if (
         bookmarkMenuRef.current &&
         !bookmarkMenuRef.current.contains(e.target) &&
-        bookmarkToggleRef.current &&
-        !bookmarkToggleRef.current.contains(e.target)
+        (!bookmarkToggleRef.current ||
+          !bookmarkToggleRef.current.contains(e.target))
       ) {
         setBookmarkMenuOpen(false);
       }
@@ -1479,7 +1451,6 @@ export default function Reader({
     setSearchOpen(true);
     setBookmarkMenuOpen(false);
     setSettingsMenuOpen(false);
-    setShortcutsOpen(false);
     window.setTimeout(() => {
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
@@ -1489,14 +1460,6 @@ export default function Reader({
   function openBookmarksPanel() {
     setBookmarkMenuOpen(true);
     setSearchOpen(false);
-    setSettingsMenuOpen(false);
-    setShortcutsOpen(false);
-  }
-
-  function openShortcutsPanel() {
-    setShortcutsOpen(true);
-    setSearchOpen(false);
-    setBookmarkMenuOpen(false);
     setSettingsMenuOpen(false);
   }
 
@@ -1962,21 +1925,6 @@ export default function Reader({
     const baseIdx = currentIdx >= 0 ? currentIdx : 0;
     const nextLang = versionCodes[(baseIdx + 1) % versionCodes.length];
     switchToLang(nextLang);
-  }
-
-  async function toggleFullscreen() {
-    const target = readerLayoutRef.current || document.documentElement;
-    if (!document.fullscreenElement && !target?.requestFullscreen) return;
-
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-      } else {
-        await target.requestFullscreen?.();
-      }
-    } catch {
-      // Ignore browser fullscreen permission/state errors.
-    }
   }
 
   function playSingleWord(wordId) {
@@ -2461,7 +2409,6 @@ export default function Reader({
                 setSettingsMenuOpen((v) => !v);
                 setSearchOpen(false);
                 setBookmarkMenuOpen(false);
-                setShortcutsOpen(false);
               }}
               title="Ustawienia"
             >
@@ -2660,22 +2607,6 @@ export default function Reader({
                 <span className="settings-tool-text">Zakładki</span>
               </button>
               <button
-                className={`settings-tool settings-tool-desktop-only${shortcutsOpen ? " settings-tool-active" : ""}`}
-                onClick={openShortcutsPanel}
-                title="Pokaz skróty (?)"
-              >
-                <span className="settings-tool-icon">?</span>
-                <span className="settings-tool-text">Skróty</span>
-              </button>
-              <button
-                className={`settings-tool${isFullscreen ? " settings-tool-active" : ""}`}
-                onClick={() => void toggleFullscreen()}
-                title="Przelacz pelny ekran (F)"
-              >
-                <span className="settings-tool-icon">[]</span>
-                <span className="settings-tool-text">Ekran</span>
-              </button>
-              <button
                 className={`settings-tool${(ttsPlaying && !ttsPaused) || (originalTtsPlaying && !originalTtsPaused) ? " settings-tool-active" : ""}`}
                 onClick={
                   polyMode && polyState === "done"
@@ -2826,88 +2757,6 @@ export default function Reader({
             settings={settings}
             onClose={() => setBatchModalOpen(false)}
           />
-        )}
-
-        {shortcutsOpen && (
-          <div className="shortcuts-panel">
-            <div className="shortcuts-head">
-              <div>
-                <div className="bookmark-menu-title">Skroty</div>
-                <div className="bookmark-menu-sub">
-                  Nawigacja, TTS i podglad tlumaczen.
-                </div>
-              </div>
-              <button
-                className="ctl ctl-icon"
-                onClick={() => setShortcutsOpen(false)}
-                title="Zamknij"
-              >
-                x
-              </button>
-            </div>
-            <div className="shortcuts-grid">
-              <div>
-                <kbd>Shift</kbd>
-                <span>oryginal / tlumaczenie</span>
-              </div>
-              <div>
-                <kbd>?</kbd>
-                <span>pokaz te sciage</span>
-              </div>
-              <div>
-                <kbd>Space</kbd>
-                <span>play / pause TTS</span>
-              </div>
-              <div>
-                <kbd>,</kbd>
-                <span>poprzedni fragment TTS</span>
-              </div>
-              <div>
-                <kbd>.</kbd>
-                <span>nastepny fragment TTS</span>
-              </div>
-              <div>
-                <kbd>J</kbd>
-                <span>wyszukiwarka</span>
-              </div>
-              <div>
-                <kbd>Z</kbd>
-                <span>zakladki</span>
-              </div>
-              <div>
-                <kbd>Q</kbd>
-                <span>sidebar</span>
-              </div>
-              <div>
-                <kbd>F</kbd>
-                <span>pelny ekran</span>
-              </div>
-              <div>
-                <kbd>N</kbd>
-                <span>nastepny rozdzial</span>
-              </div>
-              <div>
-                <kbd>P</kbd>
-                <span>poprzedni rozdzial</span>
-              </div>
-              <div>
-                <kbd>Backspace</kbd>
-                <span>powrot do biblioteki</span>
-              </div>
-              <div>
-                <kbd>[</kbd>
-                <span>mniejsza czcionka</span>
-              </div>
-              <div>
-                <kbd>]</kbd>
-                <span>wieksza czcionka</span>
-              </div>
-              <div>
-                <kbd>← →</kbd>
-                <span>zmiana strony</span>
-              </div>
-            </div>
-          </div>
         )}
 
         {/* Missing translation banner */}
