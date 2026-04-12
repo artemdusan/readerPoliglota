@@ -15,8 +15,10 @@ import { LANGUAGES } from "../hooks/useSettings";
 import { useWakeLock } from "../hooks/useWakeLock";
 import {
   generatePolyglot,
-  MODEL_PRICING,
   estimatePolyglotGeneration,
+  estimatePolyglotCostUsd,
+  estimatePolyglotTimeSec,
+  POLYGLOT_MODEL_ID,
 } from "../lib/polyglotApi";
 import { isLoggedIn } from "../sync/cfAuth";
 import { triggerSync, syncBook } from "../sync/cfSync";
@@ -1281,7 +1283,7 @@ export default function Reader({
         {
           targetLangName: langObj.name,
           sourceLangName: book?.lang || "",
-          model: settings.polyglotModel,
+          model: POLYGLOT_MODEL_ID,
           sentencesPerRequest: settings.polyglotSentencesPerRequest,
           signal: controller.signal,
           onRescue: ({ retryAttempt, maxRetries }) => {
@@ -1970,20 +1972,14 @@ export default function Reader({
   );
   const estimatedSentenceCount = generationEstimate.sentenceCount;
   const estimatedBatchCount = generationEstimate.generationBatches;
-  const estimatedCost = (() => {
-    if (!chapter?.text) return 0;
-    const p = MODEL_PRICING[settings.polyglotModel] ?? { input: 0, output: 0 };
-    const inputK = chapter.text.length / 4 / 1000;
-    const outputK = chapter.text.length / 3.5 / 1000;
-    return inputK * p.input + outputK * p.output;
-  })();
+  const estimatedCost = chapter?.text
+    ? estimatePolyglotCostUsd(chapter.text.length)
+    : 0;
   const estimatedSecs = chapter?.text
-    ? Math.max(
-        4,
-        Math.ceil(
-          estimatedBatchCount /
-            Math.max(1, generationEstimate.requestConcurrency || 1),
-        ) * 8,
+    ? estimatePolyglotTimeSec(
+        estimatedBatchCount,
+        generationEstimate.requestConcurrency,
+        estimatedSentenceCount,
       )
     : 0;
   const polyDisplaySecs =

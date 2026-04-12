@@ -15,21 +15,43 @@ const GLOBAL_REQUEST_INTERVAL_MS = Math.ceil(
 export const DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST = 4;
 export const MAX_POLYGLOT_SENTENCES_PER_REQUEST = 12;
 const MAX_SENTENCES_IN_FLIGHT = 24;
+export const POLYGLOT_MODEL_ID = "grok-4-1-fast-non-reasoning";
+export const POLYGLOT_MODEL_PRICING = { input: 0.0002, output: 0.0005 };
+const ESTIMATED_REQUEST_OVERHEAD_MS = 900;
+const ESTIMATED_REQUEST_TIME_PER_BATCH_MS = 1400;
+const ESTIMATED_VERIFY_TIME_PER_SENTENCE_MS = 35;
 
 let globalRequestGate = Promise.resolve();
 let nextGlobalRequestAt = 0;
 
-/** Approximate pricing in USD per 1 000 tokens (input / output) */
-export const MODEL_PRICING = {
-  "grok-4.20-0309-non-reasoning": { input: 0.002, output: 0.006 },
-  "deepseek-chat": { input: 0.00007, output: 0.00028 },
-  "deepseek-reasoner": { input: 0.00055, output: 0.00219 },
-  "gpt-4o-mini": { input: 0.00015, output: 0.0006 },
-  "gpt-4o": { input: 0.0025, output: 0.01 },
-  "google/gemini-flash-1.5": { input: 0.000075, output: 0.0003 },
-  "meta-llama/llama-3.3-70b-instruct": { input: 0, output: 0 },
-  "anthropic/claude-3.5-haiku": { input: 0.0008, output: 0.004 },
-};
+export function estimatePolyglotCostUsd(charCount) {
+  const chars = Math.max(0, Number(charCount) || 0);
+  const promptTokens = chars / 4;
+  const completionTokens = chars / 5;
+  return estimateBatchCost(
+    POLYGLOT_MODEL_PRICING,
+    promptTokens,
+    completionTokens,
+  );
+}
+
+export function estimatePolyglotTimeSec(
+  requestCount,
+  requestConcurrency,
+  sentenceCount = 0,
+) {
+  const batches = Math.max(0, Number(requestCount) || 0);
+  if (!batches) return 0;
+
+  const concurrency = Math.max(1, Number(requestConcurrency) || 1);
+  const sentences = Math.max(0, Number(sentenceCount) || 0);
+  const requestWaves = Math.ceil(batches / concurrency);
+  const requestMs =
+    ESTIMATED_REQUEST_OVERHEAD_MS +
+    requestWaves * ESTIMATED_REQUEST_TIME_PER_BATCH_MS;
+  const verifyMs = sentences * ESTIMATED_VERIFY_TIME_PER_SENTENCE_MS;
+  return Math.max(1, Math.ceil((requestMs + verifyMs) / 1000));
+}
 
 function buildSentencePatchSystemPrompt(
   targetLangName,
@@ -740,7 +762,7 @@ function estimateBatchCost(pricing, promptTokens, completionTokens) {
 
 function buildSentencePatchRequest(
   sentences,
-  { targetLangName, sourceLangName = "", model },
+  { targetLangName, sourceLangName = "" },
 ) {
   const maxTokens = Math.max(
     320,
@@ -749,7 +771,7 @@ function buildSentencePatchRequest(
 
   return {
     label: "patch",
-    model,
+    model: POLYGLOT_MODEL_ID,
     maxTokens,
     messages: [
       {
@@ -946,7 +968,6 @@ async function generateStructuredPolyglot(
   {
     targetLangName,
     sourceLangName = "",
-    model = "grok-4-1-fast-non-reasoning",
     sentencesPerRequest = DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST,
     signal,
     onActivity,
@@ -962,7 +983,7 @@ async function generateStructuredPolyglot(
 
   const normalizedBatchSize = normalizeSentencesPerRequest(sentencesPerRequest);
   const batches = buildSentenceBatches(source.sentences, normalizedBatchSize);
-  const pricing = MODEL_PRICING[model] ?? { input: 0, output: 0 };
+  const pricing = POLYGLOT_MODEL_PRICING;
 
   const {
     changes: rawChanges,
@@ -973,7 +994,6 @@ async function generateStructuredPolyglot(
     {
       targetLangName,
       sourceLangName,
-      model,
       sentencesPerRequest: normalizedBatchSize,
       signal,
       onActivity,

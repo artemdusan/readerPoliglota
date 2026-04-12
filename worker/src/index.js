@@ -88,6 +88,7 @@ function getAiConfig(env) {
   return {
     apiKey,
     baseUrl,
+    model: 'grok-4-1-fast-non-reasoning',
     label: 'xAI Grok',
   };
 }
@@ -271,17 +272,15 @@ async function handleAuthMe(env, userId) {
 }
 
 async function handleTranslate(request, env) {
-  {
   const payload = await request.clone().json().catch(() => ({}));
-  const model = payload?.model;
   const messages = payload?.messages;
   const maxTokens = payload?.max_tokens;
-  if (!model || !Array.isArray(messages)) return err('model i messages sa wymagane');
+  if (!Array.isArray(messages)) return err('messages sa wymagane');
 
   const ai = getAiConfig(env);
   if (!ai.apiKey) return err('XAI_API_KEY nie jest ustawiony', 500);
 
-  const timeoutMs = String(model).includes('reason') ? 90_000 : 45_000;
+  const timeoutMs = 20_000;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -294,7 +293,7 @@ async function handleTranslate(request, env) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model,
+        model: ai.model,
         messages,
         temperature: 0.1,
         max_tokens: Number(maxTokens) > 0 ? Math.min(4096, Number(maxTokens)) : 4096,
@@ -326,53 +325,6 @@ async function handleTranslate(request, env) {
 
   const content = extractAssistantContent(data?.choices?.[0]?.message?.content);
   if (!content) return err('API zwrocilo pusta odpowiedz', 502);
-
-  return json({ content, usage: data.usage });
-  }
-  const { model, messages, max_tokens } = await request.json().catch(() => ({}));
-  if (!model || !Array.isArray(messages)) return err('model i messages są wymagane');
-
-  // deepseek-reasoner needs more time for chain-of-thought; use 60s for all models
-  const timeoutMs = model === 'deepseek-reasoner' ? 90_000 : 60_000;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  let resp;
-  try {
-    resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.DEEPSEEK_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: Number(max_tokens) > 0 ? Math.min(4096, Number(max_tokens)) : 4096 }),
-      signal: controller.signal,
-    });
-  } catch (e) {
-    const secs = Math.round(timeoutMs / 1000);
-    const msg = e.name === 'AbortError'
-      ? `DeepSeek nie odpowiedział w czasie (${secs}s) — spróbuj ponownie lub zmień model`
-      : `Nie można połączyć z API: ${e.message}`;
-    return err(msg, 502);
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => null);
-    const msg = body?.error?.message || body?.error || `HTTP ${resp.status}`;
-    return err(`Błąd API (${resp.status}): ${msg}`, 502);
-  }
-
-  let data;
-  try {
-    data = await resp.json();
-  } catch (e) {
-    return err('Nieprawidłowa odpowiedź z API (nie JSON)', 502);
-  }
-
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) return err('API zwróciło pustą odpowiedź', 502);
 
   return json({ content, usage: data.usage });
 }
@@ -605,7 +557,6 @@ async function handleUpsertProgress(request, env, userId, bookId) {
 // ─── HEALTH CHECK ────────────────────────────────────────────────────────────
 
 async function handleHealth(env) {
-  {
   const ai = getAiConfig(env);
   if (!ai.apiKey) return err('XAI_API_KEY nie jest ustawiony', 500);
 
@@ -626,26 +577,6 @@ async function handleHealth(env) {
   }
 
   return json({ ok: true, provider: ai.label, status: resp.status });
-  }
-  if (!env.DEEPSEEK_API_KEY) return err('DEEPSEEK_API_KEY nie jest ustawiony', 500);
-
-  let resp;
-  try {
-    resp = await fetch('https://api.deepseek.com/v1/models', {
-      headers: { 'Authorization': `Bearer ${env.DEEPSEEK_API_KEY}` },
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch (e) {
-    return err(`Nie można połączyć z DeepSeek: ${e.message}`, 502);
-  }
-
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => null);
-    const msg = body?.error?.message || `HTTP ${resp.status}`;
-    return err(`Błąd DeepSeek API (${resp.status}): ${msg}`, 502);
-  }
-
-  return json({ ok: true, status: resp.status });
 }
 
 // ─── ROUTER ──────────────────────────────────────────────────────────────────

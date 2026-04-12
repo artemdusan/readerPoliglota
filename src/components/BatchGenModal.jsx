@@ -2,40 +2,16 @@ import { useState, useEffect, useMemo } from "react";
 import { getBookChaptersWithCacheStatus, savePolyglotCache } from "../db";
 import {
   estimatePolyglotGeneration,
+  estimatePolyglotCostUsd,
+  estimatePolyglotTimeSec,
   generatePolyglot,
+  POLYGLOT_MODEL_ID,
 } from "../lib/polyglotApi";
 import { triggerSync } from "../sync/cfSync";
 import { LANGUAGES } from "../hooks/useSettings";
 import { useWakeLock } from "../hooks/useWakeLock";
 
-/* Cost table: USD per 1M tokens */
-const MODEL_PRICES = {
-  "grok-4-1-fast-non-reasoning": { in: 0.2, out: 0.5 },
-  "grok-4.20-0309-non-reasoning": { in: 2.0, out: 6.0 },
-  "deepseek-chat": { in: 0.07, out: 0.28 },
-  "deepseek-reasoner": { in: 0.55, out: 2.19 },
-  "gpt-4o-mini": { in: 0.15, out: 0.6 },
-  "gpt-4o": { in: 2.5, out: 10.0 },
-  "google/gemini-flash-1.5": { in: 0.075, out: 0.3 },
-  "meta-llama/llama-3.3-70b-instruct": { in: 0, out: 0 },
-  "anthropic/claude-3.5-haiku": { in: 0.8, out: 4.0 },
-};
-
 const BATCH_CHAPTER_CONCURRENCY = 3;
-
-function estimateCostUSD(chars, modelId) {
-  const tokens = chars / 4;
-  const p = MODEL_PRICES[modelId] ?? { in: 0.5, out: 1.0 };
-  return (p.in * tokens + p.out * tokens * 1.3) / 1_000_000;
-}
-
-function estimateTimeSec(requestCount, requestConcurrency) {
-  if (!requestCount) return 0;
-  return Math.max(
-    4,
-    Math.ceil(requestCount / Math.max(1, requestConcurrency)) * 8,
-  );
-}
 
 function fmtTime(s) {
   if (s < 60) return `~${s}s`;
@@ -121,10 +97,14 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
       totalSentences,
       totalRequests,
       requestConcurrency,
-      costUSD: estimateCostUSD(totalChars, settings.polyglotModel),
-      timeSec: estimateTimeSec(totalRequests, requestConcurrency),
+      costUSD: estimatePolyglotCostUsd(totalChars),
+      timeSec: estimatePolyglotTimeSec(
+        totalRequests,
+        requestConcurrency,
+        totalSentences,
+      ),
     };
-  }, [toGenerate, generationStatsByChapterId, settings.polyglotModel]);
+  }, [toGenerate, generationStatsByChapterId]);
 
   function toggleChapter(id) {
     setSelected((prev) => {
@@ -187,7 +167,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
           {
             targetLangName: selectedLang.name,
             sourceLangName: book?.lang || "",
-            model: settings.polyglotModel,
+            model: POLYGLOT_MODEL_ID,
             sentencesPerRequest: settings.polyglotSentencesPerRequest,
             onRescue: ({ retryAttempt, maxRetries }) => {
               setRescueNote(
