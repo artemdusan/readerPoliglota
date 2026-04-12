@@ -1,3 +1,5 @@
+import { UiIcon } from "./ReaderIcons";
+
 export default function ReaderSidebar({
   sidebarOpen,
   onClose,
@@ -32,7 +34,8 @@ export default function ReaderSidebar({
           {book?.author && <div className="sb-author">{book.author}</div>}
           {canTranslateBook && (
             <button className="sb-translate-btn" onClick={onOpenBatchModal}>
-              Tłumacz książkę
+              <UiIcon name="sparkles" />
+              <span>Tłumacz książkę</span>
             </button>
           )}
           <div className="sb-stats">{chapterCount} rozdziałów</div>

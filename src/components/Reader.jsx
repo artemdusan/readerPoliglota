@@ -55,6 +55,24 @@ const LANGUAGE_META = Object.fromEntries(
 const LANGUAGE_ORDER = new Map(
   LANGUAGES.map((lang, index) => [lang.code, index]),
 );
+const POLISH_LANGUAGE_NAMES =
+  typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function"
+    ? new Intl.DisplayNames(["pl"], { type: "language" })
+    : null;
+
+function capitalizeLabel(value) {
+  if (!value) return "";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function getLanguageDisplayLabel(code, meta = null) {
+  if (!code) return "Nieznany język";
+  if (meta?.name) return capitalizeLabel(meta.name);
+  const normalized = code.split("-")[0].toLowerCase();
+  const display = POLISH_LANGUAGE_NAMES?.of(normalized);
+  if (display) return capitalizeLabel(display);
+  return normalized.toUpperCase();
+}
 
 /* ═══════════════════════════════════════════
    Helpers
@@ -134,7 +152,7 @@ export default function Reader({
       ),
     [cachedLangs],
   );
-  const tooltipClickEnabled = true;
+  const tooltipReadOnClick = settings.tooltipReadOnClick !== false;
 
   // Page state
   const [currentPage, setCurrentPage] = useState(0);
@@ -1344,9 +1362,7 @@ export default function Reader({
     const el = body.querySelector(`[data-word-id="${wordId}"]`);
     if (!el) return;
     el.classList.add("tts-active");
-    if (tooltipClickEnabled) {
-      openTooltip(el, true);
-    }
+    openTooltip(el, true);
     const scrollEl = chScrollRef.current;
     if (scrollEl) {
       const pw = scrollEl.clientWidth;
@@ -1686,7 +1702,7 @@ export default function Reader({
     switchToLang(nextLang);
   }
 
-  function playSingleWord(wordId) {
+  function playSingleWord(wordId, options = {}) {
     stopOriginalTts();
     stopHybridTts();
     const word = polyWordFragments[wordId];
@@ -1703,6 +1719,10 @@ export default function Reader({
     utt.onerror = () => {
       clearWordHighlight();
     };
+    if (!options.skipTooltip) {
+      const el = chapterBodyRef.current?.querySelector(`[data-word-id="${wordId}"]`);
+      if (el) openTooltip(el, true);
+    }
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utt);
   }
@@ -1852,11 +1872,11 @@ export default function Reader({
     if (polyMode) {
       const pw = e.target.closest(".pw");
       if (pw) {
-        if (tooltipClickEnabled) {
-          openTooltip(pw);
-        }
+        openTooltip(pw);
         const wordId = Number.parseInt(pw.dataset.wordId, 10);
-        if (Number.isInteger(wordId)) playSingleWord(wordId);
+        if (tooltipReadOnClick && Number.isInteger(wordId)) {
+          playSingleWord(wordId, { skipTooltip: true });
+        }
         return;
       }
       const pidEl = e.target.closest("[data-pid]");
@@ -1952,6 +1972,10 @@ export default function Reader({
   function handleTargetVoiceChange(nextVoiceId) {
     setTtsTargetVoice(nextVoiceId);
     localStorage.setItem(`tts-voice-tgt-${targetLangCode}`, nextVoiceId);
+  }
+
+  function handleToggleTooltipReadOnClick() {
+    void onUpdateSetting?.("tooltipReadOnClick", !tooltipReadOnClick);
   }
 
   function handleMissingLangGenerate() {
@@ -2054,13 +2078,20 @@ export default function Reader({
       ? "Wznów"
       : "Pauza"
     : "Play";
-  const ttsButtonIcon = activeTtsPlaying ? (activeTtsPaused ? ">" : "||") : ">";
   const hasTtsAvailable =
     activeTtsMode === "hybrid"
       ? polyTtsParagraphs.length > 0
       : originalTtsFragments.length > 0;
   const sourceLangCode = (book?.lang || "en").split("-")[0].toLowerCase();
   const targetLangCode = (activeLang || "es").split("-")[0].toLowerCase();
+  const sourceLanguageLabel = getLanguageDisplayLabel(
+    sourceLangCode,
+    LANGUAGE_META[sourceLangCode],
+  );
+  const targetLanguageLabel = getLanguageDisplayLabel(
+    targetLangCode,
+    LANGUAGE_META[targetLangCode],
+  );
   const sourceVoices = getVoicesForLang(ttsVoices, book?.lang || "en");
   const targetVoices = getVoicesForLang(ttsVoices, activeLang || "es");
   const showVoiceNote =
@@ -2154,7 +2185,8 @@ export default function Reader({
             }
             ttsButtonTitle={ttsButtonTitle}
             ttsButtonLabel={ttsButtonLabel}
-            ttsButtonIcon={ttsButtonIcon}
+            isTtsPlaying={activeTtsPlaying}
+            isTtsPaused={activeTtsPaused}
             hasTtsAvailable={hasTtsAvailable}
             fontSize={fs}
             onChangeFontSize={changeFontSize}
@@ -2166,13 +2198,15 @@ export default function Reader({
             }
             onAddTranslation={handleAddTranslation}
             onRegenerateTranslation={regenerateCurrentTranslation}
-            sourceLangCode={sourceLangCode}
-            targetLangCode={targetLangCode}
+            sourceLanguageLabel={sourceLanguageLabel}
+            targetLanguageLabel={targetLanguageLabel}
             sourceVoices={sourceVoices}
             targetVoices={targetVoices}
             showTargetVoiceSelect={polyMode}
             showVoiceNote={showVoiceNote}
             voiceLoadState={voiceLoadState}
+            tooltipReadOnClick={tooltipReadOnClick}
+            onToggleTooltipReadOnClick={handleToggleTooltipReadOnClick}
             ttsSourceVoice={ttsSourceVoice}
             ttsTargetVoice={ttsTargetVoice}
             onSourceVoiceChange={handleSourceVoiceChange}

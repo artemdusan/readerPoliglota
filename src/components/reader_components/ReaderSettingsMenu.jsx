@@ -1,3 +1,4 @@
+import { UiIcon } from "./ReaderIcons";
 import { getVoiceId } from "./readerUtils";
 
 function getVoiceNoteText(voiceLoadState) {
@@ -22,7 +23,8 @@ export default function ReaderSettingsMenu({
   onToggleTts,
   ttsButtonTitle,
   ttsButtonLabel,
-  ttsButtonIcon,
+  isTtsPlaying,
+  isTtsPaused,
   hasTtsAvailable,
   fontSize,
   onChangeFontSize,
@@ -30,13 +32,15 @@ export default function ReaderSettingsMenu({
   showRegenerateTranslation,
   onAddTranslation,
   onRegenerateTranslation,
-  sourceLangCode,
-  targetLangCode,
+  sourceLanguageLabel,
+  targetLanguageLabel,
   sourceVoices,
   targetVoices,
   showTargetVoiceSelect,
   showVoiceNote,
   voiceLoadState,
+  tooltipReadOnClick,
+  onToggleTooltipReadOnClick,
   ttsSourceVoice,
   ttsTargetVoice,
   onSourceVoiceChange,
@@ -50,7 +54,9 @@ export default function ReaderSettingsMenu({
           onClick={onSearchToolClick}
           title="Szukaj w rozdziale"
         >
-          <span className="settings-tool-icon">/</span>
+          <span className="settings-tool-icon">
+            <UiIcon name="search" />
+          </span>
           <span className="settings-tool-text">Szukaj</span>
         </button>
 
@@ -64,7 +70,9 @@ export default function ReaderSettingsMenu({
           onClick={onBookmarksToolClick}
           title="Zakładki"
         >
-          <span className="settings-tool-icon">*</span>
+          <span className="settings-tool-icon">
+            <UiIcon name="bookmark" />
+          </span>
           <span className="settings-tool-text">Zakładki</span>
         </button>
 
@@ -74,15 +82,24 @@ export default function ReaderSettingsMenu({
           title={ttsButtonTitle}
           disabled={!hasTtsAvailable}
         >
-          <span className="settings-tool-icon">{ttsButtonIcon}</span>
+          <span className="settings-tool-icon">
+            <UiIcon
+              name={isTtsPlaying && !isTtsPaused ? "pause" : "play"}
+              strokeWidth={2}
+            />
+          </span>
           <span className="settings-tool-text">{ttsButtonLabel}</span>
         </button>
       </div>
 
       <div className="settings-menu-divider" />
 
+      <div className="settings-menu-section-label">Widok</div>
       <div className="settings-menu-row settings-menu-row-compact">
-        <span className="settings-menu-label">Czcionka</span>
+        <span className="settings-menu-label settings-menu-label-with-icon">
+          <UiIcon name="type" />
+          <span>Czcionka</span>
+        </span>
         <div className="settings-menu-ctrl">
           <button className="ctl" onClick={() => onChangeFontSize(-1)}>
             A-
@@ -94,12 +111,23 @@ export default function ReaderSettingsMenu({
         </div>
       </div>
 
+      {(showAddTranslation || showRegenerateTranslation) && (
+        <>
+          <div className="settings-menu-divider" />
+          <div className="settings-menu-section-label">Tłumaczenie</div>
+        </>
+      )}
+
       {showAddTranslation && (
         <div className="settings-menu-row settings-menu-row-compact">
-          <span className="settings-menu-label">Tłumaczenie</span>
+          <span className="settings-menu-label settings-menu-label-with-icon">
+            <UiIcon name="translate" />
+            <span>Rozdział</span>
+          </span>
           <div className="settings-menu-ctrl">
-            <button className="ctl ctl-gold" onClick={onAddTranslation}>
-              + Dodaj
+            <button className="ctl ctl-gold ctl-wide" onClick={onAddTranslation}>
+              <UiIcon name="sparkles" />
+              Dodaj
             </button>
           </div>
         </div>
@@ -107,9 +135,13 @@ export default function ReaderSettingsMenu({
 
       {showRegenerateTranslation && (
         <div className="settings-menu-row settings-menu-row-compact">
-          <span className="settings-menu-label">Tłumaczenie</span>
+          <span className="settings-menu-label settings-menu-label-with-icon">
+            <UiIcon name="translate" />
+            <span>Rozdział</span>
+          </span>
           <div className="settings-menu-ctrl">
-            <button className="ctl" onClick={onRegenerateTranslation}>
+            <button className="ctl ctl-wide" onClick={onRegenerateTranslation}>
+              <UiIcon name="refresh" />
               Regeneruj
             </button>
           </div>
@@ -118,39 +150,89 @@ export default function ReaderSettingsMenu({
 
       <div className="settings-menu-divider" />
 
-      <div className="settings-menu-row settings-menu-row-compact settings-menu-row-select">
-        <span className="settings-menu-label">{sourceLangCode}</span>
-        <select
-          className="tts-voice-sel"
-          value={ttsSourceVoice}
-          disabled={!sourceVoices.length}
-          onChange={(event) => onSourceVoiceChange(event.target.value)}
+      <div className="settings-menu-section-label">Kliknięcie słowa</div>
+      <div className="settings-menu-row settings-menu-row-switch">
+        <div className="settings-menu-copy">
+          <span className="settings-menu-label settings-menu-label-with-icon">
+            <UiIcon name="pointer" />
+            <span>Czytaj tooltip</span>
+          </span>
+          <span className="settings-menu-subtle">
+            Tooltip otwiera się zawsze, a głos po kliknięciu jest opcjonalny.
+          </span>
+        </div>
+        <button
+          type="button"
+          className={`settings-toggle${tooltipReadOnClick ? " is-on" : ""}`}
+          aria-pressed={tooltipReadOnClick}
+          onClick={onToggleTooltipReadOnClick}
+          title={
+            tooltipReadOnClick
+              ? "Wyłącz czytanie tooltipów po kliknięciu"
+              : "Włącz czytanie tooltipów po kliknięciu"
+          }
         >
-          <option value="">{sourceVoices.length ? "Domyślny" : "Systemowy"}</option>
-          {sourceVoices.map((voice) => (
-            <option key={getVoiceId(voice)} value={getVoiceId(voice)}>
-              {voice.name}
-            </option>
-          ))}
-        </select>
+          <span className="settings-toggle-track">
+            <span className="settings-toggle-thumb" />
+          </span>
+          <span className="settings-toggle-text">
+            {tooltipReadOnClick ? "Wł." : "Wył."}
+          </span>
+        </button>
       </div>
 
-      {showTargetVoiceSelect && (
-        <div className="settings-menu-row settings-menu-row-compact settings-menu-row-select">
-          <span className="settings-menu-label">{targetLangCode}</span>
+      <div className="settings-menu-divider" />
+      <div className="settings-menu-section-label">Głosy TTS</div>
+
+      <div className="settings-menu-row settings-menu-row-compact settings-menu-row-select">
+        <div className="settings-menu-copy settings-menu-copy-compact">
+          <span className="settings-menu-label settings-menu-label-with-icon">
+            <UiIcon name="voice" />
+            <span>Oryginał</span>
+          </span>
+          <span className="settings-menu-subtle">{sourceLanguageLabel}</span>
+        </div>
+        <div className="settings-menu-select-wrap">
           <select
             className="tts-voice-sel"
-            value={ttsTargetVoice}
-            disabled={!targetVoices.length}
-            onChange={(event) => onTargetVoiceChange(event.target.value)}
+            value={ttsSourceVoice}
+            disabled={!sourceVoices.length}
+            onChange={(event) => onSourceVoiceChange(event.target.value)}
           >
-            <option value="">{targetVoices.length ? "Domyślny" : "Systemowy"}</option>
-            {targetVoices.map((voice) => (
+            <option value="">{sourceVoices.length ? "Domyślny głos" : "Głos systemowy"}</option>
+            {sourceVoices.map((voice) => (
               <option key={getVoiceId(voice)} value={getVoiceId(voice)}>
                 {voice.name}
               </option>
             ))}
           </select>
+        </div>
+      </div>
+
+      {showTargetVoiceSelect && (
+        <div className="settings-menu-row settings-menu-row-compact settings-menu-row-select">
+          <div className="settings-menu-copy settings-menu-copy-compact">
+            <span className="settings-menu-label settings-menu-label-with-icon">
+              <UiIcon name="translate" />
+              <span>Tłumaczenie</span>
+            </span>
+            <span className="settings-menu-subtle">{targetLanguageLabel}</span>
+          </div>
+          <div className="settings-menu-select-wrap">
+            <select
+              className="tts-voice-sel"
+              value={ttsTargetVoice}
+              disabled={!targetVoices.length}
+              onChange={(event) => onTargetVoiceChange(event.target.value)}
+            >
+              <option value="">{targetVoices.length ? "Domyślny głos" : "Głos systemowy"}</option>
+              {targetVoices.map((voice) => (
+                <option key={getVoiceId(voice)} value={getVoiceId(voice)}>
+                  {voice.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
 

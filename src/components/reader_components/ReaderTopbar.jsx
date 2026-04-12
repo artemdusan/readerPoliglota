@@ -1,3 +1,5 @@
+import { UiIcon } from "./ReaderIcons";
+
 export default function ReaderTopbar({
   chapter,
   chapterLabel,
@@ -16,7 +18,7 @@ export default function ReaderTopbar({
         onClick={onToggleSidebar}
         title="Spis treści"
       >
-        ☰
+        <UiIcon name="menu" />
       </button>
 
       <div className="tb-chapter">
@@ -43,7 +45,7 @@ export default function ReaderTopbar({
           onClick={onToggleSettings}
           title="Ustawienia"
         >
-          ⚙
+          <UiIcon name="settings" />
         </button>
       </div>
     </div>

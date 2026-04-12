@@ -23,6 +23,7 @@ const DEFAULTS = {
   polyglotSentencesPerRequest: DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST,
   fontSize: 19,
   syncIntervalMinutes: 30,
+  tooltipReadOnClick: true,
   ttsMode: "mixed",
   ttsVoiceName: "", // SpeechSynthesisVoice.name for pl-PL, '' = auto
   ttsVoiceNameForeign: "", // SpeechSynthesisVoice.name for target lang, '' = auto
