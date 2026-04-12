@@ -913,13 +913,13 @@ html, body, #root {
 .ctl {
   height: 28px; min-width: 28px; padding: 0 7px;
   display: flex; align-items: center; justify-content: center;
-  background: none; border: 1px solid var(--border); border-radius: 3px;
+  background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.1); border-radius: 14px;
   color: var(--txt-2); font-size: 12px; font-weight: 500;
   cursor: pointer; font-family: 'DM Sans', sans-serif;
-  transition: border-color .15s, color .15s, background .15s;
+  transition: border-color .16s ease, color .16s ease, background .16s ease;
   user-select: none; white-space: nowrap; gap: 5px;
 }
-.ctl:hover { border-color: var(--txt-2); color: var(--txt-1); }
+.ctl:hover { border-color: rgba(212,168,98,.42); background: rgba(212,168,98,.09); color: #f5eadc; }
 .ctl.ctl-gold  { border-color: rgba(192,144,80,.35); color: var(--gold); background: rgba(192,144,80,.07); }
 .ctl.ctl-gold:hover { border-color: var(--gold); background: rgba(192,144,80,.15); }
 .ctl.ctl-active { border-color: var(--gold); color: var(--gold); background: rgba(192,144,80,.12); }
@@ -1061,7 +1061,7 @@ html, body, #root {
 .tb-ver-select {
   width: 100%;
   background-color: rgba(255,255,255,.02);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255,255,255,.1);
   border-radius: 999px;
   outline: none;
   color: var(--txt-1);
@@ -1345,12 +1345,12 @@ html, body, #root {
 .tts-bar-btn {
   display: flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; padding: 0;
-  background: none; border: 1px solid var(--border);
-  border-radius: 3px; color: var(--txt-2);
+  background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.1);
+  border-radius: 13px; color: var(--txt-2);
   font-size: 11px; cursor: pointer;
-  transition: border-color .15s, color .15s;
+  transition: border-color .16s ease, color .16s ease, background .16s ease;
 }
-.tts-bar-btn:hover:not(:disabled) { border-color: var(--txt-2); color: var(--txt-1); }
+.tts-bar-btn:hover:not(:disabled) { border-color: rgba(212,168,98,.42); background: rgba(212,168,98,.09); color: #f5eadc; }
 .tts-bar-btn:disabled { opacity: .25; cursor: default; }
 .tts-bar-btn.tts-bar-play { width: 30px; font-size: 12px; }
 .tts-bar-btn.tts-bar-play.active { border-color: var(--gold); color: var(--gold); }
@@ -1437,13 +1437,13 @@ html, body, #root {
 }
 .nav-btn {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 20px; background: none; border: 1px solid var(--border);
-  border-radius: 3px; color: var(--txt-2);
+  padding: 8px 20px; background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.1);
+  border-radius: 14px; color: var(--txt-2);
   font-family: 'DM Sans', sans-serif; font-size: 11.5px;
   letter-spacing: .09em; text-transform: uppercase;
-  cursor: pointer; transition: border-color .15s, color .15s; white-space: nowrap;
+  cursor: pointer; transition: border-color .16s ease, color .16s ease, background .16s ease; white-space: nowrap;
 }
-.nav-btn:hover:not(:disabled) { border-color: var(--txt-2); color: var(--txt-1); }
+.nav-btn:hover:not(:disabled) { border-color: rgba(212,168,98,.42); background: rgba(212,168,98,.09); color: #f5eadc; }
 .nav-btn:disabled { opacity: .2; cursor: default; }
 .prog-wrap {
   flex: 1;
