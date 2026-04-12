@@ -11,7 +11,17 @@ import { triggerSync } from "../sync/cfSync";
 import { LANGUAGES } from "../hooks/useSettings";
 import { useWakeLock } from "../hooks/useWakeLock";
 
-const BATCH_CHAPTER_CONCURRENCY = 3;
+const MAX_PARALLEL_BATCH_REQUESTS = 24;
+
+function getBatchChapterConcurrency(requestConcurrency, chapterCount) {
+  const perChapterRequests = Math.max(1, Number(requestConcurrency) || 1);
+  const chapters = Math.max(0, Number(chapterCount) || 0);
+  if (!chapters) return 1;
+  return Math.max(
+    1,
+    Math.min(chapters, Math.floor(MAX_PARALLEL_BATCH_REQUESTS / perChapterRequests)),
+  );
+}
 
 function fmtTime(s) {
   if (s < 60) return `~${s}s`;
@@ -91,17 +101,23 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
     );
     const requestConcurrency =
       [...generationStatsByChapterId.values()][0]?.requestConcurrency ?? 1;
+    const chapterConcurrency = getBatchChapterConcurrency(
+      requestConcurrency,
+      toGenerate.length,
+    );
 
     return {
       totalChars,
       totalSentences,
       totalRequests,
       requestConcurrency,
+      chapterConcurrency,
       costUSD: estimatePolyglotCostUsd(totalChars),
       timeSec: estimatePolyglotTimeSec(
         totalRequests,
         requestConcurrency,
         totalSentences,
+        chapterConcurrency,
       ),
     };
   }, [toGenerate, generationStatsByChapterId]);
@@ -231,7 +247,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
     refreshProgress();
     await Promise.all(
       Array.from(
-        { length: Math.min(BATCH_CHAPTER_CONCURRENCY, toGenerate.length) },
+        { length: getBatchChapterConcurrency(requestConcurrency, toGenerate.length) },
         () => workerLoop(),
       ),
     );

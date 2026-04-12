@@ -8,7 +8,7 @@ const STALL_TIMEOUT_MS = 150_000;
 const STALL_RETRY_LIMIT = 1;
 const STALL_CHECK_INTERVAL_MS = 10_000;
 const NETWORK_RETRY_LIMIT = 1;
-const GLOBAL_REQUESTS_PER_MINUTE = 1800;
+export const GLOBAL_REQUESTS_PER_MINUTE = 1800;
 const GLOBAL_REQUEST_INTERVAL_MS = Math.ceil(
   60_000 / GLOBAL_REQUESTS_PER_MINUTE,
 );
@@ -39,16 +39,25 @@ export function estimatePolyglotTimeSec(
   requestCount,
   requestConcurrency,
   sentenceCount = 0,
+  chapterConcurrency = 1,
 ) {
   const batches = Math.max(0, Number(requestCount) || 0);
   if (!batches) return 0;
 
   const concurrency = Math.max(1, Number(requestConcurrency) || 1);
+  const chaptersInParallel = Math.max(1, Number(chapterConcurrency) || 1);
   const sentences = Math.max(0, Number(sentenceCount) || 0);
-  const requestWaves = Math.ceil(batches / concurrency);
+  const effectiveParallelRequests = Math.max(
+    1,
+    Math.floor(concurrency * chaptersInParallel),
+  );
+  const modelLimitedRps =
+    effectiveParallelRequests / (ESTIMATED_REQUEST_TIME_PER_BATCH_MS / 1000);
+  const rpmLimitedRps = GLOBAL_REQUESTS_PER_MINUTE / 60;
+  const effectiveRps = Math.min(modelLimitedRps, rpmLimitedRps);
   const requestMs =
     ESTIMATED_REQUEST_OVERHEAD_MS +
-    requestWaves * ESTIMATED_REQUEST_TIME_PER_BATCH_MS;
+    (batches / Math.max(effectiveRps, 0.001)) * 1000;
   const verifyMs = sentences * ESTIMATED_VERIFY_TIME_PER_SENTENCE_MS;
   return Math.max(1, Math.ceil((requestMs + verifyMs) / 1000));
 }
