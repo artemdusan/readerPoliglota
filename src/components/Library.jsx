@@ -75,6 +75,17 @@ function formatTransfer(bytes, fallbackMB = 0) {
   return `${fallbackMB} MB`;
 }
 
+function formatPolishCount(count, forms) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+
+  if (count === 1) return `1 ${forms[0]}`;
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) {
+    return `${count} ${forms[1]}`;
+  }
+  return `${count} ${forms[2]}`;
+}
+
 function getSyncCardTone(cfConnected, phase) {
   if (!cfConnected) return "is-offline";
   if (phase === "syncing") return "is-syncing";
@@ -350,6 +361,9 @@ export default function Library({
   const isSyncing = cfConnected && syncActivity.phase === "syncing";
   const syncProgress = syncActivity.progress;
   const syncResult = syncActivity.result;
+  const startedBooksCount = books.filter((book) =>
+    Boolean(positions[book.id]),
+  ).length;
   const syncMetaText = !cfConnected
     ? "Zaloguj się, aby synchronizować bibliotekę, postęp i tłumaczenia."
     : syncActivity.phase === "error"
@@ -382,7 +396,7 @@ export default function Library({
           {/* Przyciski akcji */}
           <div className="lib-sync-actions">
             <button
-              className="btn-ghost lib-sync-settings-btn"
+              className="lib-sync-action-btn"
               onClick={onOpenSettings}
             >
               Konto
@@ -402,7 +416,7 @@ export default function Library({
 
             {/* Przycisk dodawania książki zawsze widoczny w headerze */}
             <button
-              className="btn-primary lib-add-book-btn"
+              className="lib-sync-action-btn lib-add-book-btn"
               onClick={() => fileInputRef.current?.click()}
               disabled={adding}
               title="Dodaj książkę"
@@ -460,12 +474,6 @@ export default function Library({
           <section className="lib-toolbar">
             <div className="lib-toolbar-copy">
               <span className="lib-kicker">Biblioteka</span>
-
-              <p className="lib-toolbar-note">
-                {books.length
-                  ? "Wróć do czytania albo dodaj kolejne pliki EPUB."
-                  : "Dodaj pierwszy plik EPUB, aby rozpocząć czytanie."}
-              </p>
             </div>
           </section>
 
@@ -506,103 +514,108 @@ export default function Library({
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
             >
-              {books.map((book) => (
-                <article
-                  key={book.id}
-                  className="book-card"
-                  onClick={() => onOpenBook(book.id)}
-                >
-                  <div className="book-cover">
-                    {book.cover ? (
-                      <img src={book.cover} alt="okładka" />
-                    ) : (
-                      <span className="book-cover-ph">📖</span>
-                    )}
-                  </div>
+              {books.map((book) => {
+                const isStarted = Boolean(positions[book.id]);
+                const percent = progressPercent(book.id, book.chapterCount);
 
-                  <button
-                    className="book-menu-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCtxBookId((id) => (id === book.id ? null : book.id));
-                    }}
-                    title="Menu książki"
+                return (
+                  <article
+                    key={book.id}
+                    className="book-card"
+                    onClick={() => onOpenBook(book.id)}
                   >
-                    ⋮
-                  </button>
+                    <div className="book-cover">
+                      {book.cover ? (
+                        <img src={book.cover} alt="okładka" />
+                      ) : (
+                        <span className="book-cover-ph">📖</span>
+                      )}
+                    </div>
 
-                  {ctxBookId === book.id && (
-                    <div
-                      className="book-ctx-menu"
-                      onClick={(e) => e.stopPropagation()}
+                    <button
+                      className="book-menu-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCtxBookId((id) => (id === book.id ? null : book.id));
+                      }}
+                      title="Menu książki"
                     >
-                      <button
-                        className="book-ctx-primary"
-                        onClick={() => {
-                          onOpenBook(book.id);
-                          setCtxBookId(null);
-                        }}
+                      ⋮
+                    </button>
+
+                    {ctxBookId === book.id && (
+                      <div
+                        className="book-ctx-menu"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        Otwórz książkę
-                      </button>
-                      {settings && (
                         <button
+                          className="book-ctx-primary"
                           onClick={() => {
-                            setBatchBook(book);
+                            onOpenBook(book.id);
                             setCtxBookId(null);
                           }}
                         >
-                          {settings.targetLangFlag} Generuj tłumaczenia
+                          Otwórz książkę
                         </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          setEditingBook(book);
-                          setCtxBookId(null);
-                        }}
-                      >
-                        Edytuj metadane
-                      </button>
-                      <button
-                        className="book-ctx-delete"
-                        onClick={(e) => {
-                          handleDelete(e, book.id);
-                          setCtxBookId(null);
-                        }}
-                      >
-                        Usuń z biblioteki
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="book-meta">
-                    <div className="book-title">{book.title}</div>
-                    {book.author && (
-                      <div className="book-author">{book.author}</div>
-                    )}
-                    <div className="book-progress-row">
-                      <div className="book-progress">
-                        {progressLabel(book.id, book.chapterCount)}
-                      </div>
-                      {positions[book.id] && (
-                        <div className="book-progress-pct">
-                          {progressPercent(book.id, book.chapterCount)}%
-                        </div>
-                      )}
-                    </div>
-                    {positions[book.id] && (
-                      <div className="book-progress-bar" aria-hidden="true">
-                        <div
-                          className="book-progress-fill"
-                          style={{
-                            width: `${progressPercent(book.id, book.chapterCount)}%`,
+                        {settings && (
+                          <button
+                            onClick={() => {
+                              setBatchBook(book);
+                              setCtxBookId(null);
+                            }}
+                          >
+                            {settings.targetLangFlag} Generuj tłumaczenia
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setEditingBook(book);
+                            setCtxBookId(null);
                           }}
-                        />
+                        >
+                          Edytuj metadane
+                        </button>
+                        <button
+                          className="book-ctx-delete"
+                          onClick={(e) => {
+                            handleDelete(e, book.id);
+                            setCtxBookId(null);
+                          }}
+                        >
+                          Usuń z biblioteki
+                        </button>
                       </div>
                     )}
-                  </div>
-                </article>
-              ))}
+
+                    <div className="book-meta">
+                      <div className="book-title">{book.title}</div>
+                      {book.author && (
+                        <div className="book-author">{book.author}</div>
+                      )}
+
+                      <div className="book-progress-block">
+                        <div className="book-progress-row">
+                          <div className="book-progress">
+                            {progressLabel(book.id, book.chapterCount)}
+                          </div>
+                          <div
+                            className={`book-progress-pct ${isStarted ? "" : "is-idle"}`}
+                          >
+                            {isStarted ? `${percent}%` : "Start"}
+                          </div>
+                        </div>
+
+                        <div className="book-progress-bar" aria-hidden="true">
+                          <div
+                            className="book-progress-fill"
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </div>
