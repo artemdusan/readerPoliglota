@@ -24,6 +24,28 @@ import { parseStoredPolyglot } from "../lib/polyglotParser";
 import { annotateParagraphsInHtml } from "../lib/sentenceWrapper";
 import { extractPolyglotTtsData, SentenceTtsPlayer } from "../lib/ttsFragments";
 import BatchGenModal from "./BatchGenModal";
+import ReaderSidebar from "./reader_components/ReaderSidebar";
+import ReaderTopbar from "./reader_components/ReaderTopbar";
+import ReaderSearchPanel from "./reader_components/ReaderSearchPanel";
+import ReaderBookmarkMenu from "./reader_components/ReaderBookmarkMenu";
+import ReaderSettingsMenu from "./reader_components/ReaderSettingsMenu";
+import ReaderMissingLangBanner from "./reader_components/ReaderMissingLangBanner";
+import ReaderChapterContent from "./reader_components/ReaderChapterContent";
+import ReaderBottomBar from "./reader_components/ReaderBottomBar";
+import {
+  SEARCH_BLOCK_SELECTOR,
+  FONT_SIZE_MIN,
+  FONT_SIZE_MAX,
+  navigableTocItems,
+  getVoiceId,
+  findVoiceById,
+  getVoicesForLang,
+  resetTooltipPosition,
+  normalizeInlineText,
+  buildSearchSnippet,
+  getBookmarkPageIndex,
+  formatBookmarkPage,
+} from "./reader_components/readerUtils";
 
 const LANGUAGE_META = Object.fromEntries(
   LANGUAGES.map((lang) => [lang.code, lang]),
@@ -31,114 +53,10 @@ const LANGUAGE_META = Object.fromEntries(
 const LANGUAGE_ORDER = new Map(
   LANGUAGES.map((lang, index) => [lang.code, index]),
 );
-const SEARCH_BLOCK_SELECTOR = "p, h1, h2, h3, h4, h5, h6, li";
-const FONT_SIZE_MIN = 13;
-const FONT_SIZE_MAX = 30;
 
 /* ═══════════════════════════════════════════
    Helpers
 ═══════════════════════════════════════════ */
-
-function flattenToc(items, depth = 0) {
-  const result = [];
-  for (const item of items) {
-    result.push({ ...item, depth });
-    if (item.children?.length)
-      result.push(...flattenToc(item.children, depth + 1));
-  }
-  return result;
-}
-
-function navigableTocItems(toc) {
-  const seen = new Set();
-  return flattenToc(toc).filter((item) => {
-    const base = (item.href || "").split("#")[0];
-    if (!base || seen.has(base)) return false;
-    seen.add(base);
-    return true;
-  });
-}
-
-function getVoiceId(voice) {
-  if (!voice) return "";
-  return voice.voiceURI || `${voice.name}__${voice.lang}`;
-}
-
-function findVoiceById(voices, id) {
-  if (!id) return null;
-  return voices.find((voice) => getVoiceId(voice) === id) || null;
-}
-
-function getVoicesForLang(voices, lang) {
-  const code = (lang || "").split("-")[0].toLowerCase();
-  return voices.filter(
-    (voice) => (voice.lang || "").toLowerCase().split("-")[0] === code,
-  );
-}
-
-function resetTooltipPosition(pw) {
-  if (!pw) return;
-  pw.style.removeProperty("--pw-tooltip-left");
-  pw.style.removeProperty("--pw-tooltip-top");
-  pw.style.removeProperty("--pw-tooltip-arrow-left");
-  delete pw.dataset.tooltipPlacement;
-  delete pw.dataset.tooltipPending;
-}
-
-function normalizeInlineText(value) {
-  return (value || "").replace(/\s+/g, " ").trim();
-}
-
-function buildSearchSnippet(text, query) {
-  const normalizedText = normalizeInlineText(text);
-  const normalizedQuery = normalizeInlineText(query).toLowerCase();
-  if (!normalizedText || !normalizedQuery) return normalizedText;
-
-  const idx = normalizedText.toLowerCase().indexOf(normalizedQuery);
-  if (idx === -1) return normalizedText.slice(0, 120);
-
-  const start = Math.max(0, idx - 36);
-  const end = Math.min(
-    normalizedText.length,
-    idx + normalizedQuery.length + 56,
-  );
-  return `${start > 0 ? "..." : ""}${normalizedText.slice(start, end)}${
-    end < normalizedText.length ? "..." : ""
-  }`;
-}
-
-function getBookmarkPageIndex(bookmark, totalPages) {
-  if (!totalPages || totalPages <= 1) return 0;
-  return Math.max(
-    0,
-    Math.min(
-      totalPages - 1,
-      Math.round((bookmark?.progress ?? 0) * (totalPages - 1)),
-    ),
-  );
-}
-
-function formatBookmarkPage(bookmark) {
-  if (
-    Number.isFinite(bookmark?.page) &&
-    Number.isFinite(bookmark?.totalPages) &&
-    bookmark.totalPages > 0
-  ) {
-    return `${bookmark.page + 1}/${bookmark.totalPages}`;
-  }
-  return `${Math.round(((bookmark?.progress ?? 0) + Number.EPSILON) * 100)}%`;
-}
-
-function isShortcutTargetBlocked(target) {
-  return (
-    target instanceof Element &&
-    Boolean(
-      target.closest(
-        'input, textarea, select, button, [contenteditable="true"], [role="textbox"]',
-      ),
-    )
-  );
-}
 
 /* ═══════════════════════════════════════════
    Reader component
@@ -192,7 +110,6 @@ export default function Reader({
 
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [toolbarVisible, setToolbarVisible] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMatches, setSearchMatches] = useState([]);
@@ -259,8 +176,6 @@ export default function Reader({
   const bookmarkToggleRef = useRef(null);
   const settingsMenuRef = useRef(null);
   const settingsToggleRef = useRef(null);
-  const readerLayoutRef = useRef(null);
-  const modifierTapRef = useRef({ Shift: false });
   const ttsPagePauseModeRef = useRef(null);
 
   useWakeLock(Boolean(bookId));
@@ -1179,153 +1094,6 @@ export default function Reader({
     document.documentElement.style.setProperty("--fs", fs + "px");
   }, [fs]);
 
-  /* ── Keyboard navigation ── */
-  useEffect(() => {
-    function clearModifierTap(exceptKey = "") {
-      if (exceptKey !== "Shift") modifierTapRef.current.Shift = false;
-    }
-
-    function onKey(e) {
-      if (isShortcutTargetBlocked(e.target)) return;
-
-      const isStandaloneShift =
-        !e.repeat && e.key === "Shift" && !e.altKey && !e.metaKey && !e.ctrlKey;
-      if (isStandaloneShift) {
-        modifierTapRef.current.Shift = true;
-        return;
-      }
-
-      clearModifierTap(e.key);
-
-      if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-        e.preventDefault();
-        prevPage();
-        return;
-      }
-
-      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-        e.preventDefault();
-        nextPage();
-        return;
-      }
-
-      if (e.key === "Escape") {
-        setSidebarOpen(false);
-        setSearchOpen(false);
-        setBookmarkMenuOpen(false);
-        setSettingsMenuOpen(false);
-        return;
-      }
-
-      if (e.key === "Backspace") {
-        e.preventDefault();
-        void handleBackToLibrary();
-        return;
-      }
-
-      if (e.code === "Space" || e.key === " ") {
-        e.preventDefault();
-        toggleCurrentTts();
-        return;
-      }
-
-      if (e.key === "," || e.key === "<") {
-        e.preventDefault();
-        jumpCurrentTts(-1);
-        return;
-      }
-
-      if (e.key === "." || e.key === ">") {
-        e.preventDefault();
-        jumpCurrentTts(1);
-        return;
-      }
-
-      if (e.key === "{" || e.key === "[") {
-        e.preventDefault();
-        changeFontSize(-1);
-        return;
-      }
-
-      if (e.key === "}" || e.key === "]") {
-        e.preventDefault();
-        changeFontSize(1);
-        return;
-      }
-
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-
-      switch (e.key.toLowerCase()) {
-        case "j":
-          e.preventDefault();
-          openSearchPanel();
-          break;
-        case "z":
-          e.preventDefault();
-          openBookmarksPanel();
-          break;
-        case "n":
-          e.preventDefault();
-          nextChapterDirect();
-          break;
-        case "p":
-          e.preventDefault();
-          prevChapter();
-          break;
-        case "q":
-          e.preventDefault();
-          setSidebarOpen((open) => !open);
-          break;
-        default:
-          break;
-      }
-    }
-
-    function onKeyUp(e) {
-      if (isShortcutTargetBlocked(e.target)) return;
-
-      if (e.key === "Shift") {
-        const shouldCycle = modifierTapRef.current.Shift;
-        modifierTapRef.current.Shift = false;
-        if (shouldCycle) {
-          e.preventDefault();
-          cycleChapterVersion();
-        }
-      }
-    }
-
-    function resetModifierTap() {
-      clearModifierTap();
-    }
-
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("blur", resetModifierTap);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("keyup", onKeyUp);
-      window.removeEventListener("blur", resetModifierTap);
-    };
-  }, [
-    activeLang,
-    changeFontSize,
-    chapterCount,
-    chapterIdx,
-    cycleChapterVersion,
-    handleBackToLibrary,
-    nextPage,
-    nextChapterDirect,
-    openBookmarksPanel,
-    openSearchPanel,
-    orderedCachedLangs,
-    polyMode,
-    polyState,
-    prevPage,
-    prevChapter,
-    jumpCurrentTts,
-    toggleCurrentTts,
-  ]);
-
   /* ── Close settings menu on outside click ── */
   useEffect(() => {
     if (!settingsMenuOpen) return;
@@ -1451,10 +1219,6 @@ export default function Reader({
     setSearchOpen(true);
     setBookmarkMenuOpen(false);
     setSettingsMenuOpen(false);
-    window.setTimeout(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    }, 0);
   }
 
   function openBookmarksPanel() {
@@ -1486,10 +1250,7 @@ export default function Reader({
       lastCode && LANGUAGES.some((l) => l.code === lastCode)
         ? lastCode
         : LANGUAGES[0].code;
-    userChangedLangRef.current = true;
-    setConfirmLang(initialCode);
-    setActiveLang(initialCode);
-    setPolyState("confirm");
+    openTranslationConfirmation(initialCode);
   }
 
   function regenerateCurrentTranslation() {
@@ -2131,9 +1892,75 @@ export default function Reader({
     setSidebarOpen(false);
   }
 
-  const progressPct = chapterCount
-    ? `${Math.round((((chapterIdx ?? 0) + 1) / chapterCount) * 100)}%`
-    : "0%";
+  function openTranslationConfirmation(langCode) {
+    userChangedLangRef.current = true;
+    setConfirmLang(langCode);
+    setActiveLang(langCode);
+    setPolyState("confirm");
+  }
+
+  function resetTranslationSelection() {
+    setActiveLang(null);
+    setPolyState("idle");
+  }
+
+  function handleConfirmLangChange(langCode) {
+    setConfirmLang(langCode);
+    setActiveLang(langCode);
+  }
+
+  function handleToggleSettingsMenu() {
+    setSettingsMenuOpen((open) => !open);
+    setSearchOpen(false);
+    setBookmarkMenuOpen(false);
+  }
+
+  function handleSettingsSearchToolClick() {
+    if (searchOpen) {
+      setSearchOpen(false);
+      setSettingsMenuOpen(false);
+      return;
+    }
+    openSearchPanel();
+  }
+
+  function handleSettingsBookmarksToolClick() {
+    if (bookmarkMenuOpen) {
+      setBookmarkMenuOpen(false);
+      setSettingsMenuOpen(false);
+      return;
+    }
+    openBookmarksPanel();
+  }
+
+  function handleOpenBatchModal() {
+    setBatchModalOpen(true);
+    setSidebarOpen(false);
+  }
+
+  function handleAddTranslation() {
+    requestGenerate();
+    setSettingsMenuOpen(false);
+  }
+
+  function handleSourceVoiceChange(nextVoiceId) {
+    setTtsSourceVoice(nextVoiceId);
+    localStorage.setItem(`tts-voice-src-${sourceLangCode}`, nextVoiceId);
+    const nextVoice = findVoiceById(ttsVoices, nextVoiceId);
+    ttsPlayerRef.current?.setVoice(nextVoice);
+    originalTtsPlayerRef.current?.setVoice(nextVoice);
+  }
+
+  function handleTargetVoiceChange(nextVoiceId) {
+    setTtsTargetVoice(nextVoiceId);
+    localStorage.setItem(`tts-voice-tgt-${targetLangCode}`, nextVoiceId);
+  }
+
+  function handleMissingLangGenerate() {
+    if (!missingLangBanner) return;
+    setMissingLangBanner(null);
+    openTranslationConfirmation(missingLangBanner);
+  }
 
   const { generationBatches: estimatedFragments } = useMemo(
     () => estimatePolyglotGeneration({ html: chapter?.html }),
@@ -2153,13 +1980,7 @@ export default function Reader({
     polyState === "loading"
       ? Math.max(polyProgress.secs, polyLiveSecs)
       : polyProgress.secs;
-  const patchUnitLabel =
-    polyProgress.total === 1
-      ? "zdanie"
-      : polyProgress.total < 5
-        ? "zdania"
-        : "zdań";
-  const verifyUnitLabel =
+  const polyProgressUnitLabel =
     polyProgress.total === 1
       ? "zdanie"
       : polyProgress.total < 5
@@ -2169,16 +1990,15 @@ export default function Reader({
     polyProgress.phase === "verify"
       ? polyProgress.total > 0
         ? polyProgress.done === 0
-          ? `Startuję weryfikację (${polyProgress.total} ${verifyUnitLabel})…`
-          : `Weryfikacja ${polyProgress.done} / ${polyProgress.total} ${verifyUnitLabel}`
+          ? `Startuję weryfikację (${polyProgress.total} ${polyProgressUnitLabel})…`
+          : `Weryfikacja ${polyProgress.done} / ${polyProgress.total} ${polyProgressUnitLabel}`
         : "Weryfikuję tłumaczenie…"
       : polyProgress.total > 0
         ? polyProgress.done === 0
-          ? `Wysyłam ${polyProgress.total} ${patchUnitLabel}…`
-          : `Przetworzono ${polyProgress.done} / ${polyProgress.total} ${patchUnitLabel}`
+          ? `Wysyłam ${polyProgress.total} ${polyProgressUnitLabel}…`
+          : `Przetworzono ${polyProgress.done} / ${polyProgress.total} ${polyProgressUnitLabel}`
         : "Łączenie z API…";
-  const chapterLabel =
-    chapter?.title?.trim() || `Rozdzia\u0142 ${(chapterIdx ?? 0) + 1}`;
+  const chapterLabel = chapter?.title?.trim() || `Rozdział ${(chapterIdx ?? 0) + 1}`;
   const visibleBookmarks = useMemo(
     () => bookmarks.filter((bookmark) => !bookmark.deletedAt),
     [bookmarks],
@@ -2206,46 +2026,35 @@ export default function Reader({
   );
   const currentChapterHref = (chapter?.href || "").split("#")[0];
   const tocItems = navigableTocItems(toc);
-  const ttsButtonTitle =
-    polyMode && polyState === "done"
-      ? ttsPlaying
-        ? ttsPaused
-          ? "Wznów czytanie"
-          : "Zatrzymaj czytanie"
-        : "Odtwórz TTS"
-      : originalTtsPlaying
-        ? originalTtsPaused
-          ? "Wznów czytanie"
-          : "Zatrzymaj czytanie"
-        : "Odtwórz TTS";
-  const ttsButtonLabel =
-    polyMode && polyState === "done"
-      ? ttsPlaying
-        ? ttsPaused
-          ? "Wznów"
-          : "Pauza"
-        : "Play"
-      : originalTtsPlaying
-        ? originalTtsPaused
-          ? "Wznów"
-          : "Pauza"
-        : "Play";
-  const ttsButtonIcon =
-    polyMode && polyState === "done"
-      ? ttsPlaying
-        ? ttsPaused
-          ? ">"
-          : "||"
-        : ">"
-      : originalTtsPlaying
-        ? originalTtsPaused
-          ? ">"
-          : "||"
-        : ">";
+  const activeTtsMode =
+    polyMode && polyState === "done" ? "hybrid" : "original";
+  const activeTtsPlaying =
+    activeTtsMode === "hybrid" ? ttsPlaying : originalTtsPlaying;
+  const activeTtsPaused =
+    activeTtsMode === "hybrid" ? ttsPaused : originalTtsPaused;
+  const ttsButtonTitle = activeTtsPlaying
+    ? activeTtsPaused
+      ? "Wznów czytanie"
+      : "Zatrzymaj czytanie"
+    : "Odtwórz TTS";
+  const ttsButtonLabel = activeTtsPlaying
+    ? activeTtsPaused
+      ? "Wznów"
+      : "Pauza"
+    : "Play";
+  const ttsButtonIcon = activeTtsPlaying ? (activeTtsPaused ? ">" : "||") : ">";
   const hasTtsAvailable =
-    polyMode && polyState === "done"
+    activeTtsMode === "hybrid"
       ? polyTtsParagraphs.length > 0
       : originalTtsFragments.length > 0;
+  const sourceLangCode = (book?.lang || "en").split("-")[0].toLowerCase();
+  const targetLangCode = (activeLang || "es").split("-")[0].toLowerCase();
+  const sourceVoices = getVoicesForLang(ttsVoices, book?.lang || "en");
+  const targetVoices = getVoicesForLang(ttsVoices, activeLang || "es");
+  const showVoiceNote =
+    voiceLoadState !== "ready" ||
+    !sourceVoices.length ||
+    (polyMode && !targetVoices.length);
 
   if (!book && !chapterLoading) {
     return (
@@ -2259,495 +2068,104 @@ export default function Reader({
   }
 
   return (
-    <div
-      ref={readerLayoutRef}
-      className={`reader-layout ${toolbarVisible ? "" : "toolbar-hidden"}`}
-    >
-      {/* ── Sidebar ── */}
-      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-        <div className="sb-top">
-          <button className="btn-back" onClick={handleBackToLibrary}>
-            ← Biblioteka
-          </button>
-          <div className="sb-cover">
-            {book?.cover ? (
-              <img src={book.cover} alt="okładka" />
-            ) : (
-              <span className="cover-ph">📖</span>
-            )}
-          </div>
-          <div className="sb-title">{book?.title || "…"}</div>
-          {book?.author && <div className="sb-author">{book.author}</div>}
-          {book && settings && (
-            <button
-              className="sb-translate-btn"
-              onClick={() => {
-                setBatchModalOpen(true);
-                setSidebarOpen(false);
-              }}
-            >
-              Tlumacz ksiazke
-            </button>
-          )}
-          <div className="sb-stats">{chapterCount} rozdziałów</div>
-        </div>
-        <div className="toc-label">Spis treści</div>
-        <div className="toc-scroll">
-          <ul className="toc-list">
-            {tocItems.map((item, i) => {
-              const itemHref = (item.href || "").split("#")[0];
-              const chIdx = hrefToIndex[itemHref] ?? -1;
-              const status = chapterStatusMap[chIdx];
-              const translationBadges = [...(status?.translationLangs || [])]
-                .sort(
-                  (a, b) =>
-                    (LANGUAGE_ORDER.get(a) ?? Number.MAX_SAFE_INTEGER) -
-                    (LANGUAGE_ORDER.get(b) ?? Number.MAX_SAFE_INTEGER),
-                )
-                .map(
-                  (code) =>
-                    LANGUAGE_META[code] || {
-                      code,
-                      flag: code.toUpperCase(),
-                      name: code,
-                    },
-                );
-              return (
-                <li
-                  key={itemHref || `${i}-${item.title || "toc"}`}
-                  className="toc-item"
-                >
-                  <button
-                    type="button"
-                    className={`toc-entry toc-depth-${Math.min(item.depth ?? 0, 3)}${
-                      currentChapterHref === itemHref ? " active" : ""
-                    }`}
-                    onClick={() => goToHref(itemHref)}
-                  >
-                    <span className="toc-entry-title">{item.title || "—"}</span>
-                    {translationBadges.length > 0 && (
-                      <span className="toc-badges">
-                        {translationBadges.map((lang) => (
-                          <span
-                            key={`${itemHref}-${lang.code}`}
-                            className="toc-bdg toc-bdg-tr"
-                            title={`Tłumaczenie: ${lang.name}`}
-                            aria-label={`Tłumaczenie: ${lang.name}`}
-                          >
-                            {lang.flag}
-                          </span>
-                        ))}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      </aside>
-
-      <div
-        className={`sb-overlay ${sidebarOpen ? "open" : ""}`}
-        onClick={() => setSidebarOpen(false)}
+    <div className="reader-layout">
+      <ReaderSidebar
+        sidebarOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onBack={handleBackToLibrary}
+        book={book}
+        canTranslateBook={Boolean(book && settings)}
+        onOpenBatchModal={handleOpenBatchModal}
+        chapterCount={chapterCount}
+        tocItems={tocItems}
+        hrefToIndex={hrefToIndex}
+        chapterStatusMap={chapterStatusMap}
+        currentChapterHref={currentChapterHref}
+        onGoToHref={goToHref}
+        languageMeta={LANGUAGE_META}
+        languageOrder={LANGUAGE_ORDER}
       />
 
       {/* ── Main content ── */}
       <div className="reader-main">
         {/* Top bar */}
-        <div className="topbar">
-          <button
-            className="sb-tog-inline ctl ctl-icon"
-            onClick={() => setSidebarOpen((s) => !s)}
-            title="Spis treści"
-          >
-            ☰
-          </button>
-          <div className="tb-chapter">
-            {chapter ? (
-              <select
-                className="tb-ver-select"
-                value={activeLang ?? ""}
-                onChange={(e) => {
-                  switchToLang(e.target.value || null);
-                }}
-              >
-                <option value="">{`${chapterLabel} \u2014 Orygina\u0142`}</option>
-                {orderedCachedLangs.map((l) => (
-                  <option key={`display-${l.code}`} value={l.code}>
-                    {`${chapterLabel} \u2014 ${l.name}`}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            {false ? (
-              <select
-                className="tb-ver-select"
-                value={activeLang ?? ""}
-                onChange={(e) => {
-                  switchToLang(e.target.value || null);
-                }}
-              >
-                <option value="">
-                  {`Rozdział ${(chapterIdx ?? 0) + 1}${chapter.title ? " · " + chapter.title : ""} — Oryginał`}
-                </option>
-                {cachedLangs.map((l) => (
-                  <option key={l.code} value={l.code}>
-                    {`Rozdział ${(chapterIdx ?? 0) + 1}${chapter.title ? " · " + chapter.title : ""} — ${l.name}`}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              ""
-            )}
-          </div>
-          <div className="tb-controls">
-            <button
-              ref={settingsToggleRef}
-              className={`ctl ctl-icon${settingsMenuOpen ? " ctl-active" : ""}`}
-              onClick={() => {
-                setSettingsMenuOpen((v) => !v);
-                setSearchOpen(false);
-                setBookmarkMenuOpen(false);
-              }}
-              title="Ustawienia"
-            >
-              ⚙
-            </button>
-          </div>
-        </div>
+        <ReaderTopbar
+          chapter={chapter}
+          chapterLabel={chapterLabel}
+          activeLang={activeLang}
+          orderedCachedLangs={orderedCachedLangs}
+          onSwitchLang={switchToLang}
+          settingsMenuOpen={settingsMenuOpen}
+          settingsToggleRef={settingsToggleRef}
+          onToggleSidebar={() => setSidebarOpen((open) => !open)}
+          onToggleSettings={handleToggleSettingsMenu}
+        />
 
         {searchOpen && (
-          <div className="reader-search-strip">
-            <div className="reader-search-main">
-              <input
-                ref={searchInputRef}
-                className="reader-search-input"
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (!searchMatches.length) return;
-                    goToSearchMatch(activeSearchIdx + (e.shiftKey ? -1 : 1));
-                  }
-                }}
-                placeholder="Szukaj tekstu w tym rozdziale"
-              />
-              <div className="reader-search-meta">
-                {searchQuery.trim()
-                  ? searchMatches.length
-                    ? `${activeSearchIdx + 1}/${searchMatches.length}`
-                    : "0 wynikow"
-                  : "Wpisz fraze"}
-              </div>
-              <button
-                className="ctl ctl-icon"
-                onClick={() => goToSearchMatch(activeSearchIdx - 1)}
-                disabled={!searchMatches.length}
-                title="Poprzedni wynik"
-              >
-                {"<"}
-              </button>
-              <button
-                className="ctl ctl-icon"
-                onClick={() => goToSearchMatch(activeSearchIdx + 1)}
-                disabled={!searchMatches.length}
-                title="Nastepny wynik"
-              >
-                {">"}
-              </button>
-              <button
-                className="ctl ctl-icon"
-                onClick={() => setSearchOpen(false)}
-                title="Zamknij wyszukiwanie"
-              >
-                x
-              </button>
-            </div>
-
-            {searchQuery.trim() && (
-              <div className="reader-search-results">
-                {searchMatches.length ? (
-                  searchMatches.map((match, index) => (
-                    <button
-                      key={`${match.blockId}-${index}`}
-                      type="button"
-                      className={`reader-search-result${
-                        index === activeSearchIdx ? " active" : ""
-                      }`}
-                      onClick={() => goToSearchMatch(index)}
-                    >
-                      <span className="reader-search-result-page">
-                        s. {match.page + 1}
-                      </span>
-                      <span className="reader-search-result-text">
-                        {match.preview}
-                      </span>
-                      {match.count > 1 && (
-                        <span className="reader-search-result-count">
-                          x{match.count}
-                        </span>
-                      )}
-                    </button>
-                  ))
-                ) : (
-                  <div className="reader-search-empty">
-                    Brak trafien w tym rozdziale.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <ReaderSearchPanel
+            inputRef={searchInputRef}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            searchMatches={searchMatches}
+            activeSearchIdx={activeSearchIdx}
+            onGoToSearchMatch={goToSearchMatch}
+            onClose={() => setSearchOpen(false)}
+          />
         )}
 
         {bookmarkMenuOpen && (
-          <div className="bookmark-menu" ref={bookmarkMenuRef}>
-            <div className="bookmark-menu-head">
-              <div>
-                <div className="bookmark-menu-title">Zakladki</div>
-                <div className="bookmark-menu-sub">
-                  Zapisz biezaca strone i zsynchronizuj ja z kontem.
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className={`bookmark-save-btn${hasCurrentPageBookmark ? " active" : ""}`}
-              onClick={() => addBookmark()}
-              title="Zapisz zakladke"
-            >
-              <span className="bookmark-save-btn-label">
-                {hasCurrentPageBookmark
-                  ? "Zapisano te strone"
-                  : "Zapisz zakladke"}
-              </span>
-              <span className="bookmark-save-btn-meta">
-                Strona {currentPage + 1}/{totalPages}
-              </span>
-            </button>
-
-            <div className="bookmark-menu-list">
-              {bookmarkList.length ? (
-                bookmarkList.map((bookmark) => (
-                  <div key={bookmark.id} className="bookmark-item">
-                    <button
-                      type="button"
-                      className="bookmark-item-main"
-                      onClick={() => jumpToBookmark(bookmark)}
-                    >
-                      <span className="bookmark-item-copy">
-                        <span className="bookmark-item-title">
-                          {bookmark.chapterTitle ||
-                            `Rozdzial ${bookmark.chapterIndex + 1}`}
-                        </span>
-                        <span className="bookmark-item-meta">
-                          Strona {formatBookmarkPage(bookmark)}
-                        </span>
-                        {bookmark.preview && (
-                          <span className="bookmark-item-preview">
-                            {bookmark.preview}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="bookmark-item-remove"
-                      onClick={() => removeBookmark(bookmark.id)}
-                      title="Usun zakladke"
-                      aria-label="Usun zakladke"
-                    >
-                      x
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <div className="bookmark-empty">Brak zapisanych zakladek.</div>
-              )}
-            </div>
-          </div>
+          <ReaderBookmarkMenu
+            menuRef={bookmarkMenuRef}
+            hasCurrentPageBookmark={hasCurrentPageBookmark}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            bookmarkList={bookmarkList}
+            onAddBookmark={addBookmark}
+            onJumpToBookmark={jumpToBookmark}
+            onRemoveBookmark={removeBookmark}
+            formatBookmarkPage={formatBookmarkPage}
+          />
         )}
 
-        {/* Settings dropdown */}
         {settingsMenuOpen && (
-          <div className="settings-menu" ref={settingsMenuRef}>
-            <div className="settings-menu-toolbar">
-              <button
-                className={`settings-tool${searchOpen ? " settings-tool-active" : ""}`}
-                onClick={() => {
-                  if (searchOpen) {
-                    setSearchOpen(false);
-                    setSettingsMenuOpen(false);
-                    return;
-                  }
-                  openSearchPanel();
-                }}
-                title="Szukaj w rozdziale (J)"
-              >
-                <span className="settings-tool-icon">/</span>
-                <span className="settings-tool-text">Szukaj</span>
-              </button>
-              <button
-                ref={bookmarkToggleRef}
-                className={`settings-tool${bookmarkMenuOpen || currentPageBookmarks.length ? " settings-tool-active" : ""}`}
-                onClick={() => {
-                  if (bookmarkMenuOpen) {
-                    setBookmarkMenuOpen(false);
-                    setSettingsMenuOpen(false);
-                    return;
-                  }
-                  openBookmarksPanel();
-                }}
-                title="Zakladki (Z)"
-              >
-                <span className="settings-tool-icon">*</span>
-                <span className="settings-tool-text">Zakładki</span>
-              </button>
-              <button
-                className={`settings-tool${(ttsPlaying && !ttsPaused) || (originalTtsPlaying && !originalTtsPaused) ? " settings-tool-active" : ""}`}
-                onClick={
-                  polyMode && polyState === "done"
-                    ? toggleHybridTts
-                    : toggleOriginalTts
-                }
-                title={ttsButtonTitle}
-                disabled={!hasTtsAvailable}
-              >
-                <span className="settings-tool-icon">{ttsButtonIcon}</span>
-                <span className="settings-tool-text">{ttsButtonLabel}</span>
-              </button>
-            </div>
-
-            <div className="settings-menu-divider" />
-
-            <div className="settings-menu-row settings-menu-row-compact">
-              <span className="settings-menu-label">Czcionka</span>
-              <div className="settings-menu-ctrl">
-                <button className="ctl" onClick={() => changeFontSize(-1)}>
-                  A-
-                </button>
-                <span className="fs-val">{fs}</span>
-                <button className="ctl" onClick={() => changeFontSize(1)}>
-                  A+
-                </button>
-              </div>
-            </div>
-
-            {!polyMode && chapter?.text && (
-              <div className="settings-menu-row settings-menu-row-compact">
-                <span className="settings-menu-label">Tłumaczenie</span>
-                <div className="settings-menu-ctrl">
-                  <button
-                    className="ctl ctl-gold"
-                    onClick={() => {
-                      requestGenerate();
-                      setSettingsMenuOpen(false);
-                    }}
-                  >
-                    + Dodaj
-                  </button>
-                </div>
-              </div>
-            )}
-            {polyMode &&
+          <ReaderSettingsMenu
+            menuRef={settingsMenuRef}
+            bookmarkToggleRef={bookmarkToggleRef}
+            searchOpen={searchOpen}
+            bookmarkMenuOpen={bookmarkMenuOpen}
+            hasCurrentPageBookmarks={hasCurrentPageBookmark}
+            isTtsActive={activeTtsPlaying && !activeTtsPaused}
+            onSearchToolClick={handleSettingsSearchToolClick}
+            onBookmarksToolClick={handleSettingsBookmarksToolClick}
+            onToggleTts={
+              activeTtsMode === "hybrid" ? toggleHybridTts : toggleOriginalTts
+            }
+            ttsButtonTitle={ttsButtonTitle}
+            ttsButtonLabel={ttsButtonLabel}
+            ttsButtonIcon={ttsButtonIcon}
+            hasTtsAvailable={hasTtsAvailable}
+            fontSize={fs}
+            onChangeFontSize={changeFontSize}
+            showAddTranslation={!polyMode && Boolean(chapter?.text)}
+            showRegenerateTranslation={
+              polyMode &&
               polyState === "done" &&
-              activeLang &&
-              chapter?.text && (
-                <div className="settings-menu-row settings-menu-row-compact">
-                  <span className="settings-menu-label">Tłumaczenie</span>
-                  <div className="settings-menu-ctrl">
-                    <button
-                      className="ctl"
-                      onClick={regenerateCurrentTranslation}
-                    >
-                      Regeneruj
-                    </button>
-                  </div>
-                </div>
-              )}
-            <div className="settings-menu-divider" />
-            {(() => {
-              const srcCode = (book?.lang || "en").split("-")[0].toLowerCase();
-              const tgtCode = (activeLang || "es").split("-")[0].toLowerCase();
-              const srcVoices = getVoicesForLang(ttsVoices, book?.lang || "en");
-              const tgtVoices = getVoicesForLang(ttsVoices, activeLang || "es");
-              const showVoiceNote =
-                voiceLoadState !== "ready" ||
-                !srcVoices.length ||
-                (polyMode && !tgtVoices.length);
-              return (
-                <>
-                  <div className="settings-menu-row settings-menu-row-compact settings-menu-row-select">
-                    <span className="settings-menu-label">{srcCode}</span>
-                    <select
-                      className="tts-voice-sel"
-                      value={ttsSourceVoice}
-                      disabled={!srcVoices.length}
-                      onChange={(e) => {
-                        const nextVoiceId = e.target.value;
-                        setTtsSourceVoice(nextVoiceId);
-                        localStorage.setItem(
-                          `tts-voice-src-${srcCode}`,
-                          nextVoiceId,
-                        );
-                        const nextVoice = findVoiceById(ttsVoices, nextVoiceId);
-                        ttsPlayerRef.current?.setVoice(nextVoice);
-                        originalTtsPlayerRef.current?.setVoice(nextVoice);
-                      }}
-                    >
-                      <option value="">
-                        {srcVoices.length ? "Domyślny" : "Systemowy"}
-                      </option>
-                      {srcVoices.map((v) => (
-                        <option key={getVoiceId(v)} value={getVoiceId(v)}>
-                          {v.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {polyMode && (
-                    <div className="settings-menu-row settings-menu-row-compact settings-menu-row-select">
-                      <span className="settings-menu-label">{tgtCode}</span>
-                      <select
-                        className="tts-voice-sel"
-                        value={ttsTargetVoice}
-                        disabled={!tgtVoices.length}
-                        onChange={(e) => {
-                          setTtsTargetVoice(e.target.value);
-                          localStorage.setItem(
-                            `tts-voice-tgt-${tgtCode}`,
-                            e.target.value,
-                          );
-                        }}
-                      >
-                        <option value="">
-                          {tgtVoices.length ? "Domyślny" : "Systemowy"}
-                        </option>
-                        {tgtVoices.map((v) => (
-                          <option key={getVoiceId(v)} value={getVoiceId(v)}>
-                            {v.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  {showVoiceNote && (
-                    <div className="settings-menu-note">
-                      {voiceLoadState === "unsupported"
-                        ? "Ta przeglądarka nie udostępnia listy głosów Web Speech."
-                        : voiceLoadState === "empty"
-                          ? "Lista głosów jest pusta. Na mobilnym Chromium pojawia się to często, gdy system nie ma zainstalowanych danych TTS albo przeglądarka nie odsłoni jeszcze głosów."
-                          : "Brak osobnych głosów dla tego języka. Przeglądarka użyje domyślnego głosu systemowego."}
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-          </div>
+              Boolean(activeLang && chapter?.text)
+            }
+            onAddTranslation={handleAddTranslation}
+            onRegenerateTranslation={regenerateCurrentTranslation}
+            sourceLangCode={sourceLangCode}
+            targetLangCode={targetLangCode}
+            sourceVoices={sourceVoices}
+            targetVoices={targetVoices}
+            showTargetVoiceSelect={polyMode}
+            showVoiceNote={showVoiceNote}
+            voiceLoadState={voiceLoadState}
+            ttsSourceVoice={ttsSourceVoice}
+            ttsTargetVoice={ttsTargetVoice}
+            onSourceVoiceChange={handleSourceVoiceChange}
+            onTargetVoiceChange={handleTargetVoiceChange}
+          />
         )}
 
         {batchModalOpen && book && settings && (
@@ -2759,332 +2177,71 @@ export default function Reader({
           />
         )}
 
-        {/* Missing translation banner */}
-        {missingLangBanner &&
-          (() => {
-            const langObj = LANGUAGES.find((l) => l.code === missingLangBanner);
-            return (
-              <div className="missing-lang-banner">
-                <span>
-                  Brak tłumaczenia {langObj?.flag}{" "}
-                  {langObj?.label || missingLangBanner}
-                </span>
-                <div className="missing-lang-actions">
-                  <button
-                    className="btn-primary"
-                    style={{ fontSize: 11, padding: "7px 16px" }}
-                    onClick={() => {
-                      setMissingLangBanner(null);
-                      userChangedLangRef.current = true;
-                      setConfirmLang(missingLangBanner);
-                      setActiveLang(missingLangBanner);
-                      setPolyState("confirm");
-                    }}
-                  >
-                    Wygeneruj
-                  </button>
-                  <button
-                    className="btn-ghost"
-                    style={{ fontSize: 11, padding: "7px 16px" }}
-                    onClick={() => setMissingLangBanner(null)}
-                  >
-                    Oryginał
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
+        {missingLangBanner && (
+          <ReaderMissingLangBanner
+            langCode={missingLangBanner}
+            languages={LANGUAGES}
+            onGenerate={handleMissingLangGenerate}
+            onDismiss={() => setMissingLangBanner(null)}
+          />
+        )}
 
-        {/* Chapter page area */}
-        <div className="ch-scroll" ref={chScrollRef}>
-          <div className="ch-columns" ref={chInnerRef} key={animKeyRef.current}>
-            <div className="ch-inner">
-              {chapterLoading ? (
-                <div className="poly-loading">
-                  <div className="spin-ring" />
-                </div>
-              ) : !chapter ? (
-                <div
-                  style={{
-                    color: "var(--txt-3)",
-                    fontStyle: "italic",
-                    fontSize: 14,
-                  }}
-                >
-                  Nie można wczytać rozdziału.
-                </div>
-              ) : (
-                <>
-                  {polyMode && polyState === "confirm" && (
-                    <div className="poly-confirm ch-anim">
-                      <p className="poly-confirm-title">
-                        Wybierz język tłumaczenia
-                      </p>
-                      <select
-                        className="form-select"
-                        value={confirmLang}
-                        onChange={(e) => {
-                          setConfirmLang(e.target.value);
-                          setActiveLang(e.target.value);
-                        }}
-                        style={{ marginBottom: 12, alignSelf: "stretch" }}
-                      >
-                        {LANGUAGES.map((l) => (
-                          <option key={l.code} value={l.code}>
-                            {l.flag} {l.label} ({l.name})
-                          </option>
-                        ))}
-                      </select>
-                      <p className="poly-confirm-hint">
-                        <strong>
-                          {estimatedFragments}{" "}
-                          {estimatedFragments === 1
-                            ? "zdanie"
-                            : estimatedFragments < 5
-                              ? "zdania"
-                              : "zdań"}
-                        </strong>
-                        {" · ~"}
-                        {estimatedSecs < 60
-                          ? `${estimatedSecs}s`
-                          : `${Math.round(estimatedSecs / 60)} min`}
-                        {estimatedCost > 0 && (
-                          <>
-                            {" · ~$"}
-                            {estimatedCost.toFixed(4)}
-                          </>
-                        )}
-                      </p>
-                      <p className="poly-confirm-hint">
-                        Nie zamykaj strony i nie zmieniaj rozdziału.
-                      </p>
-                      <div className="poly-confirm-btns">
-                        <button
-                          className="btn-primary"
-                          onClick={() => startGeneration()}
-                        >
-                          Generuj tłumaczenia
-                        </button>
-                        <button
-                          className="btn-ghost"
-                          onClick={() => {
-                            setActiveLang(null);
-                            setPolyState("idle");
-                          }}
-                        >
-                          Anuluj
-                        </button>
-                      </div>
-                    </div>
-                  )}
+        <ReaderChapterContent
+          scrollRef={chScrollRef}
+          innerRef={chInnerRef}
+          animKey={animKeyRef.current}
+          chapterLoading={chapterLoading}
+          chapter={chapter}
+          polyMode={polyMode}
+          polyState={polyState}
+          confirmLang={confirmLang}
+          languages={LANGUAGES}
+          estimatedFragments={estimatedFragments}
+          estimatedSecs={estimatedSecs}
+          estimatedCost={estimatedCost}
+          onConfirmLangChange={handleConfirmLangChange}
+          onStartGeneration={startGeneration}
+          onCancelConfirm={resetTranslationSelection}
+          polyLoadingText={polyLoadingText}
+          polyProgress={polyProgress}
+          polyDisplaySecs={polyDisplaySecs}
+          polyRescueNote={polyRescueNote}
+          polyError={polyError}
+          onDismissPolyError={resetTranslationSelection}
+          activeLang={activeLang}
+          chapterBodyRef={chapterBodyRef}
+          polyWordFragments={polyWordFragments}
+          ttsPlaying={ttsPlaying}
+          renderedPolyHtml={renderedPolyHtml}
+          onContentClick={handleContentClick}
+          originalTtsPlaying={originalTtsPlaying}
+          originalHtmlAnnotated={originalHtmlAnnotated}
+        />
 
-                  {polyMode && polyState === "loading" && (
-                    <div className="poly-loading">
-                      <div className="spin-ring" />
-                      <div className="poly-loading-text">{polyLoadingText}</div>
-                      {polyProgress.total > 0 && (
-                        <>
-                          <div className="poly-progress-bar">
-                            <div
-                              className="poly-progress-fill"
-                              style={{
-                                width: `${(polyProgress.done / polyProgress.total) * 100}%`,
-                              }}
-                            />
-                          </div>
-                          <div className="poly-gen-stats">
-                            {polyDisplaySecs > 0 && (
-                              <span>{polyDisplaySecs.toFixed(1)}s</span>
-                            )}
-                            {polyProgress.cost > 0 ? (
-                              <span>~${polyProgress.cost.toFixed(4)}</span>
-                            ) : (
-                              <span style={{ color: "var(--txt-3)" }}>
-                                ~$0.00
-                              </span>
-                            )}
-                          </div>
-                        </>
-                      )}
-                      <p className="poly-loading-hint">
-                        Nie zamykaj strony i nie zmieniaj rozdziału do końca
-                        generowania.
-                        {/*
-                      Możesz zmienić rozdział — tekst zostanie zapisany w tle.
-                      */}
-                      </p>
-                      <p className="poly-loading-hint">
-                        Ekran pozostaje aktywny podczas generowania. Jesli API
-                        utknie bez postepu, aplikacja automatycznie ponowi
-                        probe.
-                      </p>
-                      {polyRescueNote && (
-                        <p
-                          className="poly-loading-hint"
-                          style={{ color: "var(--amber, #c09050)" }}
-                        >
-                          {polyRescueNote}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {polyMode && polyState === "error" && (
-                    <div className="poly-error">
-                      <div>⚠ {polyError}</div>
-                      <button
-                        className="btn-ghost"
-                        onClick={() => {
-                          setActiveLang(null);
-                          setPolyState("idle");
-                        }}
-                      >
-                        Wróć
-                      </button>
-                    </div>
-                  )}
-
-                  {polyMode && polyState === "done" && (
-                    <div
-                      key={activeLang}
-                      ref={chapterBodyRef}
-                      className={`ch-body ch-anim${polyWordFragments.length ? " tts-ready" : ""}${ttsPlaying ? " audio-ready" : ""}`}
-                      dangerouslySetInnerHTML={{
-                        __html: renderedPolyHtml,
-                      }}
-                      onClick={handleContentClick}
-                    />
-                  )}
-
-                  {!polyMode && (
-                    <div
-                      ref={chapterBodyRef}
-                      className={`ch-body ch-anim${originalTtsPlaying ? " audio-ready" : ""}`}
-                      dangerouslySetInnerHTML={{
-                        __html: originalHtmlAnnotated
-                          ? originalHtmlAnnotated
-                          : chapter.html ||
-                            '<p style="color:var(--txt-3);font-style:italic">Ten rozdział nie zawiera tekstu.</p>',
-                      }}
-                      onClick={handleContentClick}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom navigation — TTS controls replace page counter when playing */}
-        <div className="bottombar">
-          <button
-            className="nav-btn"
-            onClick={prevPage}
-            disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
-          >
-            ←
-          </button>
-
-          {originalTtsPlaying ? (
-            <div className="tts-inline">
-              <button
-                className="tts-bar-btn"
-                onClick={() => jumpSentence(-1)}
-                disabled={activeSid <= 0}
-                title="Poprzedni fragment (,)"
-              >
-                ⏮
-              </button>
-              <button
-                className="tts-bar-btn tts-bar-play active"
-                onClick={toggleOriginalTts}
-                title={originalTtsPaused ? "Wznów" : "Pauza"}
-              >
-                {originalTtsPaused ? "▶" : "⏸"}
-              </button>
-              <button
-                className="tts-bar-btn"
-                onClick={stopOriginalTts}
-                title="Zakończ TTS"
-              >
-                ⏹
-              </button>
-              <button
-                className="tts-bar-btn"
-                onClick={() => jumpSentence(1)}
-                disabled={activeSid >= originalTtsFragments.length - 1}
-                title="Następny akapit"
-              >
-                ⏭
-              </button>
-            </div>
-          ) : ttsPlaying ? (
-            <div className="tts-inline">
-              <button
-                className="tts-bar-btn"
-                onClick={() => jumpPolyParagraph(-1)}
-                disabled={activePolyPid <= 0}
-                title="Poprzedni fragment (,)"
-              >
-                ⏮
-              </button>
-              <button
-                className="tts-bar-btn tts-bar-play active"
-                onClick={toggleHybridTts}
-                title={ttsPaused ? "Wznów" : "Pauza"}
-              >
-                {ttsPaused ? "▶" : "⏸"}
-              </button>
-              <button
-                className="tts-bar-btn"
-                onClick={stopHybridTts}
-                title="Zakończ TTS"
-              >
-                ⏹
-              </button>
-              <button
-                className="tts-bar-btn"
-                onClick={() => jumpPolyParagraph(1)}
-                disabled={activePolyPid >= polyTtsParagraphs.length - 1}
-                title="Następny akapit"
-              >
-                ⏭
-              </button>
-            </div>
-          ) : (
-            <div className="prog-wrap">
-              <div className="prog-lbl">
-                {currentPage + 1}/{totalPages}
-              </div>
-              <input
-                className="page-slider"
-                type="range"
-                min="0"
-                max={Math.max(totalPages - 1, 0)}
-                step="1"
-                value={Math.min(currentPage, Math.max(totalPages - 1, 0))}
-                disabled={totalPages <= 1}
-                aria-label="Przesun do strony"
-                onChange={handlePageSliderChange}
-                onPointerUp={handlePageSliderCommit}
-                onMouseUp={handlePageSliderCommit}
-                onTouchEnd={handlePageSliderCommit}
-                onKeyUp={handlePageSliderCommit}
-              />
-            </div>
-          )}
-
-          <button
-            className="nav-btn"
-            onClick={nextPage}
-            disabled={
-              currentPage >= totalPages - 1 &&
-              (chapterIdx ?? 0) >= chapterCount - 1
-            }
-          >
-            →
-          </button>
-        </div>
+        <ReaderBottomBar
+          currentPage={currentPage}
+          totalPages={totalPages}
+          chapterIdx={chapterIdx}
+          chapterCount={chapterCount}
+          onPrevPage={prevPage}
+          onNextPage={nextPage}
+          originalTtsPlaying={originalTtsPlaying}
+          activeSid={activeSid}
+          onJumpSentence={jumpSentence}
+          onToggleOriginalTts={toggleOriginalTts}
+          originalTtsPaused={originalTtsPaused}
+          onStopOriginalTts={stopOriginalTts}
+          originalTtsFragments={originalTtsFragments}
+          ttsPlaying={ttsPlaying}
+          activePolyPid={activePolyPid}
+          onJumpPolyParagraph={jumpPolyParagraph}
+          onToggleHybridTts={toggleHybridTts}
+          ttsPaused={ttsPaused}
+          onStopHybridTts={stopHybridTts}
+          polyTtsParagraphs={polyTtsParagraphs}
+          onPageSliderChange={handlePageSliderChange}
+          onPageSliderCommit={handlePageSliderCommit}
+        />
       </div>
     </div>
   );
