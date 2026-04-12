@@ -1,52 +1,10 @@
+import { extractRenderedPolyglotData } from "./chapterStructure";
+
 /**
- * Prepare polyglot HTML for paragraph-based TTS:
- * - adds data-pid to each readable block
- * - adds data-word-id to each foreign-word token
- * - extracts paragraph speech text using the original/source words
+ * Backward-compatible helper for already-rendered polyglot HTML.
  */
 export function extractPolyglotTtsData(polyHtml) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(polyHtml, 'text/html');
-  const paragraphs = [];
-  const words = [];
-  let pid = 0;
-  let wordId = 0;
-
-  doc.body.querySelectorAll('.pw').forEach(node => {
-    const target = collapseWhitespace(node.querySelector('.pw-target')?.textContent || '');
-    const original = collapseWhitespace(node.querySelector('.pw-original')?.textContent || '');
-    node.dataset.wordId = String(wordId);
-    words.push({ id: wordId++, target, original });
-  });
-
-  doc.body.querySelectorAll('p, li, blockquote, h1, h2, h3, h4, h5, h6, td, dd').forEach(node => {
-    const text = buildParagraphSpeechText(node);
-    if (!text) return;
-    node.dataset.pid = String(pid);
-    paragraphs.push({ id: pid++, type: 'paragraph', text });
-  });
-
-  return { html: doc.body.innerHTML, paragraphs, words };
-}
-
-function buildParagraphSpeechText(node) {
-  const clone = node.cloneNode(true);
-
-  clone.querySelectorAll('br').forEach(br => {
-    br.replaceWith(clone.ownerDocument.createTextNode(' '));
-  });
-
-  clone.querySelectorAll('.pw').forEach(token => {
-    const original = collapseWhitespace(token.querySelector('.pw-original')?.textContent || '')
-      || collapseWhitespace(token.querySelector('.pw-target')?.textContent || '');
-    token.replaceWith(clone.ownerDocument.createTextNode(original));
-  });
-
-  return collapseWhitespace(clone.textContent || '');
-}
-
-function collapseWhitespace(text) {
-  return String(text).replace(/\s+/g, ' ').trim();
+  return extractRenderedPolyglotData(polyHtml);
 }
 
 export class SentenceTtsPlayer {

@@ -1,11 +1,11 @@
-import { applySentencePatchPayloadToHtml } from './polyglotStructure';
+import { applySentencePatchPayloadToHtml } from "./polyglotStructure";
 
 function escapeHtml(s) {
   return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /**
@@ -17,10 +17,12 @@ export function parsePolyglotHtml(raw) {
 
   function processLine(line) {
     const rx = /\[([^\]]+?)::([^\]]+?)\]/g;
-    let html = '', last = 0, m;
+    let html = "",
+      last = 0,
+      m;
     while ((m = rx.exec(line)) !== null) {
       html += escapeHtml(line.slice(last, m.index));
-      const target   = escapeHtml(m[1].trim());
+      const target = escapeHtml(m[1].trim());
       const original = escapeHtml(m[2].trim());
       html += `<span class="pw" data-word-idx="${count}"><b class="pw-target">${target}</b><i class="pw-original">${original}</i></span>`;
       last = m.index + m[0].length;
@@ -29,21 +31,27 @@ export function parsePolyglotHtml(raw) {
     return html + escapeHtml(line.slice(last));
   }
 
-  const paragraphs = raw.split(/\n\n+/).filter(p => p.trim());
+  const paragraphs = raw.split(/\n\n+/).filter((p) => p.trim());
   const html = paragraphs
     .map((para, pi) => {
-      const lines = para.split('\n').map(processLine);
-      return `<p data-para="${pi}">${lines.join('<br>')}</p>`;
+      const lines = para.split("\n").map(processLine);
+      return `<p data-para="${pi}">${lines.join("<br>")}</p>`;
     })
-    .join('\n');
+    .join("\n");
 
   return { html, count };
 }
 
-export function parseStoredPolyglot(entry, chapterHtml = '') {
-  if ((entry?.format === 'sentence-patches-v1' || entry?.payload?.version === 1) && entry?.payload && chapterHtml) {
+export function parseStoredPolyglot(entry, chapterHtml = "") {
+  if (
+    (entry?.format === "sentence-patches-v1" || entry?.payload?.version === 1) &&
+    entry?.payload &&
+    chapterHtml
+  ) {
     return applySentencePatchPayloadToHtml(chapterHtml, entry.payload);
   }
 
-  throw new Error('To tlumaczenie jest w starym formacie i wymaga ponownego wygenerowania.');
+  throw new Error(
+    "To tlumaczenie jest w starym formacie i wymaga ponownego wygenerowania.",
+  );
 }

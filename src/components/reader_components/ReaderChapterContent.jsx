@@ -4,6 +4,12 @@ function renderEstimateTime(estimatedSecs) {
     : `${Math.round(estimatedSecs / 60)} min`;
 }
 
+function renderCount(count, one, few, many) {
+  if (count === 1) return `${count} ${one}`;
+  if (count < 5) return `${count} ${few}`;
+  return `${count} ${many}`;
+}
+
 export default function ReaderChapterContent({
   scrollRef,
   innerRef,
@@ -14,7 +20,8 @@ export default function ReaderChapterContent({
   polyState,
   confirmLang,
   languages,
-  estimatedFragments,
+  estimatedSentenceCount,
+  estimatedBatchCount,
   estimatedSecs,
   estimatedCost,
   onConfirmLangChange,
@@ -78,12 +85,21 @@ export default function ReaderChapterContent({
 
                   <p className="poly-confirm-hint">
                     <strong>
-                      {estimatedFragments}{" "}
-                      {estimatedFragments === 1
-                        ? "zdanie"
-                        : estimatedFragments < 5
-                          ? "zdania"
-                          : "zdań"}
+                      {renderCount(
+                        estimatedSentenceCount,
+                        "zdanie",
+                        "zdania",
+                        "zdań",
+                      )}
+                    </strong>
+                    {" · "}
+                    <strong>
+                      {renderCount(
+                        estimatedBatchCount,
+                        "zapytanie",
+                        "zapytania",
+                        "zapytań",
+                      )}
                     </strong>
                     {" · ~"}
                     {renderEstimateTime(estimatedSecs)}

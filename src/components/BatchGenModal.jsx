@@ -29,9 +29,12 @@ function estimateCostUSD(chars, modelId) {
   return (p.in * tokens + p.out * tokens * 1.3) / 1_000_000;
 }
 
-function estimateTimeSec(sentenceCount) {
-  if (!sentenceCount) return 0;
-  return Math.max(4, Math.ceil(sentenceCount / 12) * 8);
+function estimateTimeSec(requestCount, requestConcurrency) {
+  if (!requestCount) return 0;
+  return Math.max(
+    4,
+    Math.ceil(requestCount / Math.max(1, requestConcurrency)) * 8,
+  );
 }
 
 function fmtTime(s) {
@@ -74,34 +77,54 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
     [chapters, selected],
   );
 
-  const sentenceCountByChapterId = useMemo(
+  const generationStatsByChapterId = useMemo(
     () =>
       new Map(
         toGenerate.map((chapter) => [
           chapter.id,
-          estimatePolyglotGeneration({ html: chapter.html }).sentenceCount,
+          estimatePolyglotGeneration(
+            { html: chapter.html },
+            {
+              sentencesPerRequest: settings.polyglotSentencesPerRequest,
+            },
+          ),
         ]),
       ),
-    [toGenerate],
+    [toGenerate, settings.polyglotSentencesPerRequest],
   );
 
-  const { totalChars, totalSentences, costUSD, timeSec } = useMemo(() => {
+  const {
+    totalChars,
+    totalSentences,
+    totalRequests,
+    requestConcurrency,
+    costUSD,
+    timeSec,
+  } = useMemo(() => {
     const totalChars = toGenerate.reduce(
       (sum, chapter) => sum + (chapter.text?.length ?? 0),
       0,
     );
-    const totalSentences = [...sentenceCountByChapterId.values()].reduce(
-      (sum, sentenceCount) => sum + sentenceCount,
+    const totalSentences = [...generationStatsByChapterId.values()].reduce(
+      (sum, stats) => sum + (stats?.sentenceCount ?? 0),
       0,
     );
+    const totalRequests = [...generationStatsByChapterId.values()].reduce(
+      (sum, stats) => sum + (stats?.generationBatches ?? 0),
+      0,
+    );
+    const requestConcurrency =
+      [...generationStatsByChapterId.values()][0]?.requestConcurrency ?? 1;
 
     return {
       totalChars,
       totalSentences,
+      totalRequests,
+      requestConcurrency,
       costUSD: estimateCostUSD(totalChars, settings.polyglotModel),
-      timeSec: estimateTimeSec(totalSentences),
+      timeSec: estimateTimeSec(totalRequests, requestConcurrency),
     };
-  }, [toGenerate, sentenceCountByChapterId, settings.polyglotModel]);
+  }, [toGenerate, generationStatsByChapterId, settings.polyglotModel]);
 
   function toggleChapter(id) {
     setSelected((prev) => {
@@ -126,8 +149,8 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
     localStorage.setItem("vocabapp:lastLang", selectedLang.code);
 
     const totalChapters = toGenerate.length;
-    const batchTotal = [...sentenceCountByChapterId.values()].reduce(
-      (sum, sentenceCount) => sum + sentenceCount,
+    const batchTotal = [...generationStatsByChapterId.values()].reduce(
+      (sum, stats) => sum + (stats?.generationBatches ?? 0),
       0,
     );
     const patchDoneByChapter = new Map();
@@ -150,7 +173,8 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
     };
 
     async function runChapter(chapter, chapterIdx) {
-      const sentenceTotal = sentenceCountByChapterId.get(chapter.id) ?? 0;
+      const chapterStats = generationStatsByChapterId.get(chapter.id) ?? {};
+      const requestTotal = chapterStats.generationBatches ?? 0;
       const chapterLabel = chapter.title || `Rozdział ${chapterIdx + 1}`;
 
       activeChapterIds.add(chapter.id);
@@ -164,6 +188,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
             targetLangName: selectedLang.name,
             sourceLangName: book?.lang || "",
             model: settings.polyglotModel,
+            sentencesPerRequest: settings.polyglotSentencesPerRequest,
             onRescue: ({ retryAttempt, maxRetries }) => {
               setRescueNote(
                 `${chapterLabel}: brak postępu, ponawiam próbę (${retryAttempt}/${maxRetries})...`,
@@ -185,7 +210,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
           },
         );
 
-        patchDoneByChapter.set(chapter.id, sentenceTotal);
+        patchDoneByChapter.set(chapter.id, requestTotal);
         await savePolyglotCache(chapter.id, selectedLang.code, cacheValue);
         triggerSync();
         window.dispatchEvent(
@@ -202,7 +227,7 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
           return next;
         });
       } catch (err) {
-        patchDoneByChapter.set(chapter.id, sentenceTotal);
+        patchDoneByChapter.set(chapter.id, requestTotal);
         setErrors((prev) => ({
           ...prev,
           [chapter.id]: err.message || "Błąd API",
@@ -364,6 +389,15 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
                   </span>
                   <span className="bgen-sep">·</span>
                   <span>
+                    <strong>{totalRequests}</strong>{" "}
+                    {totalRequests === 1
+                      ? "zapytanie"
+                      : totalRequests < 5
+                        ? "zapytania"
+                        : "zapytań"}
+                  </span>
+                  <span className="bgen-sep">Â·</span>
+                  <span>
                     Czas: <strong>{fmtTime(timeSec)}</strong>
                   </span>
                   <span className="bgen-sep">·</span>
@@ -382,8 +416,8 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
                       : ""}
                     {genStep.batchTotal > 0
                       ? genStep.batchDone === 0
-                        ? ` — wysyłam ${genStep.batchTotal} zdań…`
-                        : ` — przetworzono ${genStep.batchDone}/${genStep.batchTotal} zdań`
+                        ? ` — wysyłam ${genStep.batchTotal} zapytań…`
+                        : ` — przetworzono ${genStep.batchDone}/${genStep.batchTotal} zapytań`
                       : " — łączenie…"}
                   </div>
                   {genStep.batchTotal > 0 && (

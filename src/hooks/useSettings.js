@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { getAllSettings, setSetting } from "../db";
+import { DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST } from "../lib/polyglotApi";
 
 const DEFAULT_POLYGLOT_MODEL = "grok-4-1-fast-non-reasoning";
 
@@ -19,6 +20,7 @@ const DEFAULTS = {
   targetLangName: "hiszpański",
   targetLangFlag: "🇪🇸",
   polyglotModel: DEFAULT_POLYGLOT_MODEL,
+  polyglotSentencesPerRequest: DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST,
   fontSize: 19,
   syncIntervalMinutes: 30,
   ttsMode: "mixed",

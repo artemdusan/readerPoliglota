@@ -12,6 +12,15 @@ const SYNC_INTERVAL_OPTIONS = [
   { value: 720, label: 'Co 12 godzin' },
 ];
 
+const POLYGLOT_BATCH_OPTIONS = [
+  { value: 1, label: '1 zdanie' },
+  { value: 2, label: '2 zdania' },
+  { value: 4, label: '4 zdania' },
+  { value: 6, label: '6 zdań' },
+  { value: 8, label: '8 zdań' },
+  { value: 12, label: '12 zdań' },
+];
+
 function formatTransfer(bytes, fallbackMB = 0) {
   if (typeof bytes === 'number' && Number.isFinite(bytes)) {
     if (bytes < 1_048_576) {
@@ -215,6 +224,30 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                 </button>
               </form>
             )}
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Tłumaczenia AI</label>
+            <select
+              className="form-select"
+              value={settings.polyglotSentencesPerRequest ?? 4}
+              onChange={(e) =>
+                onUpdateSetting(
+                  'polyglotSentencesPerRequest',
+                  Number(e.target.value),
+                )
+              }
+            >
+              {POLYGLOT_BATCH_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label} na zapytanie
+                </option>
+              ))}
+            </select>
+            <div className="form-hint">
+              Określa ile zdań czytnik wysyła w jednym zapytaniu do modelu.
+              Mniejsze paczki są ostrożniejsze, większe zwykle szybsze i tańsze.
+            </div>
           </div>
 
           <div className="form-group">

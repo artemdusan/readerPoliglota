@@ -7,12 +7,14 @@ const REQUEST_TIMEOUT_MS = 90_000;
 const STALL_TIMEOUT_MS = 150_000;
 const STALL_RETRY_LIMIT = 1;
 const STALL_CHECK_INTERVAL_MS = 10_000;
-const SENTENCE_CONCURRENCY = 12;
 const NETWORK_RETRY_LIMIT = 1;
 const GLOBAL_REQUESTS_PER_MINUTE = 1800;
 const GLOBAL_REQUEST_INTERVAL_MS = Math.ceil(
   60_000 / GLOBAL_REQUESTS_PER_MINUTE,
 );
+export const DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST = 4;
+export const MAX_POLYGLOT_SENTENCES_PER_REQUEST = 12;
+const MAX_SENTENCES_IN_FLIGHT = 24;
 
 let globalRequestGate = Promise.resolve();
 let nextGlobalRequestAt = 0;
@@ -46,8 +48,8 @@ function buildSentencePatchSystemPrompt(
 
   return `Jestes precyzyjnym edytorem tekstu do nauki jezyka ${targetLangName}.${sourceHint}
 
-Wejscie ma zawsze jedno zdanie:
-{"sentences":[{"id":"s1","text":"..."}]}
+Wejscie zawiera uporzadkowana liste jednego lub kilku zdan:
+{"sentences":[{"id":"s1","text":"..."},{"id":"s2","text":"..."}]}
 
 Zasady:
 - pracujesz zdanie po zdaniu
@@ -59,33 +61,74 @@ Zasady:
 - marker musi obejmowac dokladnie jedno slowo z oryginalu
 - lewa strona markera: slowo w jezyku ${targetLangName}
 - prawa strona markera: oryginalne slowo
+- uzywaj identyfikatorow dokladnie takich, jakie dostales na wejsciu
 - poza markerami zachowaj dokladnie kolejnosc slow, interpunkcje i sens zdania
 - nie parafrazuj, nie dopisuj wyjasnien, nie zmieniaj skladni
-- zwroc tylko zdanie, jesli naprawde cos oznaczyles
+- dodaj element do tablicy changes tylko wtedy, gdy naprawde cos oznaczyles
 ${strictHint}
 
 Zwroc tylko JSON bez markdownu:
 {"changes":[{"id":"s1","text":"..."}]}`;
 }
 
-function buildSentenceBatches(sentences) {
-  return sentences.map((sentence) => [sentence]);
+function normalizeSentencesPerRequest(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST;
+  }
+  return Math.max(
+    1,
+    Math.min(MAX_POLYGLOT_SENTENCES_PER_REQUEST, Math.round(numeric)),
+  );
 }
 
-export function estimatePolyglotGeneration(chapterInput) {
+function getBatchConcurrency(sentencesPerRequest) {
+  return Math.max(
+    1,
+    Math.floor(MAX_SENTENCES_IN_FLIGHT / normalizeSentencesPerRequest(sentencesPerRequest)),
+  );
+}
+
+function buildSentenceBatches(
+  sentences,
+  sentencesPerRequest = DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST,
+) {
+  const batchSize = normalizeSentencesPerRequest(sentencesPerRequest);
+  const batches = [];
+  for (let index = 0; index < sentences.length; index += batchSize) {
+    batches.push(sentences.slice(index, index + batchSize));
+  }
+  return batches;
+}
+
+export function estimatePolyglotGeneration(chapterInput, options = {}) {
   const chapterHtml =
     typeof chapterInput === "string"
       ? chapterInput
       : (chapterInput?.html ?? "");
+  const sentencesPerRequest = normalizeSentencesPerRequest(
+    options.sentencesPerRequest ?? chapterInput?.sentencesPerRequest,
+  );
 
   if (!chapterHtml) {
-    return { generationBatches: 0, sentenceCount: 0 };
+    return {
+      generationBatches: 0,
+      sentenceCount: 0,
+      sentencesPerRequest,
+      requestConcurrency: getBatchConcurrency(sentencesPerRequest),
+    };
   }
 
   const source = buildSentencePatchSource(chapterHtml);
+  const generationBatches = buildSentenceBatches(
+    source.sentences,
+    sentencesPerRequest,
+  ).length;
   return {
-    generationBatches: source.sentences.length,
+    generationBatches,
     sentenceCount: source.sentences.length,
+    sentencesPerRequest,
+    requestConcurrency: getBatchConcurrency(sentencesPerRequest),
   };
 }
 
@@ -636,10 +679,15 @@ function buildSentencePatchRequest(
   sentences,
   { targetLangName, sourceLangName = "", model },
 ) {
+  const maxTokens = Math.max(
+    320,
+    Math.min(1600, 180 + sentences.length * 220),
+  );
+
   return {
     label: "patch",
     model,
-    maxTokens: 320,
+    maxTokens,
     messages: [
       {
         role: "system",
@@ -701,6 +749,10 @@ async function runSentencePatchBatches(batches, options, pricing, onProgress) {
   let done = 0;
   let nextBatchIndex = 0;
   const results = new Array(batches.length);
+  const concurrency = Math.min(
+    getBatchConcurrency(options.sentencesPerRequest),
+    batches.length,
+  );
 
   onProgress?.(0, batches.length, 0, 0);
 
@@ -725,9 +777,7 @@ async function runSentencePatchBatches(batches, options, pricing, onProgress) {
   }
 
   await Promise.all(
-    Array.from({ length: Math.min(SENTENCE_CONCURRENCY, batches.length) }, () =>
-      workerLoop(),
-    ),
+    Array.from({ length: concurrency }, () => workerLoop()),
   );
 
   return {
@@ -808,6 +858,7 @@ async function generateStructuredPolyglot(
     targetLangName,
     sourceLangName = "",
     model = "grok-4-1-fast-non-reasoning",
+    sentencesPerRequest = DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST,
     signal,
     onActivity,
   },
@@ -820,11 +871,12 @@ async function generateStructuredPolyglot(
     );
   }
 
-  const batches = buildSentenceBatches(source.sentences);
+  const normalizedBatchSize = normalizeSentencesPerRequest(sentencesPerRequest);
+  const batches = buildSentenceBatches(source.sentences, normalizedBatchSize);
   const pricing = MODEL_PRICING[model] ?? { input: 0, output: 0 };
 
   console.log(
-    `[Polyglot] Start patches: ${batches.length} zdan, jezyk: ${targetLangName}, model: ${model}`,
+    `[Polyglot] Start patches: ${source.sentences.length} zdan w ${batches.length} zapytaniach (batch=${normalizedBatchSize}), jezyk: ${targetLangName}, model: ${model}`,
   );
 
   const {
@@ -837,6 +889,7 @@ async function generateStructuredPolyglot(
       targetLangName,
       sourceLangName,
       model,
+      sentencesPerRequest: normalizedBatchSize,
       signal,
       onActivity,
     },

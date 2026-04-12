@@ -22,7 +22,7 @@ import { isLoggedIn } from "../sync/cfAuth";
 import { triggerSync, syncBook } from "../sync/cfSync";
 import { parseStoredPolyglot } from "../lib/polyglotParser";
 import { annotateParagraphsInHtml } from "../lib/sentenceWrapper";
-import { extractPolyglotTtsData, SentenceTtsPlayer } from "../lib/ttsFragments";
+import { SentenceTtsPlayer } from "../lib/ttsFragments";
 import BatchGenModal from "./BatchGenModal";
 import ReaderSidebar from "./reader_components/ReaderSidebar";
 import ReaderTopbar from "./reader_components/ReaderTopbar";
@@ -426,7 +426,7 @@ export default function Reader({
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             const { html: annotated, fragments } =
-              annotateParagraphsInHtml(chHtml);
+              annotateParagraphsInHtml(chHtml, book?.lang || "en");
             setOriginalHtmlAnnotated(annotated);
             setOriginalTtsFragments(fragments);
           });
@@ -469,14 +469,9 @@ export default function Reader({
         if (langToLoad) {
           const entry = await getPolyglotCache(ch.id, langToLoad);
           if (entry) {
-            const { html } = parseStoredPolyglot(entry, ch.html);
-            const {
-              html: annotated,
-              paragraphs,
-              words,
-            } = extractPolyglotTtsData(html);
+            const { html, paragraphs, words } = parseStoredPolyglot(entry, ch.html);
             setPolyHtml(html);
-            setPolyHtmlAnnotated(annotated);
+            setPolyHtmlAnnotated(html);
             setPolyTtsParagraphs(paragraphs);
             setPolyWordFragments(words);
             setPolyState("done");
@@ -1153,10 +1148,9 @@ export default function Reader({
   ───────────────────────────────────────── */
 
   function applyPolyEntry(entry, chapterHtml) {
-    const { html } = parseStoredPolyglot(entry, chapterHtml);
-    const { html: annotated, paragraphs, words } = extractPolyglotTtsData(html);
+    const { html, paragraphs, words } = parseStoredPolyglot(entry, chapterHtml);
     setPolyHtml(html);
-    setPolyHtmlAnnotated(annotated);
+    setPolyHtmlAnnotated(html);
     setPolyTtsParagraphs(paragraphs);
     setPolyWordFragments(words);
   }
@@ -1184,6 +1178,7 @@ export default function Reader({
       if (chapter?.html) {
         const { html: annotated, fragments } = annotateParagraphsInHtml(
           chapter.html,
+          book?.lang || "en",
         );
         setOriginalHtmlAnnotated(annotated);
         setOriginalTtsFragments(fragments);
@@ -1287,6 +1282,7 @@ export default function Reader({
           targetLangName: langObj.name,
           sourceLangName: book?.lang || "",
           model: settings.polyglotModel,
+          sentencesPerRequest: settings.polyglotSentencesPerRequest,
           signal: controller.signal,
           onRescue: ({ retryAttempt, maxRetries }) => {
             setPolyRescueNote(
@@ -1962,10 +1958,18 @@ export default function Reader({
     openTranslationConfirmation(missingLangBanner);
   }
 
-  const { generationBatches: estimatedFragments } = useMemo(
-    () => estimatePolyglotGeneration({ html: chapter?.html }),
-    [chapter?.html],
+  const generationEstimate = useMemo(
+    () =>
+      estimatePolyglotGeneration(
+        { html: chapter?.html },
+        {
+          sentencesPerRequest: settings.polyglotSentencesPerRequest,
+        },
+      ),
+    [chapter?.html, settings.polyglotSentencesPerRequest],
   );
+  const estimatedSentenceCount = generationEstimate.sentenceCount;
+  const estimatedBatchCount = generationEstimate.generationBatches;
   const estimatedCost = (() => {
     if (!chapter?.text) return 0;
     const p = MODEL_PRICING[settings.polyglotModel] ?? { input: 0, output: 0 };
@@ -1974,18 +1978,30 @@ export default function Reader({
     return inputK * p.input + outputK * p.output;
   })();
   const estimatedSecs = chapter?.text
-    ? Math.max(4, Math.ceil(estimatedFragments / 12) * 8)
+    ? Math.max(
+        4,
+        Math.ceil(
+          estimatedBatchCount /
+            Math.max(1, generationEstimate.requestConcurrency || 1),
+        ) * 8,
+      )
     : 0;
   const polyDisplaySecs =
     polyState === "loading"
       ? Math.max(polyProgress.secs, polyLiveSecs)
       : polyProgress.secs;
   const polyProgressUnitLabel =
-    polyProgress.total === 1
-      ? "zdanie"
-      : polyProgress.total < 5
-        ? "zdania"
-        : "zdań";
+    polyProgress.phase === "verify"
+      ? polyProgress.total === 1
+        ? "zmiana"
+        : polyProgress.total < 5
+          ? "zmiany"
+          : "zmian"
+      : polyProgress.total === 1
+        ? "zapytanie"
+        : polyProgress.total < 5
+          ? "zapytania"
+          : "zapytań";
   const polyLoadingText =
     polyProgress.phase === "verify"
       ? polyProgress.total > 0
@@ -2196,7 +2212,8 @@ export default function Reader({
           polyState={polyState}
           confirmLang={confirmLang}
           languages={LANGUAGES}
-          estimatedFragments={estimatedFragments}
+          estimatedSentenceCount={estimatedSentenceCount}
+          estimatedBatchCount={estimatedBatchCount}
           estimatedSecs={estimatedSecs}
           estimatedCost={estimatedCost}
           onConfirmLangChange={handleConfirmLangChange}
