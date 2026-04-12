@@ -3,6 +3,7 @@
 
 import { getSetting, setSetting } from '../db';
 import { getWorkerUrl } from '../config/workerUrl';
+import { resetSyncActivity } from './syncActivity';
 
 const WORKER_URL = getWorkerUrl();
 
@@ -21,6 +22,7 @@ function notify() {
 async function persistAuthState(token, username) {
   _token = token;
   _username = username;
+  resetSyncActivity();
   await Promise.all([
     setSetting('cfToken', token),
     setSetting('cfUsername', username),

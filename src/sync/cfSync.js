@@ -6,6 +6,7 @@
 import { db, saveReadingPosition, getBookWithChapters, restoreBook, restoreChapter, restorePolyglotCache, getPendingChapters, clearChapterPending, clearPolyPending, purgeBookData } from '../db';
 import { getToken } from './cfAuth';
 import { getWorkerUrl } from '../config/workerUrl';
+import { startSyncActivity, updateSyncActivity, finishSyncActivity } from './syncActivity';
 
 const WORKER_URL = getWorkerUrl();
 
@@ -248,6 +249,7 @@ export async function syncAll(onProgress) {
   const stats = { sent: 0, received: 0 };
 
   try {
+    startSyncActivity();
     // ── 0. Flush pending changes first ──
     await syncPending();
 
@@ -280,6 +282,7 @@ export async function syncAll(onProgress) {
 
     let synced = 0;
     onProgress?.(0, total);
+    updateSyncActivity(0, total);
 
     // ── Positions: remote → local (last-write-wins) ──
     for (const remote of remotePositions) {
@@ -291,6 +294,7 @@ export async function syncAll(onProgress) {
       }
       synced++;
       onProgress?.(synced, total);
+      updateSyncActivity(synced, total);
     }
 
     // ── Positions: local-only → push to remote ──
@@ -298,6 +302,7 @@ export async function syncAll(onProgress) {
       await apiFetch(`/progress/${local.bookId}`, { method: 'POST', body: JSON.stringify(toRemoteData(local)) }, stats);
       synced++;
       onProgress?.(synced, total);
+      updateSyncActivity(synced, total);
     }
 
     // ── Apply deletedAt from remote manifest → local DB ──
@@ -350,6 +355,7 @@ export async function syncAll(onProgress) {
 
       synced++;
       onProgress?.(synced, total);
+      updateSyncActivity(synced, total);
     }
 
     // ── Upload book META for local-only books (chapters already uploaded by syncPending in step 0) ──
@@ -361,6 +367,7 @@ export async function syncAll(onProgress) {
       }
       synced++;
       onProgress?.(synced, total);
+      updateSyncActivity(synced, total);
     }
 
     // ── Download missing polys for books on both sides ──
@@ -378,7 +385,7 @@ export async function syncAll(onProgress) {
     localStorage.setItem('vocabapp:lastSync', now);
 
     window.dispatchEvent(new CustomEvent('vocabapp:synced'));
-    return {
+    const result = {
       synced,
       error: null,
       sentMB:     +(stats.sent     / 1_048_576).toFixed(2),
@@ -387,8 +394,12 @@ export async function syncAll(onProgress) {
       receivedBytes: stats.received,
       lastSync:   now,
     };
+    finishSyncActivity(result);
+    return result;
   } catch (err) {
     console.warn('[CF sync] syncAll failed:', err.message);
-    return { synced: 0, error: err.message };
+    const result = { synced: 0, error: err.message };
+    finishSyncActivity(result);
+    return result;
   }
 }

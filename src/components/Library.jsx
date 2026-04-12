@@ -14,6 +14,7 @@ import ImportDialog from "./ImportDialog";
 import { version } from "../../package.json";
 import { getUsername, isLoggedIn, onAuthChange } from "../sync/cfAuth";
 import { syncAll, uploadBook, deleteRemoteBook } from "../sync/cfSync";
+import { getSyncActivity, subscribeSyncActivity } from "../sync/syncActivity";
 
 function getDroppedFiles(dataTransfer) {
   if (!dataTransfer) return [];
@@ -74,7 +75,26 @@ function formatTransfer(bytes, fallbackMB = 0) {
   return `${fallbackMB} MB`;
 }
 
-export default function Library({ onOpenBook, onOpenSettings, settings }) {
+function getSyncCardTone(cfConnected, phase) {
+  if (!cfConnected) return "is-offline";
+  if (phase === "syncing") return "is-syncing";
+  if (phase === "error") return "is-error";
+  return "is-idle";
+}
+
+function getSyncCardTitle(cfConnected, phase) {
+  if (!cfConnected) return "Konto niepołączone";
+  if (phase === "syncing") return "Synchronizowanie...";
+  if (phase === "error") return "Błąd synchronizacji";
+  return "Zalogowany";
+}
+
+export default function Library({
+  onOpenBook,
+  onOpenSettings,
+  onUpdateSetting,
+  settings,
+}) {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -87,8 +107,7 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
   const [ctxBookId, setCtxBookId] = useState(null);
   const [cfConnected, setCfConnected] = useState(() => isLoggedIn());
   const [accountName, setAccountName] = useState(() => getUsername());
-  const [syncStatus, setSyncStatus] = useState(null);
-  const [syncProgress, setSyncProgress] = useState(null);
+  const [syncActivity, setSyncActivity] = useState(() => getSyncActivity());
   const [syncNow, setSyncNow] = useState(() => Date.now());
   const [lastSync, setLastSync] = useState(() => {
     const value = localStorage.getItem("vocabapp:lastSync");
@@ -108,6 +127,8 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
     const timer = window.setInterval(() => setSyncNow(Date.now()), 60 * 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => subscribeSyncActivity(setSyncActivity), []);
 
   useEffect(() => {
     if (!ctxBookId) return;
@@ -201,26 +222,11 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
         return;
       }
 
-      if (syncStatus === "syncing") return;
-
-      if (!silent) {
-        setSyncStatus("syncing");
-        setSyncProgress(null);
-      }
-
-      const result = await syncAll((done, total) => {
-        if (!silent) setSyncProgress({ done, total });
-      });
-
-      if (!silent) {
-        setSyncStatus(result);
-        setSyncProgress(null);
-        window.setTimeout(() => setSyncStatus(null), 8000);
-      }
-
+      if (syncActivity.phase === "syncing") return;
+      const result = await syncAll();
       if (result.lastSync) setLastSync(result.lastSync);
     },
-    [cfConnected, onOpenSettings, syncStatus],
+    [cfConnected, onOpenSettings, syncActivity.phase],
   );
 
   useEffect(() => {
@@ -337,6 +343,19 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
     );
   }
 
+  const syncTone = getSyncCardTone(cfConnected, syncActivity.phase);
+  const syncTitle = getSyncCardTitle(cfConnected, syncActivity.phase);
+  const isSyncing = cfConnected && syncActivity.phase === "syncing";
+  const syncProgress = syncActivity.progress;
+  const syncResult = syncActivity.result;
+  const syncMetaText = !cfConnected
+    ? "Zaloguj się, aby synchronizować bibliotekę, postęp i tłumaczenia."
+    : syncActivity.phase === "error"
+      ? "Ostatnia próba się nie powiodła. Możesz spróbować ponownie ręcznie."
+      : lastSync
+        ? `Ostatni sync: ${formatLastSync(lastSync)} (${formatRelativeSync(lastSync, syncNow)})`
+        : "Jeszcze nie wykonano pierwszej synchronizacji.";
+
   return (
     <div className="lib-layout">
       <header className="lib-header">
@@ -344,16 +363,6 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
           <em>Reader</em>
         </div>
 
-        <div className="lib-header-actions">
-          <button
-            className="ctl ctl-icon lib-header-icon"
-            onClick={onOpenSettings}
-            title="Ustawienia aplikacji"
-            aria-label="Ustawienia aplikacji"
-          >
-            ⚙
-          </button>
-        </div>
       </header>
 
       <input
@@ -398,43 +407,39 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
 
             <div className="lib-sync-strip">
               <div className="lib-sync-main">
-                <div className="lib-sync-state">
-                  <span
-                    className={`lib-sync-dot ${cfConnected ? "is-online" : "is-offline"}`}
-                    aria-hidden="true"
-                  />
-                  {cfConnected
-                    ? "Synchronizacja aktywna"
-                    : "Konto niepołączone"}
+                <div className={`lib-sync-state ${syncTone}`}>
+                  <span className={`lib-sync-dot ${syncTone}`} aria-hidden="true" />
+                  <span>{syncTitle}</span>
                 </div>
                 <div className="lib-sync-meta">
                   {cfConnected && accountName && (
                     <span className="lib-sync-account">Konto: {accountName}</span>
                   )}
-                  <span>
-                    Ostatni sync: {formatLastSync(lastSync)}
-                    {lastSync
-                      ? ` (${formatRelativeSync(lastSync, syncNow)})`
-                      : ""}
-                  </span>
+                  <span>{syncMetaText}</span>
                 </div>
               </div>
 
               <div className="lib-sync-actions">
                 <button
-                  className={`ctl ${syncStatus === "syncing" ? "ctl-active" : ""}`}
+                  className="btn-ghost lib-sync-settings-btn lib-sync-action-btn"
+                  onClick={onOpenSettings}
+                >
+                  Konto
+                </button>
+                <button
+                  className={`ctl lib-sync-action-btn ${isSyncing ? "ctl-active" : ""}`}
                   onClick={handleSyncButton}
-                  disabled={syncStatus === "syncing"}
+                  disabled={isSyncing}
                 >
                   {cfConnected
-                    ? syncStatus === "syncing"
-                      ? "⟳"
-                      : "↻"
+                    ? isSyncing
+                      ? "Synchronizowanie..."
+                      : "Synchronizuj teraz"
                     : "Połącz konto"}
                 </button>
               </div>
 
-              {syncStatus === "syncing" && syncProgress && (
+              {isSyncing && syncProgress && (
                 <div className="lib-sync-progress">
                   <div className="lib-sync-progress-track">
                     <div
@@ -453,13 +458,13 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
                 </div>
               )}
 
-              {syncStatus && syncStatus !== "syncing" && (
+              {cfConnected && syncResult && !isSyncing && (
                 <div
-                  className={`lib-sync-feedback ${syncStatus.error ? "is-error" : "is-success"}`}
+                  className={`lib-sync-feedback ${syncResult.error ? "is-error" : "is-success"}`}
                 >
-                  {syncStatus.error
-                    ? `Błąd synchronizacji: ${syncStatus.error}`
-                    : `Zsynchronizowano ${syncStatus.synced} elementów · ↑ ${formatTransfer(syncStatus.sentBytes, syncStatus.sentMB)} · ↓ ${formatTransfer(syncStatus.receivedBytes, syncStatus.receivedMB)}`}
+                  {syncResult.error
+                    ? `Błąd synchronizacji: ${syncResult.error}`
+                    : `Zsynchronizowano ${syncResult.synced} elementów · ↑ ${formatTransfer(syncResult.sentBytes, syncResult.sentMB)} · ↓ ${formatTransfer(syncResult.receivedBytes, syncResult.receivedMB)}`}
                 </div>
               )}
             </div>
@@ -625,6 +630,7 @@ export default function Library({ onOpenBook, onOpenSettings, settings }) {
           bookId={batchBook.id}
           book={batchBook}
           settings={settings}
+          onUpdateSetting={onUpdateSetting}
           onClose={() => setBatchBook(null)}
         />
       )}

@@ -20,10 +20,13 @@ export default function ReaderChapterContent({
   polyState,
   confirmLang,
   languages,
+  batchOptions,
   estimatedSentenceCount,
   estimatedBatchCount,
   estimatedSecs,
   estimatedCost,
+  sentencesPerRequest,
+  onSentencesPerRequestChange,
   onConfirmLangChange,
   onStartGeneration,
   onCancelConfirm,
@@ -70,18 +73,43 @@ export default function ReaderChapterContent({
               {polyMode && polyState === "confirm" && (
                 <div className="poly-confirm ch-anim">
                   <p className="poly-confirm-title">Wybierz język tłumaczenia</p>
-                  <select
-                    className="form-select"
-                    value={confirmLang}
-                    onChange={(event) => onConfirmLangChange(event.target.value)}
-                    style={{ marginBottom: 12, alignSelf: "stretch" }}
-                  >
-                    {languages.map((lang) => (
-                      <option key={lang.code} value={lang.code}>
-                        {lang.flag} {lang.label} ({lang.name})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="poly-confirm-config">
+                    <div className="poly-confirm-field">
+                      <span className="poly-confirm-field-label">
+                        Język tłumaczenia
+                      </span>
+                      <select
+                        className="form-select"
+                        value={confirmLang}
+                        onChange={(event) =>
+                          onConfirmLangChange(event.target.value)
+                        }
+                      >
+                        {languages.map((lang) => (
+                          <option key={lang.code} value={lang.code}>
+                            {lang.flag} {lang.label} ({lang.name})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="poly-confirm-field">
+                      <span className="poly-confirm-field-label">Paczka AI</span>
+                      <select
+                        className="form-select"
+                        value={sentencesPerRequest ?? 4}
+                        onChange={(event) =>
+                          onSentencesPerRequestChange?.(Number(event.target.value))
+                        }
+                      >
+                        {batchOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label} na zapytanie
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
 
                   <p className="poly-confirm-hint">
                     <strong>
@@ -109,6 +137,10 @@ export default function ReaderChapterContent({
                         {estimatedCost.toFixed(4)}
                       </>
                     )}
+                  </p>
+                  <p className="poly-confirm-hint">
+                    Mniejsze paczki są ostrożniejsze, większe zwykle szybsze i
+                    tańsze.
                   </p>
                   <p className="poly-confirm-hint">
                     Nie zamykaj strony i nie zmieniaj rozdziału.

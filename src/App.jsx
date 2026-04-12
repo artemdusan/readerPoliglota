@@ -5,6 +5,7 @@ import Reader  from './components/Reader';
 import Settings from './components/Settings';
 import { initCfAuth, isLoggedIn, onAuthChange } from './sync/cfAuth';
 import { syncAll } from './sync/cfSync';
+import { getSyncActivity } from './sync/syncActivity';
 
 let startupSyncPromise = null;
 let lastStartupSyncAttemptAt = 0;
@@ -22,6 +23,7 @@ function shouldRunStartupSync(intervalMinutes) {
 
 function scheduleStartupSync(intervalMinutes) {
   if (!shouldRunStartupSync(intervalMinutes)) return;
+  if (getSyncActivity().phase === 'syncing') return;
 
   const now = Date.now();
   if (startupSyncPromise || now - lastStartupSyncAttemptAt < 10_000) return;
@@ -57,6 +59,7 @@ export default function App() {
 
     const timer = window.setInterval(() => {
       if (!navigator.onLine || !isLoggedIn()) return;
+      if (getSyncActivity().phase === 'syncing') return;
       syncAll().catch(() => {});
     }, intervalMinutes * 60 * 1000);
 
@@ -88,6 +91,7 @@ export default function App() {
         <Library
           onOpenBook={openBook}
           onOpenSettings={() => setShowSettings(true)}
+          onUpdateSetting={updateSetting}
           settings={settings}
         />
       )}

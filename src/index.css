@@ -182,6 +182,10 @@ html, body, #root {
   color: var(--txt-1);
 }
 
+.lib-sync-state.is-error {
+  color: #f0c5bb;
+}
+
 .lib-sync-dot {
   width: 9px;
   height: 9px;
@@ -189,9 +193,19 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-.lib-sync-dot.is-online {
+.lib-sync-dot.is-syncing {
   background: var(--green);
   box-shadow: 0 0 0 4px rgba(122,175,122,.12);
+}
+
+.lib-sync-dot.is-idle {
+  background: var(--gold);
+  box-shadow: 0 0 0 4px rgba(192,144,80,.12);
+}
+
+.lib-sync-dot.is-error {
+  background: var(--red);
+  box-shadow: 0 0 0 4px rgba(184,90,70,.14);
 }
 
 .lib-sync-dot.is-offline {
@@ -216,6 +230,29 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lib-sync-settings-btn {
+  min-width: 92px;
+}
+
+.lib-sync-action-btn {
+  min-height: 36px;
+  justify-content: center;
+}
+
+.lib-sync-actions .btn-ghost.lib-sync-action-btn {
+  padding: 0 20px;
+}
+
+.lib-sync-actions .ctl.lib-sync-action-btn {
+  min-width: 0;
+  height: 36px;
+  padding: 0 20px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
 }
 
 .lib-inline-link {
@@ -1333,6 +1370,10 @@ html, body, #root {
     font-size: 11px;
   }
   .reader-search-strip { padding: 10px 14px; }
+  .poly-confirm-config,
+  .bgen-setup-grid {
+    grid-template-columns: 1fr;
+  }
   .reader-search-main {
     grid-template-columns: minmax(0, 1fr) auto auto auto;
   }
@@ -1360,7 +1401,9 @@ html, body, #root {
   .lib-toolbar-note { font-size: 13px; }
   .lib-toolbar-cta { align-items: stretch; }
   .lib-add-book-btn { width: 100%; justify-content: center; }
-  .lib-sync-strip { grid-template-columns: 1fr auto; padding: 12px 14px; }
+  .lib-sync-strip { grid-template-columns: 1fr; padding: 12px 14px; }
+  .lib-sync-actions { justify-content: stretch; }
+  .lib-sync-actions > * { flex: 1; }
   .lib-grid   { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
   .book-card { padding: 10px; border-radius: 16px; }
   .book-menu-btn { top: 18px; right: 18px; }
@@ -1381,6 +1424,24 @@ html, body, #root {
 .poly-confirm {
   display: flex; flex-direction: column; align-items: center;
   gap: 14px; padding: 56px 32px; text-align: center;
+}
+.poly-confirm-config {
+  width: min(460px, 100%);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.poly-confirm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+.poly-confirm-field-label {
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--txt-3);
 }
 .poly-confirm-icon { font-size: 40px; opacity: .6; }
 .poly-confirm-title {
@@ -1459,6 +1520,36 @@ html, body, #root {
   padding: 18px 28px;
   border-top: 1px solid var(--border-soft);
   flex-shrink: 0;
+}
+
+.bgen-setup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.bgen-setup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: rgba(255,255,255,.02);
+}
+
+.bgen-setup-label {
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+}
+
+.bgen-setup-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--txt-3);
 }
 
 .bgen-info {

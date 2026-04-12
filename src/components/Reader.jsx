@@ -11,7 +11,7 @@ import {
   saveChapterLang,
   getChapterStatusMap,
 } from "../db";
-import { LANGUAGES } from "../hooks/useSettings";
+import { LANGUAGES, POLYGLOT_BATCH_OPTIONS } from "../hooks/useSettings";
 import { useWakeLock } from "../hooks/useWakeLock";
 import {
   generatePolyglot,
@@ -1260,7 +1260,7 @@ export default function Reader({
     }
     if (!chapter?.text) return;
     clearPageTurnState();
-    const lastCode = localStorage.getItem("vocabapp:lastLang");
+    const lastCode = localStorage.getItem("vocabapp:lastLang") || settings.targetLang;
     const initialCode =
       lastCode && LANGUAGES.some((l) => l.code === lastCode)
         ? lastCode
@@ -2219,6 +2219,7 @@ export default function Reader({
             bookId={book.id}
             book={book}
             settings={settings}
+            onUpdateSetting={onUpdateSetting}
             onClose={() => setBatchModalOpen(false)}
           />
         )}
@@ -2242,10 +2243,15 @@ export default function Reader({
           polyState={polyState}
           confirmLang={confirmLang}
           languages={LANGUAGES}
+          batchOptions={POLYGLOT_BATCH_OPTIONS}
           estimatedSentenceCount={estimatedSentenceCount}
           estimatedBatchCount={estimatedBatchCount}
           estimatedSecs={estimatedSecs}
           estimatedCost={estimatedCost}
+          sentencesPerRequest={settings.polyglotSentencesPerRequest}
+          onSentencesPerRequestChange={(value) =>
+            onUpdateSetting?.("polyglotSentencesPerRequest", value)
+          }
           onConfirmLangChange={handleConfirmLangChange}
           onStartGeneration={startGeneration}
           onCancelConfirm={resetTranslationSelection}

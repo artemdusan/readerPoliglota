@@ -13,6 +13,15 @@ export const LANGUAGES = [
   { code: "en", name: "angielski", flag: "🇬🇧", label: "English" },
 ];
 
+export const POLYGLOT_BATCH_OPTIONS = [
+  { value: 1, label: "1 zdanie" },
+  { value: 2, label: "2 zdania" },
+  { value: 4, label: "4 zdania" },
+  { value: 6, label: "6 zdaĹ„" },
+  { value: 8, label: "8 zdaĹ„" },
+  { value: 12, label: "12 zdaĹ„" },
+];
+
 const DEFAULTS = {
   apiKey: "",
   provider: "xai",

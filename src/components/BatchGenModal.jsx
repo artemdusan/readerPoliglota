@@ -8,7 +8,7 @@ import {
   POLYGLOT_MODEL_ID,
 } from "../lib/polyglotApi";
 import { triggerSync } from "../sync/cfSync";
-import { LANGUAGES } from "../hooks/useSettings";
+import { LANGUAGES, POLYGLOT_BATCH_OPTIONS } from "../hooks/useSettings";
 import { useWakeLock } from "../hooks/useWakeLock";
 
 const MAX_PARALLEL_BATCH_REQUESTS = 24;
@@ -33,9 +33,15 @@ function fmtCost(usd) {
   return `~$${usd.toFixed(3)}`;
 }
 
-export default function BatchGenModal({ bookId, book, settings, onClose }) {
+export default function BatchGenModal({
+  bookId,
+  book,
+  settings,
+  onUpdateSetting,
+  onClose,
+}) {
   const [selectedLang, setSelectedLang] = useState(() => {
-    const code = localStorage.getItem("vocabapp:lastLang");
+    const code = localStorage.getItem("vocabapp:lastLang") || settings.targetLang;
     return LANGUAGES.find((l) => l.code === code) ?? LANGUAGES[0];
   });
   const [chapters, setChapters] = useState([]);
@@ -135,6 +141,13 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
   }
   function selectNone() {
     setSelected(new Set());
+  }
+
+  function handleLangChange(code) {
+    const lang = LANGUAGES.find((item) => item.code === code) ?? LANGUAGES[0];
+    setSelectedLang(lang);
+    setDone(false);
+    setErrors({});
   }
 
   async function handleGenerate() {
@@ -286,27 +299,61 @@ export default function BatchGenModal({ bookId, book, settings, onClose }) {
             </div>
           ) : (
             <>
+              <div className="bgen-setup-grid">
+                <div className="bgen-setup-card">
+                  <span className="bgen-setup-label">Język tłumaczenia</span>
+                  <select
+                    className="form-select"
+                    value={selectedLang.code}
+                    onChange={(e) => handleLangChange(e.target.value)}
+                    disabled={generating}
+                  >
+                    {LANGUAGES.map((l) => (
+                      <option key={l.code} value={l.code}>
+                        {l.flag} {l.label} ({l.name})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="bgen-setup-card">
+                  <span className="bgen-setup-label">Paczka AI</span>
+                  <select
+                    className="form-select"
+                    value={settings.polyglotSentencesPerRequest ?? 4}
+                    onChange={(e) =>
+                      onUpdateSetting?.(
+                        "polyglotSentencesPerRequest",
+                        Number(e.target.value),
+                      )
+                    }
+                    disabled={generating}
+                  >
+                    {POLYGLOT_BATCH_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label} na zapytanie
+                      </option>
+                    ))}
+                  </select>
+                  <p className="bgen-setup-hint">
+                    Mniejsze paczki są ostrożniejsze, większe zwykle szybsze i
+                    tańsze.
+                  </p>
+                </div>
+              </div>
+
               <div className="bgen-info">
-                <select
-                  className="form-select"
-                  value={selectedLang.code}
-                  onChange={(e) => {
-                    const lang =
-                      LANGUAGES.find((l) => l.code === e.target.value) ??
-                      LANGUAGES[0];
-                    setSelectedLang(lang);
-                    setDone(false);
-                    setErrors({});
-                  }}
-                  disabled={generating}
-                  style={{ flex: 1, minWidth: 150 }}
-                >
-                  {LANGUAGES.map((l) => (
-                    <option key={l.code} value={l.code}>
-                      {l.flag} {l.label} ({l.name})
-                    </option>
-                  ))}
-                </select>
+                <span>
+                  Wybrane: <strong>{toGenerate.length}</strong> / {chapters.length}{" "}
+                  rozdziałów
+                </span>
+                <span className="bgen-sep">·</span>
+                <span>
+                  Tryb:{" "}
+                  <strong>
+                    {settings.polyglotSentencesPerRequest ?? 4} zd.
+                  </strong>
+                </span>
               </div>
 
               <div className="bgen-chapter-list">
