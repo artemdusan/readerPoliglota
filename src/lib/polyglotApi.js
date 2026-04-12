@@ -42,7 +42,8 @@ function buildSentencePatchSystemPrompt(
   const strictHint = strictJson
     ? `
 - odpowiedz ma byc pojedynczym obiektem JSON, bez komentarzy, bez markdownu i bez dodatkowego tekstu
-- kazdy element changes ma miec dokladnie pola "id" i "text"
+- kazdy element changes ma miec dokladnie pola "id" i "words"
+- kazdy element words ma opisywac tylko jedno slowo i miec albo pola "original" oraz "target", albo pojedynczy obiekt {"oryginal":"tlumaczenie"}
 - jesli nic nie zmieniasz, zwroc {"changes":[]}`
     : "";
 
@@ -57,18 +58,17 @@ Zasady:
 - mozesz zaznaczyc zero, jedno lub kilka slow w zdaniu
 - wybieraj naturalne, przydatne slowa do nauki; zwykle 1-3 na zdanie wystarcza
 - nie zaznaczaj czasownikow, imion wlasnych, nazw wlasnych, liczb, dat, skrotow ani znakow interpunkcyjnych
-- kazdy marker ma format [tlumaczenie::oryginal]
-- marker musi obejmowac dokladnie jedno slowo z oryginalu
-- lewa strona markera: slowo w jezyku ${targetLangName}
-- prawa strona markera: oryginalne slowo
+- zwracasz tylko liste slow do oznaczenia, nigdy nie przepisuj calego zdania
+- pole "original" musi zawierac dokladnie jedno oryginalne slowo z danego zdania
+- pole "target" musi zawierac jedno naturalne tlumaczenie tego slowa w jezyku ${targetLangName}
+- jesli zwracasz obiekt jednopolowy, klucz ma byc slowem oryginalnym, a wartosc jego tlumaczeniem
 - uzywaj identyfikatorow dokladnie takich, jakie dostales na wejsciu
-- poza markerami zachowaj dokladnie kolejnosc slow, interpunkcje i sens zdania
-- nie parafrazuj, nie dopisuj wyjasnien, nie zmieniaj skladni
-- dodaj element do tablicy changes tylko wtedy, gdy naprawde cos oznaczyles
+- nie dopisuj wyjasnien, odmian, komentarzy ani calej tresci zdania
+- dodaj element do tablicy changes tylko wtedy, gdy naprawde chcesz oznaczyc przynajmniej jedno slowo
 ${strictHint}
 
 Zwroc tylko JSON bez markdownu:
-{"changes":[{"id":"s1","text":"..."}]}`;
+{"changes":[{"id":"s1","words":[{"original":"...","target":"..."},{"oryginal":"tlumaczenie"}]}]}`;
 }
 
 function normalizeSentencesPerRequest(value) {
@@ -361,21 +361,13 @@ async function processBatchWithRetry(
   { messages, model, maxTokens, label, batchIdx, signal, onActivity },
   attempt = 0,
 ) {
-  const startedAt = Date.now();
   onActivity?.();
-  console.log(
-    `[Polyglot] ${label} ${batchIdx + 1} -> wysylam (${model}, max_tokens=${maxTokens})`,
-  );
 
   try {
     await waitForGlobalRequestSlot(signal);
     onActivity?.();
     const result = await processBatch(messages, model, maxTokens, { signal });
     onActivity?.();
-    const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
-    console.log(
-      `[Polyglot] ${label} ${batchIdx + 1} ok - ${secs}s, in:${result.promptTokens} out:${result.completionTokens}`,
-    );
     return result;
   } catch (err) {
     onActivity?.();
@@ -508,6 +500,12 @@ function parseJsonResponse(text) {
 
 function normalizeComparisonText(text) {
   return String(text ?? "")
+    .normalize("NFKC")
+    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/\u00A0/g, " ")
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .replace(/\s+/g, " ")
@@ -517,85 +515,140 @@ function normalizeComparisonText(text) {
 
 function countLexicalTokens(text) {
   const matches = String(text ?? "").match(
-    /[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu,
+    /[\p{L}\p{N}]+(?:['\u2019-][\p{L}\p{N}]+)*/gu,
   );
   return matches?.length ?? 0;
 }
 
-function extractMarkers(text) {
-  const markers = [];
-  const rx = /\[([^\]]+?)::([^\]]+?)\]/g;
+function extractSentenceTokens(text) {
+  const tokens = [];
+  const rx = /[\p{L}\p{N}]+(?:['\u2019-][\p{L}\p{N}]+)*/gu;
   let match;
 
   while ((match = rx.exec(String(text ?? ""))) !== null) {
-    markers.push({
-      full: match[0],
-      target: match[1].trim(),
-      original: match[2].trim(),
+    tokens.push({
+      raw: match[0],
+      normalized: normalizeComparisonText(match[0]),
+      start: match.index,
+      end: match.index + match[0].length,
     });
   }
 
-  return markers;
+  return tokens;
 }
 
-function replaceMarkers(text, replacer) {
-  const sourceText = String(text ?? "");
-  const rx = /\[([^\]]+?)::([^\]]+?)\]/g;
-  let result = "";
-  let last = 0;
-  let match;
+function normalizeRawWord(word) {
+  if (!word) return null;
 
-  while ((match = rx.exec(sourceText)) !== null) {
-    result += sourceText.slice(last, match.index);
-    result += replacer({
-      full: match[0],
-      target: match[1].trim(),
-      original: match[2].trim(),
-    });
-    last = match.index + match[0].length;
+  if (typeof word === "string") {
+    const parts = word.split(":");
+    if (parts.length >= 2) {
+      const original = parts.slice(0, -1).join(":").trim();
+      const target = parts[parts.length - 1].trim();
+      if (target && original) return { target, original };
+    }
+    return null;
   }
 
-  return result + sourceText.slice(last);
+  if (typeof word !== "object" || Array.isArray(word)) return null;
+
+  const target = [
+    word.target,
+    word.translation,
+    word.translated,
+    word.translatedWord,
+    word.tgt,
+  ].find((value) => typeof value === "string" && value.trim());
+  const original = [
+    word.original,
+    word.source,
+    word.word,
+    word.src,
+  ].find((value) => typeof value === "string" && value.trim());
+
+  if (target && original) {
+    return {
+      target: target.trim(),
+      original: original.trim(),
+    };
+  }
+
+  const entries = Object.entries(word).filter(
+    ([key, value]) =>
+      typeof key === "string" &&
+      key.trim() &&
+      typeof value === "string" &&
+      value.trim(),
+  );
+  if (entries.length !== 1) return null;
+
+  const [dynamicOriginal, dynamicTarget] = entries[0];
+  return {
+    target: dynamicTarget.trim(),
+    original: dynamicOriginal.trim(),
+  };
 }
 
-function validateSentenceChangeLocally(sourceText, candidateText) {
-  const candidate = String(candidateText ?? "").trim();
-  if (!candidate) return { ok: false, reasons: ["empty"] };
+function validateSentenceChangeLocally(sourceText, candidateWords) {
+  const words = Array.isArray(candidateWords) ? candidateWords : [];
+  if (!words.length) return { ok: false, reasons: ["no_words"] };
 
-  const markers = extractMarkers(candidate);
-  if (!markers.length) return { ok: false, reasons: ["no_markers"] };
+  const sentenceTokens = extractSentenceTokens(sourceText);
+  const availableByOriginal = new Map();
 
-  const sourceNormalized = normalizeComparisonText(sourceText);
+  sentenceTokens.forEach((token, index) => {
+    const indexes = availableByOriginal.get(token.normalized) ?? [];
+    indexes.push(index);
+    availableByOriginal.set(token.normalized, indexes);
+  });
 
-  for (const marker of markers) {
-    const targetNormalized = normalizeComparisonText(marker.target);
-    const originalNormalized = normalizeComparisonText(marker.original);
+  const usedIndexes = new Set();
+  const acceptedWords = [];
+
+  for (const rawWord of words) {
+    const normalizedWord = normalizeRawWord(rawWord);
+    if (!normalizedWord) {
+      return { ok: false, reasons: ["invalid_word_shape"] };
+    }
+
+    const target = normalizedWord.target.trim();
+    const original = normalizedWord.original.trim();
+    const targetNormalized = normalizeComparisonText(target);
+    const originalNormalized = normalizeComparisonText(original);
 
     if (!targetNormalized || !originalNormalized) {
-      return { ok: false, reasons: ["empty_marker_side"] };
+      return { ok: false, reasons: ["empty_word_side"] };
     }
     if (targetNormalized === originalNormalized) {
-      return { ok: false, reasons: ["marker_not_translated"] };
+      return { ok: false, reasons: ["word_not_translated"] };
     }
-    if (countLexicalTokens(marker.original) !== 1) {
-      return { ok: false, reasons: ["source_marker_not_single_word"] };
+    if (countLexicalTokens(original) !== 1) {
+      return { ok: false, reasons: ["source_word_not_single_word"] };
     }
-    if (countLexicalTokens(marker.target) !== 1) {
-      return { ok: false, reasons: ["target_marker_not_single_word"] };
+    if (countLexicalTokens(target) !== 1) {
+      return { ok: false, reasons: ["target_word_not_single_word"] };
     }
-    if (!sourceNormalized.includes(originalNormalized)) {
-      return { ok: false, reasons: ["source_side_mismatch"] };
+
+    const matchingIndexes = availableByOriginal.get(originalNormalized) ?? [];
+    const tokenIndex = matchingIndexes.find((index) => !usedIndexes.has(index));
+    if (!Number.isInteger(tokenIndex)) {
+      return { ok: false, reasons: ["source_word_missing"] };
     }
+
+    usedIndexes.add(tokenIndex);
+    acceptedWords.push({
+      tokenIndex,
+      original: sentenceTokens[tokenIndex].raw,
+      target,
+    });
   }
 
-  const recoveredOriginal = normalizeComparisonText(
-    replaceMarkers(candidate, (marker) => marker.original),
-  );
-  if (recoveredOriginal !== sourceNormalized) {
-    return { ok: false, reasons: ["structure_mismatch"] };
-  }
-
-  return { ok: true, text: candidate, markerCount: markers.length };
+  acceptedWords.sort((a, b) => a.tokenIndex - b.tokenIndex);
+  return {
+    ok: true,
+    words: acceptedWords.map(({ original, target }) => ({ original, target })),
+    markerCount: acceptedWords.length,
+  };
 }
 
 function extractRawChanges(data) {
@@ -610,7 +663,7 @@ function extractRawChanges(data) {
     typeof data.changes === "object" &&
     !Array.isArray(data.changes)
   ) {
-    return Object.entries(data.changes).map(([id, text]) => ({ id, text }));
+    return Object.entries(data.changes).map(([id, words]) => ({ id, words }));
   }
   return null;
 }
@@ -624,19 +677,29 @@ function normalizeRawChange(change) {
     change.sentence_id,
     change.key,
   ].find((value) => typeof value === "string" && value.trim());
-  const text = [
-    change.text,
-    change.value,
-    change.content,
-    change.sentence,
-    change.patchedText,
-    change.patched_text,
-  ].find((value) => typeof value === "string" && value.trim());
+  const rawWordsValue = [
+    change.words,
+    change.items,
+    change.terms,
+    change.translations,
+    change.replacements,
+  ].find(
+    (value) =>
+      (Array.isArray(value) && value.length) ||
+      (value && typeof value === "object" && !Array.isArray(value)),
+  );
+  const rawWords = Array.isArray(rawWordsValue)
+    ? rawWordsValue
+    : rawWordsValue && typeof rawWordsValue === "object"
+      ? Object.entries(rawWordsValue).map(([target, original]) => ({
+          [target]: original,
+        }))
+      : [];
 
-  if (!id || !text) return null;
+  if (!id || !rawWords?.length) return null;
   return {
     id: id.trim(),
-    text: text.trim(),
+    words: rawWords,
   };
 }
 
@@ -663,8 +726,8 @@ function parseSentencePatchResponse(text, batchSentences) {
     .filter(
       (change) =>
         originalById.has(change.id) &&
-        change.text &&
-        change.text !== originalById.get(change.id),
+        Array.isArray(change.words) &&
+        change.words.length > 0,
     );
 }
 
@@ -799,7 +862,11 @@ async function verifySentenceChangesLocally(
   );
   const accepted = new Map();
   const candidates = changes.filter(
-    (change) => change?.id && sourceById.has(change.id) && change?.text,
+    (change) =>
+      change?.id &&
+      sourceById.has(change.id) &&
+      Array.isArray(change?.words) &&
+      change.words.length > 0,
   );
 
   onProgress?.({
@@ -814,10 +881,14 @@ async function verifySentenceChangesLocally(
     const change = candidates[index];
     const validation = validateSentenceChangeLocally(
       sourceById.get(change.id),
-      change.text,
+      change.words,
     );
     if (validation.ok) {
-      accepted.set(change.id, validation.text);
+      accepted.set(change.id, validation.words);
+    } else {
+      console.warn(
+        `[PolyglotReject] ${change.id} | ${sourceById.get(change.id) || ""} | ${validation.reasons.join(",")}`,
+      );
     }
 
     if (index === candidates.length - 1 || (index + 1) % 20 === 0) {
@@ -839,17 +910,35 @@ async function verifySentenceChangesLocally(
       `[Polyglot] Dropped ${dropped} unsafe sentence changes after local verification`,
     );
   }
+  console.log(
+    `[PolyglotVerify] candidates=${candidates.length} accepted=${accepted.size} dropped=${dropped}`,
+  );
 
   return {
     changes: sourceSentences
       .map((sentence) => sentence.id)
       .filter((id) => accepted.has(id))
-      .map((id) => ({ id, text: accepted.get(id) })),
+      .map((id) => ({ id, words: accepted.get(id) })),
     cost: 0,
     elapsedMs: Date.now() - startedAt,
     verified: accepted.size,
     dropped,
   };
+}
+
+function logVerifiedSentenceWords(changes, sourceSentences) {
+  const sentenceById = new Map(
+    sourceSentences.map((sentence) => [sentence.id, sentence.text]),
+  );
+
+  changes.forEach((change) => {
+    const pairs = (change.words ?? [])
+      .map((word) => `${word.original}->${word.target}`)
+      .join(", ");
+    console.log(
+      `[PolyglotWord] ${change.id} | ${sentenceById.get(change.id) || ""} | ${pairs}`,
+    );
+  });
 }
 
 async function generateStructuredPolyglot(
@@ -874,10 +963,6 @@ async function generateStructuredPolyglot(
   const normalizedBatchSize = normalizeSentencesPerRequest(sentencesPerRequest);
   const batches = buildSentenceBatches(source.sentences, normalizedBatchSize);
   const pricing = MODEL_PRICING[model] ?? { input: 0, output: 0 };
-
-  console.log(
-    `[Polyglot] Start patches: ${source.sentences.length} zdan w ${batches.length} zapytaniach (batch=${normalizedBatchSize}), jezyk: ${targetLangName}, model: ${model}`,
-  );
 
   const {
     changes: rawChanges,
@@ -913,15 +998,27 @@ async function generateStructuredPolyglot(
     { cost, secs: elapsedMs / 1000 },
   );
 
+  if (verified.changes.length === 0) {
+    if (rawChanges.length > 0) {
+      throw new Error(
+        "Model zwrocil odpowiedz, ale nie udalo sie zachowac zadnych bezpiecznych oznaczen. Sprobuj ponownie.",
+      );
+    }
+    throw new Error(
+      "Model nie zwrocil zadnych oznaczen tlumaczen dla tego rozdzialu. Sprobuj ponownie.",
+    );
+  }
+
+  logVerifiedSentenceWords(verified.changes, source.sentences);
   console.log(
-    `[Polyglot] Verification summary: raw=${rawChanges.length}, accepted=${verified.changes.length}, dropped=${verified.dropped}`,
+    `[PolyglotSummary] accepted=${verified.changes.length} dropped=${verified.dropped} sentences=${source.sentences.length} batches=${batches.length}`,
   );
 
   return {
     cacheValue: {
-      format: "sentence-patches-v1",
+      format: "sentence-word-select-v2",
       payload: {
-        version: 1,
+        version: 2,
         changes: verified.changes,
       },
     },

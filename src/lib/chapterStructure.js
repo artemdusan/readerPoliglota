@@ -283,39 +283,130 @@ function getOverrideValue(overrides, wordId) {
   return overrides[wordId] ?? null;
 }
 
-function renderSentenceTextWithMarkers(
-  text,
+function normalizeWordMatchText(text) {
+  return String(text ?? "")
+    .normalize("NFKC")
+    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/\u00A0/g, " ")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function extractLexicalWordTokens(text) {
+  const source = String(text ?? "");
+  const tokens = [];
+  const rx = /[\p{L}\p{N}]+(?:['\u2019-][\p{L}\p{N}]+)*/gu;
+  let match;
+
+  while ((match = rx.exec(source)) !== null) {
+    tokens.push({
+      raw: match[0],
+      normalized: normalizeWordMatchText(match[0]),
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+
+  return tokens;
+}
+
+function normalizeSelectionWord(word) {
+  if (!word || typeof word !== "object" || Array.isArray(word)) return null;
+  const target =
+    typeof word.target === "string" && word.target.trim()
+      ? word.target.trim()
+      : "";
+  const original =
+    typeof word.original === "string" && word.original.trim()
+      ? word.original.trim()
+      : "";
+  if (!target || !original) return null;
+  return { target, original };
+}
+
+function renderSentenceTextWithWordSelections(
+  sourceText,
+  sentenceWords,
   { blockId, sentenceId, nextWordId, overrides = null },
 ) {
-  const source = String(text ?? "");
-  const rx = /\[([^\]]+?)::([^\]]+?)\]/g;
+  const source = String(sourceText ?? "");
+  const tokens = extractLexicalWordTokens(source);
+  const selections = Array.isArray(sentenceWords)
+    ? sentenceWords.map(normalizeSelectionWord).filter(Boolean)
+    : [];
+
+  if (!selections.length || !tokens.length) {
+    return {
+      html: `<span class="ch-sentence" data-sentence-id="${sentenceId}" data-block-id="${blockId}">${escapeHtml(source)}</span>`,
+      words: [],
+      nextWordId,
+    };
+  }
+
+  const availableByOriginal = new Map();
+  tokens.forEach((token, index) => {
+    const indexes = availableByOriginal.get(token.normalized) ?? [];
+    indexes.push(index);
+    availableByOriginal.set(token.normalized, indexes);
+  });
+
+  const matchedSelections = [];
+  const usedIndexes = new Set();
+  selections.forEach((word) => {
+    const originalNormalized = normalizeWordMatchText(word.original);
+    const availableIndexes = availableByOriginal.get(originalNormalized) ?? [];
+    const tokenIndex = availableIndexes.find((index) => !usedIndexes.has(index));
+    if (!Number.isInteger(tokenIndex)) return;
+    usedIndexes.add(tokenIndex);
+    matchedSelections.push({
+      tokenIndex,
+      original: tokens[tokenIndex].raw,
+      target: word.target,
+    });
+  });
+
+  if (!matchedSelections.length) {
+    return {
+      html: `<span class="ch-sentence" data-sentence-id="${sentenceId}" data-block-id="${blockId}">${escapeHtml(source)}</span>`,
+      words: [],
+      nextWordId,
+    };
+  }
+
+  matchedSelections.sort((a, b) => a.tokenIndex - b.tokenIndex);
+
   let html = `<span class="ch-sentence" data-sentence-id="${sentenceId}" data-block-id="${blockId}">`;
   let last = 0;
-  let match;
   let currentWordId = nextWordId;
   const words = [];
 
-  while ((match = rx.exec(source)) !== null) {
-    html += escapeHtml(source.slice(last, match.index));
+  matchedSelections.forEach((selection) => {
+    const token = tokens[selection.tokenIndex];
+    html += escapeHtml(source.slice(last, token.start));
     const overrideTarget = collapseWhitespace(
       getOverrideValue(overrides, currentWordId) ?? "",
     );
-    const target = escapeHtml(overrideTarget || collapseWhitespace(match[1]));
-    const original = escapeHtml(collapseWhitespace(match[2]));
-    html += `<span class="pw" data-word-id="${currentWordId}" data-word-idx="${currentWordId}" data-sentence-id="${sentenceId}" data-block-id="${blockId}"><b class="pw-target">${target}</b><i class="pw-original">${original}</i></span>`;
+    const target = overrideTarget || collapseWhitespace(selection.target);
+    const original = collapseWhitespace(selection.original);
+    html += `<span class="pw" data-word-id="${currentWordId}" data-word-idx="${currentWordId}" data-sentence-id="${sentenceId}" data-block-id="${blockId}"><b class="pw-target">${escapeHtml(target)}</b><i class="pw-original">${escapeHtml(original)}</i></span>`;
     words.push({
       id: currentWordId,
       blockId,
       sentenceId,
-      target: overrideTarget || collapseWhitespace(match[1]),
-      original: collapseWhitespace(match[2]),
+      target,
+      original,
     });
     currentWordId += 1;
-    last = match.index + match[0].length;
-  }
+    last = token.end;
+  });
 
   html += `${escapeHtml(source.slice(last))}</span>`;
-
   return {
     html,
     words,
@@ -354,15 +445,14 @@ export function applySentencePatchPayloadToHtml(
   normalizeTranslatedLayout(doc.body);
   const structure = buildChapterStructureFromRoot(doc.body, lang);
   const nodes = getReadableBlocks(doc.body);
+  const payloadVersion = Number(payload?.version);
+  if (payloadVersion !== 2) {
+    throw new Error("Obslugiwany jest tylko payload sentence-word-select-v2.");
+  }
   const changeMap = new Map(
     (payload?.changes ?? [])
-      .filter(
-        (change) =>
-          change &&
-          typeof change.id === "string" &&
-          typeof change.text === "string",
-      )
-      .map((change) => [change.id.trim(), collapseWhitespace(change.text)]),
+      .filter((change) => change && typeof change.id === "string")
+      .map((change) => [change.id.trim(), change]),
   );
 
   const paragraphs = [];
@@ -382,13 +472,17 @@ export function applySentencePatchPayloadToHtml(
         rebuiltHtml += escapeHtml(sentence.leading);
       }
 
-      const sentenceText = changeMap.get(sentence.id) || sentence.text;
-      const rendered = renderSentenceTextWithMarkers(sentenceText, {
-        blockId: block.id,
-        sentenceId: sentence.id,
-        nextWordId,
-        overrides,
-      });
+      const sentenceChange = changeMap.get(sentence.id);
+      const rendered = renderSentenceTextWithWordSelections(
+        sentence.rawText || sentence.text,
+        sentenceChange?.words ?? [],
+        {
+          blockId: block.id,
+          sentenceId: sentence.id,
+          nextWordId,
+          overrides,
+        },
+      );
       rebuiltHtml += rendered.html;
       words.push(...rendered.words);
       nextWordId = rendered.nextWordId;
@@ -457,19 +551,4 @@ export function extractRenderedPolyglotData(polyHtml) {
     paragraphs,
     words: words.sort((a, b) => a.id - b.id),
   };
-}
-
-export function stripPolyglotMarkers(text, overrides = null) {
-  let wordId = 0;
-  const plain = String(text ?? "").replace(
-    /\[([^\]]+?)::([^\]]+?)\]/g,
-    (_, target) => {
-      const overrideTarget = collapseWhitespace(
-        getOverrideValue(overrides, wordId) ?? "",
-      );
-      wordId += 1;
-      return overrideTarget || target;
-    },
-  );
-  return collapseWhitespace(plain);
 }

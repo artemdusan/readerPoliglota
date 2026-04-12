@@ -180,7 +180,8 @@ function isSupportedPolyglotValue(value) {
   return !!(
     value &&
     typeof value === 'object' &&
-    (value.format === 'sentence-patches-v1' || value.payload?.version === 1) &&
+    value.format === 'sentence-word-select-v2' &&
+    value.payload?.version === 2 &&
     Array.isArray(value.payload?.changes)
   );
 }
@@ -188,10 +189,10 @@ function isSupportedPolyglotValue(value) {
 function normalizePolyglotValue(value) {
   if (!isSupportedPolyglotValue(value)) return null;
   return {
-    format: 'sentence-patches-v1',
+    format: 'sentence-word-select-v2',
     rawText: null,
     payload: {
-      version: 1,
+      version: 2,
       changes: value.payload.changes,
     },
   };
