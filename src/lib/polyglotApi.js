@@ -7,9 +7,19 @@ const REQUEST_TIMEOUT_MS = 90_000;
 const STALL_TIMEOUT_MS = 150_000;
 const STALL_RETRY_LIMIT = 1;
 const STALL_CHECK_INTERVAL_MS = 10_000;
+const SENTENCE_CONCURRENCY = 12;
+const NETWORK_RETRY_LIMIT = 1;
+const GLOBAL_REQUESTS_PER_MINUTE = 1800;
+const GLOBAL_REQUEST_INTERVAL_MS = Math.ceil(
+  60_000 / GLOBAL_REQUESTS_PER_MINUTE,
+);
+
+let globalRequestGate = Promise.resolve();
+let nextGlobalRequestAt = 0;
 
 /** Approximate pricing in USD per 1 000 tokens (input / output) */
 export const MODEL_PRICING = {
+  "grok-4.20-0309-non-reasoning": { input: 0.002, output: 0.006 },
   "deepseek-chat": { input: 0.00007, output: 0.00028 },
   "deepseek-reasoner": { input: 0.00055, output: 0.00219 },
   "gpt-4o-mini": { input: 0.00015, output: 0.0006 },
@@ -22,63 +32,44 @@ export const MODEL_PRICING = {
 function buildSentencePatchSystemPrompt(
   targetLangName,
   sourceLangName,
-  { singleSentence = false, strictJson = false } = {},
+  { strictJson = false } = {},
 ) {
   const sourceHint = sourceLangName
     ? ` Tekst zrodlowy jest w jezyku ${sourceLangName}.`
-    : "";
-  const singleHint = singleSentence
-    ? `
-Masz dokladnie jedno zdanie na wejsciu. Jesli je zmieniasz, zwroc tablice changes z jednym elementem.`
     : "";
   const strictHint = strictJson
     ? `
 - odpowiedz ma byc pojedynczym obiektem JSON, bez komentarzy, bez markdownu i bez dodatkowego tekstu
 - kazdy element changes ma miec dokladnie pola "id" i "text"
-- jesli nie jestes pewny formatu, zwroc {"changes":[]}`
+- jesli nic nie zmieniasz, zwroc {"changes":[]}`
     : "";
-  return `Wstaw markery do nauki jezyka ${targetLangName}.${sourceHint}
-Wejscie: {"sentences":[{"id":"s1","text":"..."}]}
+
+  return `Jestes precyzyjnym edytorem tekstu do nauki jezyka ${targetLangName}.${sourceHint}
+
+Wejscie ma zawsze jedno zdanie:
+{"sentences":[{"id":"s1","text":"..."}]}
 
 Zasady:
-- zmieniaj tylko losowe: rzeczowniki i przymiotniki 
-- nie zmieniaj słów bezposrednio obok siebie
-- kazda zmiana ma miec format [tłumaczenie::oryginał]
-- lewa strona markera: słowo w jezyku ${targetLangName}
-- prawa strona markera: słowo w oryginale
-- zwroc tylko zdania, ktore rzeczywiscie zmieniles
-${singleHint}
+- pracujesz zdanie po zdaniu
+- zaznaczaj tylko rzeczowniki i przymiotniki
+- mozesz zaznaczyc zero, jedno lub kilka slow w zdaniu
+- wybieraj naturalne, przydatne slowa do nauki; zwykle 1-3 na zdanie wystarcza
+- nie zaznaczaj czasownikow, imion wlasnych, nazw wlasnych, liczb, dat, skrotow ani znakow interpunkcyjnych
+- kazdy marker ma format [tlumaczenie::oryginal]
+- marker musi obejmowac dokladnie jedno slowo z oryginalu
+- lewa strona markera: slowo w jezyku ${targetLangName}
+- prawa strona markera: oryginalne slowo
+- poza markerami zachowaj dokladnie kolejnosc slow, interpunkcje i sens zdania
+- nie parafrazuj, nie dopisuj wyjasnien, nie zmieniaj skladni
+- zwroc tylko zdanie, jesli naprawde cos oznaczyles
 ${strictHint}
 
 Zwroc tylko JSON bez markdownu:
-{"changes":[{"id":"s1","text":"..."}]}
-Jesli nic nie zmieniasz, zwroc {"changes":[]}.`;
+{"changes":[{"id":"s1","text":"..."}]}`;
 }
 
 function buildSentenceBatches(sentences) {
-  const batches = [];
-  const maxChars = 2200;
-  const maxSentences = 14;
-  let current = [];
-  let length = 0;
-
-  for (const sentence of sentences) {
-    const sentenceSize = sentence.text.length + sentence.id.length + 32;
-    if (
-      current.length > 0 &&
-      (length + sentenceSize > maxChars || current.length >= maxSentences)
-    ) {
-      batches.push(current);
-      current = [sentence];
-      length = sentenceSize;
-    } else {
-      current.push(sentence);
-      length += sentenceSize;
-    }
-  }
-
-  if (current.length > 0) batches.push(current);
-  return batches;
+  return sentences.map((sentence) => [sentence]);
 }
 
 export function estimatePolyglotGeneration(chapterInput) {
@@ -93,7 +84,7 @@ export function estimatePolyglotGeneration(chapterInput) {
 
   const source = buildSentencePatchSource(chapterHtml);
   return {
-    generationBatches: buildSentenceBatches(source.sentences).length,
+    generationBatches: source.sentences.length,
     sentenceCount: source.sentences.length,
   };
 }
@@ -104,11 +95,71 @@ function createAbortError(message) {
   return error;
 }
 
+function getAbortReason(signal) {
+  return signal?.reason instanceof Error
+    ? signal.reason
+    : createAbortError("Generowanie anulowano.");
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) {
+    throw getAbortReason(signal);
+  }
+}
+
+function waitForTimeout(ms, signal) {
+  if (!ms || ms <= 0) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", onAbort);
+      reject(getAbortReason(signal));
+    };
+
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function waitForGlobalRequestSlot(signal) {
+  let releaseGate;
+  const nextGate = new Promise((resolve) => {
+    releaseGate = resolve;
+  });
+  const previousGate = globalRequestGate;
+  globalRequestGate = nextGate;
+
+  await previousGate;
+
+  try {
+    throwIfAborted(signal);
+    const now = Date.now();
+    const waitMs = Math.max(0, nextGlobalRequestAt - now);
+    nextGlobalRequestAt =
+      Math.max(nextGlobalRequestAt, now) + GLOBAL_REQUEST_INTERVAL_MS;
+    await waitForTimeout(waitMs, signal);
+  } finally {
+    releaseGate();
+  }
+}
+
 function attachAbortSignal(signal, controller) {
   if (!signal) return () => {};
 
   const abortWithReason = () => {
-    controller.abort(signal.reason ?? createAbortError("Generowanie anulowano."));
+    controller.abort(
+      signal.reason ?? createAbortError("Generowanie anulowano."),
+    );
   };
 
   if (signal.aborted) {
@@ -170,8 +221,12 @@ function createStallMonitor(stallMs, onStall) {
   };
 
   const check = () => {
-    if (typeof document !== "undefined" && document.visibilityState === "hidden")
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState === "hidden"
+    ) {
       return;
+    }
     if (Date.now() - lastActivityAt >= stallMs) {
       onStall(Date.now() - lastActivityAt);
     }
@@ -202,10 +257,16 @@ function createStallMonitor(stallMs, onStall) {
   };
 }
 
-async function processBatch(messages, model, maxTokens = 4096, { signal } = {}) {
+async function processBatch(
+  messages,
+  model,
+  maxTokens = 4096,
+  { signal } = {},
+) {
   const token = getToken();
-  if (!token)
+  if (!token) {
     throw new Error("Nie jestes zalogowany. Zaloguj sie w Ustawieniach.");
+  }
 
   const timedSignal = createTimedController(
     REQUEST_TIMEOUT_MS,
@@ -240,10 +301,13 @@ async function processBatch(messages, model, maxTokens = 4096, { signal } = {}) 
       completionTokens: usage?.completion_tokens ?? 0,
     };
   } catch (err) {
-    if (err.name === "AbortError")
+    if (err.name === "AbortError") {
       throw timedSignal.signal.reason instanceof Error
         ? timedSignal.signal.reason
-        : new Error("Przekroczono limit czasu (90s). Sprawdz polaczenie z API.");
+        : new Error(
+            "Przekroczono limit czasu (90s). Sprawdz polaczenie z API.",
+          );
+    }
     throw err;
   } finally {
     timedSignal.cleanup();
@@ -261,6 +325,8 @@ async function processBatchWithRetry(
   );
 
   try {
+    await waitForGlobalRequestSlot(signal);
+    onActivity?.();
     const result = await processBatch(messages, model, maxTokens, { signal });
     onActivity?.();
     const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
@@ -273,17 +339,14 @@ async function processBatchWithRetry(
     console.warn(
       `[Polyglot] ${label} ${batchIdx + 1} blad (proba ${attempt + 1}): ${err.message}`,
     );
-    if (signal?.aborted) {
+    if (signal?.aborted || attempt >= NETWORK_RETRY_LIMIT) {
       throw err;
     }
-    if (attempt < 1) {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      return processBatchWithRetry(
-        { messages, model, maxTokens, label, batchIdx, signal, onActivity },
-        attempt + 1,
-      );
-    }
-    throw err;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return processBatchWithRetry(
+      { messages, model, maxTokens, label, batchIdx, signal, onActivity },
+      attempt + 1,
+    );
   }
 }
 
@@ -404,11 +467,16 @@ function normalizeComparisonText(text) {
   return String(text ?? "")
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+function countLexicalTokens(text) {
+  const matches = String(text ?? "").match(
+    /[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu,
+  );
+  return matches?.length ?? 0;
 }
 
 function extractMarkers(text) {
@@ -425,10 +493,6 @@ function extractMarkers(text) {
   }
 
   return markers;
-}
-
-function formatMarker(target, original) {
-  return `[${String(target ?? "").trim()}::${String(original ?? "").trim()}]`;
 }
 
 function replaceMarkers(text, replacer) {
@@ -451,41 +515,33 @@ function replaceMarkers(text, replacer) {
   return result + sourceText.slice(last);
 }
 
-function replaceMarkersSequentially(text, markerTexts) {
-  const replacements = Array.isArray(markerTexts) ? markerTexts : [];
-  let markerIndex = 0;
-
-  return replaceMarkers(text, (marker) => {
-    const next = replacements[markerIndex];
-    markerIndex += 1;
-    return typeof next === "string" && next.trim() ? next.trim() : marker.full;
-  });
-}
-
-function validateSentenceChange(sourceText, candidateText) {
-  const sourceNormalized = normalizeComparisonText(sourceText);
+function validateSentenceChangeLocally(sourceText, candidateText) {
   const candidate = String(candidateText ?? "").trim();
   if (!candidate) return { ok: false, reasons: ["empty"] };
 
   const markers = extractMarkers(candidate);
   if (!markers.length) return { ok: false, reasons: ["no_markers"] };
 
-  let targetLooksUntranslated = false;
-  let missingOriginalSide = false;
+  const sourceNormalized = normalizeComparisonText(sourceText);
 
   for (const marker of markers) {
     const targetNormalized = normalizeComparisonText(marker.target);
     const originalNormalized = normalizeComparisonText(marker.original);
-    const originalInSource =
-      originalNormalized && sourceNormalized.includes(originalNormalized);
 
-    if (!originalInSource) missingOriginalSide = true;
-    if (
-      !targetNormalized ||
-      !originalNormalized ||
-      targetNormalized === originalNormalized
-    ) {
-      targetLooksUntranslated = true;
+    if (!targetNormalized || !originalNormalized) {
+      return { ok: false, reasons: ["empty_marker_side"] };
+    }
+    if (targetNormalized === originalNormalized) {
+      return { ok: false, reasons: ["marker_not_translated"] };
+    }
+    if (countLexicalTokens(marker.original) !== 1) {
+      return { ok: false, reasons: ["source_marker_not_single_word"] };
+    }
+    if (countLexicalTokens(marker.target) !== 1) {
+      return { ok: false, reasons: ["target_marker_not_single_word"] };
+    }
+    if (!sourceNormalized.includes(originalNormalized)) {
+      return { ok: false, reasons: ["source_side_mismatch"] };
     }
   }
 
@@ -496,105 +552,7 @@ function validateSentenceChange(sourceText, candidateText) {
     return { ok: false, reasons: ["structure_mismatch"] };
   }
 
-  if (missingOriginalSide) {
-    return { ok: false, reasons: ["source_side_mismatch"] };
-  }
-
-  if (targetLooksUntranslated) {
-    return { ok: false, reasons: ["target_still_source_language"] };
-  }
-
-  return { ok: true, text: candidate };
-}
-
-function buildMarkerOptions(marker, sourceNormalized) {
-  const variants = [
-    { target: marker.target, original: marker.original, bias: 0.1 },
-    { target: marker.original, original: marker.target, bias: 0 },
-  ];
-  const seen = new Set();
-
-  return variants
-    .map((variant) => {
-      const targetNormalized = normalizeComparisonText(variant.target);
-      const originalNormalized = normalizeComparisonText(variant.original);
-      const key = `${targetNormalized}::${originalNormalized}`;
-      if (!targetNormalized || !originalNormalized || seen.has(key))
-        return null;
-      seen.add(key);
-
-      const originalInSource = sourceNormalized.includes(originalNormalized);
-      const targetInSource = sourceNormalized.includes(targetNormalized);
-      let score = variant.bias;
-
-      if (targetNormalized !== originalNormalized) score += 2;
-      if (originalInSource) score += 4;
-      if (!targetInSource) score += 1;
-
-      return {
-        text: formatMarker(variant.target, variant.original),
-        score,
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.score - a.score);
-}
-
-function normalizeSentenceChange(sourceText, candidateText) {
-  const candidate = String(candidateText ?? "").trim();
-  if (!candidate) return { ok: false, reasons: ["empty"] };
-
-  const directValidation = validateSentenceChange(sourceText, candidate);
-  if (directValidation.ok) return directValidation;
-
-  const markers = extractMarkers(candidate);
-  if (!markers.length) return directValidation;
-
-  const sourceNormalized = normalizeComparisonText(sourceText);
-  const optionSets = markers.map((marker) =>
-    buildMarkerOptions(marker, sourceNormalized),
-  );
-  const maxVariants = optionSets.reduce(
-    (product, options) => product * Math.max(options.length, 1),
-    1,
-  );
-
-  let bestResult = null;
-  const selected = [];
-
-  function visit(index, score) {
-    if (index >= optionSets.length) {
-      const rebuiltText = replaceMarkersSequentially(
-        candidate,
-        selected.map((option) => option.text),
-      );
-      const validation = validateSentenceChange(sourceText, rebuiltText);
-      if (!validation.ok) return;
-      if (!bestResult || score > bestResult.score) {
-        bestResult = { score, text: validation.text };
-      }
-      return;
-    }
-
-    for (const option of optionSets[index]) {
-      selected.push(option);
-      visit(index + 1, score + option.score);
-      selected.pop();
-    }
-  }
-
-  if (maxVariants <= 256) {
-    visit(0, 0);
-  } else {
-    const greedyText = replaceMarkersSequentially(
-      candidate,
-      optionSets.map((options) => options[0]?.text),
-    );
-    const greedyValidation = validateSentenceChange(sourceText, greedyText);
-    if (greedyValidation.ok) return greedyValidation;
-  }
-
-  return bestResult ? { ok: true, text: bestResult.text } : directValidation;
+  return { ok: true, text: candidate, markerCount: markers.length };
 }
 
 function extractRawChanges(data) {
@@ -644,7 +602,7 @@ function parseSentencePatchResponse(text, batchSentences) {
   try {
     data = parseJsonResponse(text);
   } catch {
-    throw new Error("Model nie zwrocil poprawnego JSON dla paczki zmian.");
+    throw new Error("Model nie zwrocil poprawnego JSON dla zmian.");
   }
 
   const rawChanges = extractRawChanges(data);
@@ -655,6 +613,7 @@ function parseSentencePatchResponse(text, batchSentences) {
   const originalById = new Map(
     batchSentences.map((sentence) => [sentence.id, sentence.text]),
   );
+
   return rawChanges
     .map(normalizeRawChange)
     .filter(Boolean)
@@ -676,12 +635,11 @@ function estimateBatchCost(pricing, promptTokens, completionTokens) {
 function buildSentencePatchRequest(
   sentences,
   { targetLangName, sourceLangName = "", model },
-  { strictJson = false } = {},
 ) {
   return {
-    label: strictJson ? "patch-recover" : "patch",
+    label: "patch",
     model,
-    maxTokens: Math.min(1400, Math.max(220, 120 + sentences.length * 70)),
+    maxTokens: 320,
     messages: [
       {
         role: "system",
@@ -689,8 +647,7 @@ function buildSentencePatchRequest(
           targetLangName,
           sourceLangName,
           {
-            singleSentence: sentences.length === 1,
-            strictJson,
+            strictJson: true,
           },
         ),
       },
@@ -707,85 +664,33 @@ function buildSentencePatchRequest(
   };
 }
 
-async function generateSentenceBatchWithRecovery(
-  sentences,
-  options,
-  pricing,
-  trace = { batchIdx: 0, strictJson: false },
-) {
-  const didUseStrictJson = trace.strictJson || sentences.length === 1;
-  const request = buildSentencePatchRequest(sentences, options, {
-    strictJson: didUseStrictJson,
-  });
+async function generateSentenceBatch(sentences, options, pricing, batchIdx) {
+  const request = buildSentencePatchRequest(sentences, options);
   const startedAt = Date.now();
   const { text, promptTokens, completionTokens } = await processBatchWithRetry({
     ...request,
-    batchIdx: trace.batchIdx,
+    batchIdx,
     signal: options.signal,
     onActivity: options.onActivity,
   });
-  const ownCost = estimateBatchCost(pricing, promptTokens, completionTokens);
-  const ownElapsedMs = Date.now() - startedAt;
+
+  const cost = estimateBatchCost(pricing, promptTokens, completionTokens);
+  const elapsedMs = Date.now() - startedAt;
 
   try {
     return {
       changes: parseSentencePatchResponse(text, sentences),
-      cost: ownCost,
-      elapsedMs: ownElapsedMs,
+      cost,
+      elapsedMs,
     };
   } catch (error) {
     console.warn(
-      `[Polyglot] patch ${trace.batchIdx + 1} parse fallback for ${sentences.length} zd. (${error.message})`,
+      `[Polyglot] patch ${batchIdx + 1} pomijam odpowiedz (${error.message})`,
     );
-
-    if (sentences.length === 1) {
-      if (!didUseStrictJson) {
-        const retry = await generateSentenceBatchWithRecovery(
-          sentences,
-          options,
-          pricing,
-          {
-            ...trace,
-            strictJson: true,
-          },
-        );
-        return {
-          changes: retry.changes,
-          cost: ownCost + retry.cost,
-          elapsedMs: ownElapsedMs + retry.elapsedMs,
-        };
-      }
-
-      console.warn(
-        `[Polyglot] patch ${trace.batchIdx + 1} pomijam zdanie ${sentences[0]?.id} po nieudanych probach odzyskania JSON`,
-      );
-      return {
-        changes: [],
-        cost: ownCost,
-        elapsedMs: ownElapsedMs,
-      };
-    }
-
-    const middle = Math.ceil(sentences.length / 2);
-    const [left, right] = await Promise.all([
-      generateSentenceBatchWithRecovery(
-        sentences.slice(0, middle),
-        options,
-        pricing,
-        { ...trace, strictJson: true },
-      ),
-      generateSentenceBatchWithRecovery(
-        sentences.slice(middle),
-        options,
-        pricing,
-        { ...trace, strictJson: true },
-      ),
-    ]);
-
     return {
-      changes: [...left.changes, ...right.changes],
-      cost: ownCost + left.cost + right.cost,
-      elapsedMs: ownElapsedMs + left.elapsedMs + right.elapsedMs,
+      changes: [],
+      cost,
+      elapsedMs,
     };
   }
 }
@@ -794,33 +699,36 @@ async function runSentencePatchBatches(batches, options, pricing, onProgress) {
   const startTime = Date.now();
   let totalCost = 0;
   let done = 0;
+  let nextBatchIndex = 0;
   const results = new Array(batches.length);
 
   onProgress?.(0, batches.length, 0, 0);
 
-  const concurrency = 5;
-  for (let index = 0; index < batches.length; index += concurrency) {
-    const chunk = batches.slice(index, index + concurrency);
-    await Promise.all(
-      chunk.map(async (sentences, innerIdx) => {
-        const absoluteIdx = index + innerIdx;
-        const batchResult = await generateSentenceBatchWithRecovery(
-          sentences,
-          options,
-          pricing,
-          {
-            batchIdx: absoluteIdx,
-            strictJson: false,
-          },
-        );
-        totalCost += batchResult.cost;
-        results[absoluteIdx] = batchResult.changes;
-        done += 1;
-        const secs = (Date.now() - startTime) / 1000;
-        onProgress?.(done, batches.length, totalCost, secs);
-      }),
-    );
+  async function workerLoop() {
+    while (true) {
+      const batchIdx = nextBatchIndex;
+      nextBatchIndex += 1;
+      if (batchIdx >= batches.length) return;
+
+      const batchResult = await generateSentenceBatch(
+        batches[batchIdx],
+        options,
+        pricing,
+        batchIdx,
+      );
+      totalCost += batchResult.cost;
+      results[batchIdx] = batchResult.changes;
+      done += 1;
+      const secs = (Date.now() - startTime) / 1000;
+      onProgress?.(done, batches.length, totalCost, secs);
+    }
   }
+
+  await Promise.all(
+    Array.from({ length: Math.min(SENTENCE_CONCURRENCY, batches.length) }, () =>
+      workerLoop(),
+    ),
+  );
 
   return {
     changes: results.flat(),
@@ -829,101 +737,53 @@ async function runSentencePatchBatches(batches, options, pricing, onProgress) {
   };
 }
 
-function buildVerifyBatches(items) {
-  const batches = [];
-  const maxChars = 2400;
-  const maxItems = 10;
-  let current = [];
-  let length = 0;
-
-  for (const item of items) {
-    const markersSize = item.markers.reduce(
-      (sum, marker) => sum + marker.length,
-      0,
-    );
-    const itemSize = item.id.length + item.sourceText.length + markersSize + 64;
-    if (
-      current.length > 0 &&
-      (length + itemSize > maxChars || current.length >= maxItems)
-    ) {
-      batches.push(current);
-      current = [item];
-      length = itemSize;
-    } else {
-      current.push(item);
-      length += itemSize;
-    }
-  }
-
-  if (current.length > 0) batches.push(current);
-  return batches;
-}
-
 async function verifySentenceChangesLocally(
   changes,
   sourceSentences,
-  { targetLangName },
   onProgress,
   progressBase = { cost: 0, secs: 0 },
 ) {
-  void targetLangName;
+  const startedAt = Date.now();
   const sourceById = new Map(
     sourceSentences.map((sentence) => [sentence.id, sentence.text]),
   );
-  const items = changes
-    .map((change) => {
-      const sourceText = sourceById.get(change.id);
-      if (!sourceText) return null;
-      const markers = extractMarkers(change.text).map((marker) =>
-        formatMarker(marker.target, marker.original),
-      );
-      if (!markers.length) return null;
-      return { id: change.id, sourceText, candidateText: change.text, markers };
-    })
-    .filter(Boolean);
-
-  if (!items.length) {
-    return { changes: [], cost: 0, elapsedMs: 0, verified: 0, dropped: 0 };
-  }
-
-  const verifyBatches = buildVerifyBatches(items);
-  const startedAt = Date.now();
   const accepted = new Map();
+  const candidates = changes.filter(
+    (change) => change?.id && sourceById.has(change.id) && change?.text,
+  );
 
   onProgress?.({
     phase: "verify",
     done: 0,
-    total: verifyBatches.length,
+    total: candidates.length,
     cost: progressBase.cost,
     secs: progressBase.secs,
   });
 
-  for (let batchIdx = 0; batchIdx < verifyBatches.length; batchIdx += 1) {
-    const batchItems = verifyBatches[batchIdx];
-    batchItems.forEach((item) => {
-      const normalized = normalizeSentenceChange(
-        item.sourceText,
-        item.candidateText,
-      );
-      if (!normalized.ok) return;
-      accepted.set(item.id, normalized.text);
-    });
+  for (let index = 0; index < candidates.length; index += 1) {
+    const change = candidates[index];
+    const validation = validateSentenceChangeLocally(
+      sourceById.get(change.id),
+      change.text,
+    );
+    if (validation.ok) {
+      accepted.set(change.id, validation.text);
+    }
 
-    const verifySecs = (Date.now() - startedAt) / 1000;
-    onProgress?.({
-      phase: "verify",
-      done: batchIdx + 1,
-      total: verifyBatches.length,
-      cost: progressBase.cost,
-      secs: progressBase.secs + verifySecs,
-    });
-
-    if (batchIdx < verifyBatches.length - 1) {
+    if (index === candidates.length - 1 || (index + 1) % 20 === 0) {
+      const verifySecs = (Date.now() - startedAt) / 1000;
+      onProgress?.({
+        phase: "verify",
+        done: index + 1,
+        total: candidates.length,
+        cost: progressBase.cost,
+        secs: progressBase.secs + verifySecs,
+      });
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
   }
 
-  const dropped = items.filter((item) => !accepted.has(item.id)).length;
+  const dropped = candidates.length - accepted.size;
   if (dropped > 0) {
     console.warn(
       `[Polyglot] Dropped ${dropped} unsafe sentence changes after local verification`,
@@ -947,23 +807,24 @@ async function generateStructuredPolyglot(
   {
     targetLangName,
     sourceLangName = "",
-    model = "deepseek-chat",
+    model = "grok-4-1-fast-non-reasoning",
     signal,
     onActivity,
   },
   onProgress,
 ) {
   const source = buildSentencePatchSource(chapterHtml);
-  if (!source.sentences.length)
+  if (!source.sentences.length) {
     throw new Error(
       "Rozdzial nie zawiera wystarczajacej ilosci tekstu do tlumaczenia.",
     );
+  }
 
   const batches = buildSentenceBatches(source.sentences);
   const pricing = MODEL_PRICING[model] ?? { input: 0, output: 0 };
 
   console.log(
-    `[Polyglot] Start patches: ${batches.length} paczek, ${source.sentences.length} zdan, jezyk: ${targetLangName}, model: ${model}`,
+    `[Polyglot] Start patches: ${batches.length} zdan, jezyk: ${targetLangName}, model: ${model}`,
   );
 
   const {
@@ -995,13 +856,12 @@ async function generateStructuredPolyglot(
   const verified = await verifySentenceChangesLocally(
     rawChanges,
     source.sentences,
-    { targetLangName, sourceLangName, model },
     onProgress,
     { cost, secs: elapsedMs / 1000 },
   );
 
   console.log(
-    `[Polyglot] Verification summary: raw=${rawChanges.length}, accepted=${verified.changes.length}, verified=${verified.verified}, dropped=${verified.dropped}`,
+    `[Polyglot] Verification summary: raw=${rawChanges.length}, accepted=${verified.changes.length}, dropped=${verified.dropped}`,
   );
 
   return {

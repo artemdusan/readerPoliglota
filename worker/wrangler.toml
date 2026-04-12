@@ -19,4 +19,4 @@ enabled = true
 
 # Secrets (set via CLI before deploying):
 #   wrangler secret put JWT_SECRET       (random 64-char string, e.g. openssl rand -hex 32)
-#   wrangler secret put DEEPSEEK_API_KEY (your DeepSeek API key)
+#   wrangler secret put XAI_API_KEY      (your xAI / Grok API key)

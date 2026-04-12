@@ -47,6 +47,13 @@ W ustawieniach workera dodaj zmiennÄ…:
 |---|---|
 | `CORS_ALLOWED_ORIGINS` | `https://reader.stanley2025.uk,http://localhost:5173` |
 
+Sekrety workera:
+
+| Secret | Value |
+|---|---|
+| `JWT_SECRET` | losowy dlugi sekret |
+| `XAI_API_KEY` | klucz API xAI / Grok |
+
 ## 4. Deploy
 
 Każdy push do `main` triggeruje automatyczny build. Pierwsza wizyta na domenie uruchomi sync po kliknięciu "Połącz z Google Drive" w Ustawieniach.

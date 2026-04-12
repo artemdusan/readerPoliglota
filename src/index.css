@@ -959,7 +959,11 @@ html, body, #root {
 }
 
 /* Chapter scroll — always page mode */
-.ch-scroll { flex: 1; overflow: hidden; }
+.ch-scroll {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
 .ch-scroll.page-turning { opacity: 1; }
 .ch-columns { height: 100%; column-gap: 0; will-change: transform; }
 .ch-inner { max-width: 668px; margin: 0 auto; padding: 24px 0 48px; }
@@ -1609,7 +1613,7 @@ html, body, #root {
 }
 .settings-menu-toolbar {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   padding: 0 10px 10px;
 }
@@ -1715,73 +1719,8 @@ html, body, #root {
     width: calc(100vw - 20px);
   }
   .settings-menu-toolbar {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .settings-tool-desktop-only {
-    display: none;
-  }
-}
-
-.shortcuts-panel {
-  position: absolute;
-  right: 16px;
-  top: 52px;
-  z-index: 205;
-  width: min(420px, calc(100% - 24px));
-  max-height: min(78vh, calc(100dvh - 76px));
-  display: flex;
-  flex-direction: column;
-  padding: 14px;
-  overflow: hidden;
-  background: linear-gradient(180deg, #1f1a16, #171411);
-  border: 1px solid rgba(255,255,255,.08);
-  border-radius: 16px;
-  box-shadow: 0 20px 48px rgba(0,0,0,.42);
-}
-.shortcuts-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.shortcuts-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-.shortcuts-grid div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(255,255,255,.02);
-  border: 1px solid rgba(255,255,255,.04);
-}
-.shortcuts-grid span {
-  min-width: 0;
-  font-size: 12px;
-  color: var(--txt-2);
-  text-align: right;
-}
-.shortcuts-grid kbd {
-  padding: 4px 7px;
-  border-radius: 7px;
-  border: 1px solid rgba(192,144,80,.22);
-  background: rgba(192,144,80,.07);
-  color: var(--gold);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 11px;
-  letter-spacing: .04em;
-}
-
-@media (max-width: 720px) {
-  .shortcuts-grid { grid-template-columns: 1fr; }
 }
 
 .lib-footer {

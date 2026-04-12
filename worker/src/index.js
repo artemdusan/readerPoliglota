@@ -1,5 +1,5 @@
 // VocabApp Worker — single-file backend
-// Handles: auth (JWT + PBKDF2), translation proxy (DeepSeek), book sync (D1 + R2)
+// Handles: auth (JWT + PBKDF2), translation proxy (xAI Grok), book sync (D1 + R2)
 //
 // R2 structure per book:
 //   {userId}/{bookId}/meta.json
@@ -79,6 +79,31 @@ function parseBookmarksJson(value) {
 
 function normalizeAuthIdentifier(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function getAiConfig(env) {
+  const apiKey = env.XAI_API_KEY || env.GROK_API_KEY || '';
+  const baseUrl = (env.XAI_API_BASE_URL || 'https://api.x.ai/v1').replace(/\/+$/, '');
+
+  return {
+    apiKey,
+    baseUrl,
+    label: 'xAI Grok',
+  };
+}
+
+function extractAssistantContent(messageContent) {
+  if (typeof messageContent === 'string') return messageContent;
+  if (!Array.isArray(messageContent)) return '';
+
+  return messageContent
+    .map(part => {
+      if (typeof part === 'string') return part;
+      if (typeof part?.text === 'string') return part.text;
+      return '';
+    })
+    .join('')
+    .trim();
 }
 
 // ─── JWT (HMAC-SHA256, stateless) ────────────────────────────────────────────
@@ -246,6 +271,64 @@ async function handleAuthMe(env, userId) {
 }
 
 async function handleTranslate(request, env) {
+  {
+  const payload = await request.clone().json().catch(() => ({}));
+  const model = payload?.model;
+  const messages = payload?.messages;
+  const maxTokens = payload?.max_tokens;
+  if (!model || !Array.isArray(messages)) return err('model i messages sa wymagane');
+
+  const ai = getAiConfig(env);
+  if (!ai.apiKey) return err('XAI_API_KEY nie jest ustawiony', 500);
+
+  const timeoutMs = String(model).includes('reason') ? 90_000 : 45_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let resp;
+  try {
+    resp = await fetch(`${ai.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${ai.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.1,
+        max_tokens: Number(maxTokens) > 0 ? Math.min(4096, Number(maxTokens)) : 4096,
+      }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    const secs = Math.round(timeoutMs / 1000);
+    const msg = e.name === 'AbortError'
+      ? `${ai.label} nie odpowiedzial w czasie (${secs}s) - sproboj ponownie`
+      : `Nie mozna polaczyc z API: ${e.message}`;
+    return err(msg, 502);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => null);
+    const msg = body?.error?.message || body?.error || `HTTP ${resp.status}`;
+    return err(`Blad API (${resp.status}): ${msg}`, 502);
+  }
+
+  let data;
+  try {
+    data = await resp.json();
+  } catch (e) {
+    return err('Nieprawidlowa odpowiedz z API (nie JSON)', 502);
+  }
+
+  const content = extractAssistantContent(data?.choices?.[0]?.message?.content);
+  if (!content) return err('API zwrocilo pusta odpowiedz', 502);
+
+  return json({ content, usage: data.usage });
+  }
   const { model, messages, max_tokens } = await request.json().catch(() => ({}));
   if (!model || !Array.isArray(messages)) return err('model i messages są wymagane');
 
@@ -522,6 +605,28 @@ async function handleUpsertProgress(request, env, userId, bookId) {
 // ─── HEALTH CHECK ────────────────────────────────────────────────────────────
 
 async function handleHealth(env) {
+  {
+  const ai = getAiConfig(env);
+  if (!ai.apiKey) return err('XAI_API_KEY nie jest ustawiony', 500);
+
+  let resp;
+  try {
+    resp = await fetch(`${ai.baseUrl}/models`, {
+      headers: { 'Authorization': `Bearer ${ai.apiKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (e) {
+    return err(`Nie mozna polaczyc z ${ai.label}: ${e.message}`, 502);
+  }
+
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => null);
+    const msg = body?.error?.message || `HTTP ${resp.status}`;
+    return err(`Blad ${ai.label} API (${resp.status}): ${msg}`, 502);
+  }
+
+  return json({ ok: true, provider: ai.label, status: resp.status });
+  }
   if (!env.DEEPSEEK_API_KEY) return err('DEEPSEEK_API_KEY nie jest ustawiony', 500);
 
   let resp;
