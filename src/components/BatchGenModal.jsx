@@ -19,7 +19,10 @@ function getBatchChapterConcurrency(requestConcurrency, chapterCount) {
   if (!chapters) return 1;
   return Math.max(
     1,
-    Math.min(chapters, Math.floor(MAX_PARALLEL_BATCH_REQUESTS / perChapterRequests)),
+    Math.min(
+      chapters,
+      Math.floor(MAX_PARALLEL_BATCH_REQUESTS / perChapterRequests),
+    ),
   );
 }
 
@@ -41,7 +44,8 @@ export default function BatchGenModal({
   onClose,
 }) {
   const [selectedLang, setSelectedLang] = useState(() => {
-    const code = localStorage.getItem("vocabapp:lastLang") || settings.targetLang;
+    const code =
+      localStorage.getItem("vocabapp:lastLang") || settings.targetLang;
     return LANGUAGES.find((l) => l.code === code) ?? LANGUAGES[0];
   });
   const [chapters, setChapters] = useState([]);
@@ -260,7 +264,12 @@ export default function BatchGenModal({
     refreshProgress();
     await Promise.all(
       Array.from(
-        { length: getBatchChapterConcurrency(requestConcurrency, toGenerate.length) },
+        {
+          length: getBatchChapterConcurrency(
+            requestConcurrency,
+            toGenerate.length,
+          ),
+        },
         () => workerLoop(),
       ),
     );
@@ -280,7 +289,7 @@ export default function BatchGenModal({
     >
       <div className="modal bgen-modal">
         <div className="modal-head">
-          <div className="modal-title">Generuj tłumaczenia — {book?.title}</div>
+          <div className="modal-title">Generuj tłumaczenia</div>
           <button
             className="modal-close"
             onClick={onClose}
@@ -335,17 +344,13 @@ export default function BatchGenModal({
                       </option>
                     ))}
                   </select>
-                  <p className="bgen-setup-hint">
-                    Mniejsze paczki są ostrożniejsze, większe zwykle szybsze i
-                    tańsze.
-                  </p>
                 </div>
               </div>
 
               <div className="bgen-info">
                 <span>
-                  Wybrane: <strong>{toGenerate.length}</strong> / {chapters.length}{" "}
-                  rozdziałów
+                  Wybrane: <strong>{toGenerate.length}</strong> /{" "}
+                  {chapters.length} rozdziałów
                 </span>
                 <span className="bgen-sep">·</span>
                 <span>
@@ -439,7 +444,7 @@ export default function BatchGenModal({
                         ? "zapytania"
                         : "zapytań"}
                   </span>
-                  <span className="bgen-sep">Â·</span>
+                  <span className="bgen-sep">·</span>
                   <span>
                     Czas: <strong>{fmtTime(timeSec)}</strong>
                   </span>
