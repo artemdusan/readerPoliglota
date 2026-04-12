@@ -116,10 +116,11 @@ export default function Library({
   const fileInputRef = useRef(null);
 
   useEffect(
-    () => onAuthChange((loggedIn, nextUsername) => {
-      setCfConnected(loggedIn);
-      setAccountName(nextUsername);
-    }),
+    () =>
+      onAuthChange((loggedIn, nextUsername) => {
+        setCfConnected(loggedIn);
+        setAccountName(nextUsername);
+      }),
     [],
   );
 
@@ -137,6 +138,7 @@ export default function Library({
     return () => document.removeEventListener("click", close);
   }, [ctxBookId]);
 
+  // Drag & Drop dla całego okna
   useEffect(() => {
     let dragDepth = 0;
 
@@ -359,10 +361,69 @@ export default function Library({
   return (
     <div className="lib-layout">
       <header className="lib-header">
-        <div className="wordmark">
-          <em>Reader</em>
-        </div>
+        <div className="lib-sync-strip lib-header-sync">
+          <div className="lib-sync-main">
+            <div className={`lib-sync-state ${syncTone}`}>
+              <span className={`lib-sync-dot ${syncTone}`} aria-hidden="true" />
+              <span>{syncTitle}</span>
+            </div>
+            <div className="lib-sync-meta">
+              {cfConnected && accountName && (
+                <span className="lib-sync-account">Konto: {accountName}</span>
+              )}
+              <span>{syncMetaText}</span>
+            </div>
+          </div>
 
+          <div className="lib-sync-actions">
+            <button
+              className="btn-ghost lib-sync-settings-btn lib-sync-action-btn"
+              onClick={onOpenSettings}
+            >
+              Konto
+            </button>
+            <button
+              className={`ctl lib-sync-action-btn ${isSyncing ? "ctl-active" : ""}`}
+              onClick={handleSyncButton}
+              disabled={isSyncing}
+            >
+              {cfConnected
+                ? isSyncing
+                  ? "Synchronizowanie..."
+                  : "Synchronizuj teraz"
+                : "Połącz konto"}
+            </button>
+          </div>
+
+          {isSyncing && syncProgress && (
+            <div className="lib-sync-progress">
+              <div className="lib-sync-progress-track">
+                <div
+                  className="lib-sync-progress-fill"
+                  style={{
+                    width:
+                      syncProgress.total > 0
+                        ? `${(syncProgress.done / syncProgress.total) * 100}%`
+                        : "0%",
+                  }}
+                />
+              </div>
+              <div className="lib-sync-progress-label">
+                {syncProgress.done} / {syncProgress.total}
+              </div>
+            </div>
+          )}
+
+          {cfConnected && syncResult && !isSyncing && (
+            <div
+              className={`lib-sync-feedback ${syncResult.error ? "is-error" : "is-success"}`}
+            >
+              {syncResult.error
+                ? `Błąd synchronizacji: ${syncResult.error}`
+                : `Zsynchronizowano ${syncResult.synced} elementów · ↑ ${formatTransfer(syncResult.sentBytes, syncResult.sentMB)} · ↓ ${formatTransfer(syncResult.receivedBytes, syncResult.receivedMB)}`}
+            </div>
+          )}
+        </div>
       </header>
 
       <input
@@ -405,15 +466,21 @@ export default function Library({
               )}
             </div>
 
+            {/* Drugi pasek synchronizacji w toolbarze – zostawiłem, jeśli jest potrzebny */}
             <div className="lib-sync-strip">
               <div className="lib-sync-main">
                 <div className={`lib-sync-state ${syncTone}`}>
-                  <span className={`lib-sync-dot ${syncTone}`} aria-hidden="true" />
+                  <span
+                    className={`lib-sync-dot ${syncTone}`}
+                    aria-hidden="true"
+                  />
                   <span>{syncTitle}</span>
                 </div>
                 <div className="lib-sync-meta">
                   {cfConnected && accountName && (
-                    <span className="lib-sync-account">Konto: {accountName}</span>
+                    <span className="lib-sync-account">
+                      Konto: {accountName}
+                    </span>
                   )}
                   <span>{syncMetaText}</span>
                 </div>
@@ -529,7 +596,7 @@ export default function Library({
                     }}
                     title="Menu książki"
                   >
-                    ⋯
+                    ⋮
                   </button>
 
                   {ctxBookId === book.id && (

@@ -72,7 +72,9 @@ export default function ReaderChapterContent({
             <>
               {polyMode && polyState === "confirm" && (
                 <div className="poly-confirm ch-anim">
-                  <p className="poly-confirm-title">Wybierz język tłumaczenia</p>
+                  <p className="poly-confirm-title">
+                    Wybierz język tłumaczenia
+                  </p>
                   <div className="poly-confirm-config">
                     <div className="poly-confirm-field">
                       <span className="poly-confirm-field-label">
@@ -94,12 +96,16 @@ export default function ReaderChapterContent({
                     </div>
 
                     <div className="poly-confirm-field">
-                      <span className="poly-confirm-field-label">Paczka AI</span>
+                      <span className="poly-confirm-field-label">
+                        Paczka AI
+                      </span>
                       <select
                         className="form-select"
                         value={sentencesPerRequest ?? 4}
                         onChange={(event) =>
-                          onSentencesPerRequestChange?.(Number(event.target.value))
+                          onSentencesPerRequestChange?.(
+                            Number(event.target.value),
+                          )
                         }
                       >
                         {batchOptions.map((option) => (
@@ -138,10 +144,7 @@ export default function ReaderChapterContent({
                       </>
                     )}
                   </p>
-                  <p className="poly-confirm-hint">
-                    Mniejsze paczki są ostrożniejsze, większe zwykle szybsze i
-                    tańsze.
-                  </p>
+
                   <p className="poly-confirm-hint">
                     Nie zamykaj strony i nie zmieniaj rozdziału.
                   </p>
@@ -172,7 +175,9 @@ export default function ReaderChapterContent({
                         />
                       </div>
                       <div className="poly-gen-stats">
-                        {polyDisplaySecs > 0 && <span>{polyDisplaySecs.toFixed(1)}s</span>}
+                        {polyDisplaySecs > 0 && (
+                          <span>{polyDisplaySecs.toFixed(1)}s</span>
+                        )}
                         {polyProgress.cost > 0 ? (
                           <span>~${polyProgress.cost.toFixed(4)}</span>
                         ) : (
@@ -185,10 +190,7 @@ export default function ReaderChapterContent({
                     Nie zamykaj strony i nie zmieniaj rozdziału do końca
                     generowania.
                   </p>
-                  <p className="poly-loading-hint">
-                    Ekran pozostaje aktywny podczas generowania. Jeśli API utknie
-                    bez postępu, aplikacja automatycznie ponowi próbę.
-                  </p>
+
                   {polyRescueNote && (
                     <p
                       className="poly-loading-hint"
