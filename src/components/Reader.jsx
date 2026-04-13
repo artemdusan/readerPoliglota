@@ -1836,10 +1836,7 @@ export default function Reader({
         tooltipRect.width - 10,
       );
 
-      pw.style.setProperty(
-        "--pw-tooltip-left",
-        `${clampedLeft - pwRect.left}px`,
-      );
+      pw.style.setProperty("--pw-tooltip-left", `${clampedLeft - pwRect.left}px`);
       pw.style.setProperty("--pw-tooltip-top", `${clampedTop - pwRect.top}px`);
       pw.style.setProperty("--pw-tooltip-arrow-left", `${arrowLeft}px`);
       pw.dataset.tooltipPlacement =

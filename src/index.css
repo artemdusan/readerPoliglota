@@ -1269,13 +1269,12 @@ html, body, #root {
 }
 .pw:hover .pw-target { background: rgba(192,144,80,.22); }
 
-/* Tooltip popup above the word */
+/* Tooltip popup */
 .pw-original {
   display: none;
   position: absolute;
-  bottom: calc(100% + 7px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: var(--pw-tooltip-left, 50%);
+  top: var(--pw-tooltip-top, auto);
   background: #1c1916;
   border: 1px solid rgba(192,144,80,.45);
   border-radius: 5px;
@@ -1293,15 +1292,7 @@ html, body, #root {
   line-height: 1.5;
   letter-spacing: .01em;
 }
-/* Triangle arrow */
-.pw-original::after {
-  content: '';
-  position: absolute;
-  left: var(--pw-tooltip-arrow-left, 50%);
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-top-color: rgba(192,144,80,.45);
-}
+[data-tooltip-pending] .pw-original { opacity: 0; }
 
 .pw.open .pw-original { display: block; }
 .pw.open .pw-target { background: rgba(192,144,80,.22); border-bottom-color: rgba(192,144,80,.5); }
