@@ -559,6 +559,7 @@ export default function Library({
                         </button>
                         {settings && (
                           <button
+                            className="book-ctx-primary"
                             onClick={() => {
                               setBatchBook(book);
                               setCtxBookId(null);
