@@ -310,7 +310,7 @@ export default function BatchGenModal({
             <>
               <div className="bgen-setup-grid">
                 <div className="bgen-setup-card">
-                  <span className="bgen-setup-label">Język tłumaczenia</span>
+                  <span className="bgen-setup-label">Język</span>
                   <select
                     className="form-select"
                     value={selectedLang.code}
