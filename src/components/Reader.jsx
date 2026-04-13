@@ -1192,6 +1192,10 @@ export default function Reader({
     clearPageTurnState();
     userChangedLangRef.current = true;
     pendingProgressRef.current = getCurrentProgress();
+    // Force ch-columns to remount on mode switch to bust stale GPU compositing layer.
+    // will-change:transform promotes ch-columns to its own GPU layer; after a DOM
+    // content swap the layer texture may not refresh until a user interaction.
+    animKeyRef.current += 1;
     // Reset audio when switching language — old audio/marks belong to the previous version
     stopOriginalTts();
     setOriginalHtmlAnnotated("");

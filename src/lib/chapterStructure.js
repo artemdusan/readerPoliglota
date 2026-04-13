@@ -221,10 +221,21 @@ function annotateReadableBlocks(root, blocks, doc) {
   });
 }
 
+function stripInlineColors(root) {
+  if (!root?.querySelectorAll) return;
+  [root, ...root.querySelectorAll("*")].forEach((node) => {
+    if (!node?.style) return;
+    node.style.removeProperty("color");
+    node.style.removeProperty("background-color");
+    cleanupEmptyStyleAttribute(node);
+  });
+}
+
 export function annotateOriginalChapterHtml(html, lang = "en") {
   if (!html) return { html, fragments: [], sentences: [] };
 
   const doc = new DOMParser().parseFromString(html, "text/html");
+  stripInlineColors(doc.body);
   const structure = buildChapterStructureFromRoot(doc.body, lang);
   annotateReadableBlocks(doc.body, structure.blocks, doc);
 
