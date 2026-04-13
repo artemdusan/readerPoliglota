@@ -476,8 +476,14 @@ html, body, #root {
   justify-content: center;
 }
 
-.lib-add-book-icon {
-  background: rgba(12,11,9,.24);
+.lib-btn-icon {
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.lib-btn-label {
+  white-space: nowrap;
 }
 
 .lib-sync-feedback {
@@ -2114,14 +2120,43 @@ html, body, #root {
     border-radius: 18px;
   }
 
+  .lib-sync-main {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
   .lib-sync-meta {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: flex-end;
+    gap: 2px;
   }
 
   .lib-sync-account {
     padding-right: 0;
     border-right: none;
+  }
+
+  .lib-sync-meta-text {
+    font-size: 10px;
+  }
+
+  .lib-sync-actions {
+    flex-wrap: nowrap;
+  }
+
+  .lib-sync-actions > * {
+    flex: 1 1 0;
+  }
+
+  .lib-btn-label {
+    display: none;
+  }
+
+  .lib-add-book-btn {
+    min-width: 0;
+    width: auto;
   }
 
   .lib-grid {

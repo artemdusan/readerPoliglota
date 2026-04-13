@@ -124,6 +124,7 @@ export default function Library({
     const value = localStorage.getItem("vocabapp:lastSync");
     return value ? Number(value) : null;
   });
+  const [showFeedback, setShowFeedback] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(
@@ -141,6 +142,13 @@ export default function Library({
   }, []);
 
   useEffect(() => subscribeSyncActivity(setSyncActivity), []);
+
+  useEffect(() => {
+    if (!syncActivity.result) return;
+    setShowFeedback(true);
+    const t = setTimeout(() => setShowFeedback(false), 4000);
+    return () => clearTimeout(t);
+  }, [syncActivity.result]);
 
   useEffect(() => {
     if (!ctxBookId) return;
@@ -395,33 +403,37 @@ export default function Library({
 
           {/* Przyciski akcji */}
           <div className="lib-sync-actions">
-            <button className="lib-sync-action-btn" onClick={onOpenSettings}>
-              Konto
+            <button className="lib-sync-action-btn" onClick={onOpenSettings} title="Konto">
+              <span className="lib-btn-icon" aria-hidden="true">⚙</span>
+              <span className="lib-btn-label">Konto</span>
             </button>
 
             <button
               className={`lib-sync-action-btn ${isSyncing ? "is-syncing" : ""}`}
               onClick={handleSyncButton}
               disabled={isSyncing}
+              title={cfConnected ? "Synchronizuj teraz" : "Połącz konto"}
             >
-              {cfConnected
-                ? isSyncing
-                  ? "Synchronizowanie…"
-                  : "Synchronizuj teraz"
-                : "Połącz konto"}
+              <span className="lib-btn-icon" aria-hidden="true">↺</span>
+              <span className="lib-btn-label">
+                {cfConnected
+                  ? isSyncing
+                    ? "Synchronizowanie…"
+                    : "Synchronizuj teraz"
+                  : "Połącz konto"}
+              </span>
             </button>
 
-            {/* Przycisk dodawania książki zawsze widoczny w headerze */}
             <button
               className="lib-sync-action-btn lib-add-book-btn"
               onClick={() => fileInputRef.current?.click()}
               disabled={adding}
               title="Dodaj książkę"
             >
-              <span className="lib-add-book-icon" aria-hidden="true">
+              <span className="lib-btn-icon" aria-hidden="true">
                 {adding ? "…" : "+"}
               </span>
-              Dodaj książkę
+              <span className="lib-btn-label">Dodaj książkę</span>
             </button>
           </div>
 
@@ -443,7 +455,7 @@ export default function Library({
           )}
 
           {/* Feedback po synchronizacji */}
-          {cfConnected && syncResult && !isSyncing && (
+          {cfConnected && syncResult && !isSyncing && showFeedback && (
             <div
               className={`lib-sync-feedback ${syncResult.error ? "is-error" : "is-success"}`}
             >
