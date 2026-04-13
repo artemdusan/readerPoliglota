@@ -1892,7 +1892,7 @@ html, body, #root {
 .bgen-modal { width: min(640px, 100%); }
 
 .modal-foot {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
   padding: 18px 28px;
   border-top: 1px solid var(--border-soft);
   flex-shrink: 0;
@@ -2372,29 +2372,11 @@ html, body, #root {
   transition: width .2s ease;
 }
 
-/* ════════════════ IMPORT DIALOG ════════════════ */
+/* ════════════════ IMPORT COVER ════════════════ */
 
-.import-dialog {
-  background: #161412;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  width: min(540px, 100%);
-  box-shadow: 0 20px 60px rgba(0,0,0,.7);
-  display: flex; flex-direction: column;
-}
-.import-dialog-title {
-  font-family: 'EB Garamond', serif;
-  font-size: 22px; color: var(--txt-1);
-  padding: 22px 28px 18px;
-  border-bottom: 1px solid var(--border-soft);
-}
-.import-dialog-body {
-  display: flex; gap: 24px;
-  padding: 24px 28px;
-}
-.import-dialog-body.is-metadata-only {
-  display: block;
-}
+.import-cover-row { display: flex; gap: 24px; }
+.form-fields { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+
 .import-cover {
   position: relative;
   flex-shrink: 0;
@@ -2416,37 +2398,6 @@ html, body, #root {
   opacity: 0; transition: opacity .15s;
 }
 .import-cover:hover .import-cover-hint { opacity: 1; }
-
-.import-fields {
-  flex: 1; display: flex; flex-direction: column; gap: 14px;
-}
-.import-field {
-  display: flex; flex-direction: column; gap: 5px;
-}
-.import-field span {
-  font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--txt-3);
-}
-.import-field input,
-.import-field select {
-  background: var(--bg-side);
-  border: 1px solid var(--border-soft);
-  border-radius: 4px;
-  color: var(--txt-1);
-  font-size: 14px;
-  padding: 7px 10px;
-  outline: none;
-  transition: border-color .15s;
-}
-.import-field input:focus,
-.import-field select:focus { border-color: var(--gold); }
-.import-field select { cursor: pointer; }
-
-.import-dialog-footer {
-  display: flex; justify-content: flex-end; gap: 10px;
-  padding: 18px 28px;
-  border-top: 1px solid var(--border-soft);
-}
 
 @media (max-width: 900px) {
   .lib-header,
