@@ -127,13 +127,6 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                   <button className="btn-ghost" onClick={logout}>
                     Wyloguj
                   </button>
-                  <button
-                    className="btn-ghost"
-                    onClick={handleManualSync}
-                    disabled={isSyncing}
-                  >
-                    {isSyncing ? "Synchronizowanie..." : "Synchronizuj teraz"}
-                  </button>
                 </div>
 
                 {accountName && (
@@ -163,16 +156,6 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                       {syncProgress.done} / {syncProgress.total}
                     </p>
                   </div>
-                )}
-
-                {syncResult && !isSyncing && (
-                  <p
-                    className={`settings-inline-note ${syncResult.error ? "is-error" : ""}`}
-                  >
-                    {syncResult.error
-                      ? `Błąd synchronizacji: ${syncResult.error}`
-                      : `Zsynchronizowano ${syncResult.synced} elementów · ↑ ${formatTransfer(syncResult.sentBytes, syncResult.sentMB)} · ↓ ${formatTransfer(syncResult.receivedBytes, syncResult.receivedMB)}`}
-                  </p>
                 )}
               </>
             ) : (
@@ -254,7 +237,10 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
               className="form-select"
               value={settings.syncIntervalMinutes ?? 30}
               onChange={(event) =>
-                onUpdateSetting("syncIntervalMinutes", Number(event.target.value))
+                onUpdateSetting(
+                  "syncIntervalMinutes",
+                  Number(event.target.value),
+                )
               }
             >
               {SYNC_INTERVAL_OPTIONS.map((option) => (

@@ -395,10 +395,7 @@ export default function Library({
 
           {/* Przyciski akcji */}
           <div className="lib-sync-actions">
-            <button
-              className="lib-sync-action-btn"
-              onClick={onOpenSettings}
-            >
+            <button className="lib-sync-action-btn" onClick={onOpenSettings}>
               Konto
             </button>
 
@@ -548,15 +545,6 @@ export default function Library({
                         className="book-ctx-menu"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <button
-                          className="book-ctx-primary"
-                          onClick={() => {
-                            onOpenBook(book.id);
-                            setCtxBookId(null);
-                          }}
-                        >
-                          Otwórz książkę
-                        </button>
                         {settings && (
                           <button
                             className="book-ctx-primary"
@@ -565,7 +553,7 @@ export default function Library({
                               setCtxBookId(null);
                             }}
                           >
-                            {settings.targetLangFlag} Generuj tłumaczenia
+                            Generuj tłumaczenia
                           </button>
                         )}
                         <button
@@ -574,7 +562,7 @@ export default function Library({
                             setCtxBookId(null);
                           }}
                         >
-                          Edytuj metadane
+                          Edytuj
                         </button>
                         <button
                           className="book-ctx-delete"
@@ -583,7 +571,7 @@ export default function Library({
                             setCtxBookId(null);
                           }}
                         >
-                          Usuń z biblioteki
+                          Usuń
                         </button>
                       </div>
                     )}
