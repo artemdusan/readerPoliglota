@@ -876,39 +876,43 @@ html, body, #root {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 28px;
-  background: var(--gold);
-  color: #0c0b09;
-  border: none;
-  border-radius: 4px;
+  min-height: 44px;
+  padding: 0 22px;
+  background: rgba(192,144,80,.10);
+  color: var(--gold);
+  border: 1px solid rgba(192,144,80,.4);
+  border-radius: 14px;
   font-family: 'DM Sans', sans-serif;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: .1em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: background .15s, transform .1s;
+  transition: border-color .16s ease, background .16s ease, color .16s ease;
 }
-.btn-primary:hover { background: var(--gold-hi); }
+.btn-primary:hover { border-color: var(--gold); background: rgba(192,144,80,.18); color: var(--gold-hi); }
 .btn-primary:active { transform: scale(.98); }
+.btn-primary:disabled { opacity: .45; cursor: default; }
 
 .btn-ghost {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 9px 20px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 3px;
+  min-height: 44px;
+  padding: 0 22px;
+  background: rgba(255,255,255,.02);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 14px;
   color: var(--txt-2);
   font-family: 'DM Sans', sans-serif;
   font-size: 12px;
-  letter-spacing: .1em;
+  font-weight: 500;
+  letter-spacing: .08em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: border-color .15s, color .15s;
+  transition: border-color .16s ease, background .16s ease, color .16s ease;
 }
-.btn-ghost:hover { border-color: var(--txt-2); color: var(--txt-1); }
+.btn-ghost:hover { border-color: rgba(212,168,98,.42); background: rgba(212,168,98,.09); color: #f5eadc; }
 
 .ctl {
   height: 28px; min-width: 28px; padding: 0 7px;
