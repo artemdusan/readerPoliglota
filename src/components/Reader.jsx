@@ -219,6 +219,7 @@ export default function Reader({
   const [ttsSourceVoice, setTtsSourceVoice] = useState(""); // stable voice id
   const [ttsTargetVoice, setTtsTargetVoice] = useState(""); // stable voice id
   const [voiceLoadState, setVoiceLoadState] = useState("loading");
+  const [ttsErrorToast, setTtsErrorToast] = useState(false);
 
   const clearPageTurnState = useCallback(() => {
     if (pageTurnTimerRef.current) {
@@ -1471,6 +1472,11 @@ export default function Reader({
     window.speechSynthesis?.cancel();
   }
 
+  function showTtsUnsupportedToast() {
+    setTtsErrorToast(true);
+    setTimeout(() => setTtsErrorToast(false), 4000);
+  }
+
   function pauseTtsForManualPageTurn() {
     if (originalTtsPlaying || originalTtsPaused) {
       originalTtsPlayerRef.current?.pause();
@@ -1540,6 +1546,14 @@ export default function Reader({
           });
         }
       },
+      onError: () => {
+        setOriginalTtsPlaying(false);
+        setOriginalTtsPaused(false);
+        setActiveSid(-1);
+        activeSidRef.current = -1;
+        clearSentenceHighlight();
+        showTtsUnsupportedToast();
+      },
     });
 
     originalTtsPlayerRef.current = player;
@@ -1605,6 +1619,13 @@ export default function Reader({
             navigate(chapterIdx + 1);
           });
         }
+      },
+      onError: () => {
+        setTtsPlaying(false);
+        setTtsPaused(false);
+        setActivePolyPid(-1);
+        clearSentenceHighlight();
+        showTtsUnsupportedToast();
       },
     });
     ttsPlayerRef.current = player;
@@ -2128,6 +2149,12 @@ export default function Reader({
         languageMeta={LANGUAGE_META}
         languageOrder={LANGUAGE_ORDER}
       />
+
+      {ttsErrorToast && (
+        <div className="tts-error-toast">
+          TTS nie jest obsługiwane w tej przeglądarce
+        </div>
+      )}
 
       {/* ── Main content ── */}
       <div className="reader-main">

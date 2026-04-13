@@ -8,17 +8,19 @@ function extractPolyglotTtsData(polyHtml) {
 }
 
 export class SentenceTtsPlayer {
-  constructor({ fragments, lang, voice, onSentence, onDone }) {
+  constructor({ fragments, lang, voice, onSentence, onDone, onError }) {
     this.fragments = fragments;
     this.lang = lang;
     this.voice = voice || null;
     this.onSentence = onSentence;
     this.onDone = onDone;
+    this.onError = onError;
     this._stopped = false;
     this._paused = false;
     this._needsRestartOnResume = false;
     this._sid = 0;
     this._utteranceToken = 0;
+    this._consecutiveErrors = 0;
   }
 
   play(fromSid = 0, stopAfterSid = Infinity) {
@@ -98,11 +100,18 @@ export class SentenceTtsPlayer {
     if (this.voice) utt.voice = this.voice;
     utt.onend = () => {
       if (this._stopped || utteranceToken !== this._utteranceToken) return;
+      this._consecutiveErrors = 0;
       this._sid++;
       this._next();
     };
     utt.onerror = () => {
       if (this._stopped || utteranceToken !== this._utteranceToken) return;
+      this._consecutiveErrors++;
+      if (this._consecutiveErrors >= 3) {
+        this.stop();
+        this.onError?.();
+        return;
+      }
       this._sid++;
       this._next();
     };
