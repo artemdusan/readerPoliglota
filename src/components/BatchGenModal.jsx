@@ -530,6 +530,11 @@ export default function BatchGenModal({
         </div>
 
         <div className="modal-foot">
+          {!generating && !done && (
+            <button className="btn-ghost" onClick={onClose}>
+              Anuluj
+            </button>
+          )}
           {!done ? (
             <button
               className="btn-primary"
@@ -543,11 +548,6 @@ export default function BatchGenModal({
           ) : (
             <button className="btn-primary" onClick={onClose}>
               Zamknij
-            </button>
-          )}
-          {!generating && (
-            <button className="btn-ghost" onClick={onClose}>
-              Anuluj
             </button>
           )}
         </div>
