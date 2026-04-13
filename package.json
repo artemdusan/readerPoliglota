@@ -6,11 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "clean": "npm run clean:knip",
+    "clean": "npm run clean:knip && npm run clean:css",
     "clean:knip": "knip --fix",
-    "clean:src-css": "node clean-css.js --src",
-    "clean:css": "npm run build && node clean-css.js",
-    "clean:dist": "node --eval \"import('node:fs').then(m=>m.rmSync('dist',{recursive:true,force:true}))\"",
+    "clean:css": "node clean-css.js --src",
     "preview": "vite preview",
     "prepare": "git config core.hooksPath .githooks"
   },

@@ -1178,7 +1178,6 @@ html, body, #root {
   flex: 1;
   overflow: hidden;
 }
-.ch-scroll.page-turning { opacity: 1; }
 .ch-columns { height: 100%; column-gap: 0; will-change: transform; }
 .ch-inner { max-width: 668px; margin: 0 auto; padding: 24px 0 48px; }
 .ch-body p:empty { display: none; }

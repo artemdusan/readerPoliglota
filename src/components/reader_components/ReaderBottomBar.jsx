@@ -29,7 +29,7 @@ export default function ReaderBottomBar({
         onClick={onPrevPage}
         disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
       >
-        ←
+        ❮
       </button>
 
       {originalTtsPlaying ? (
@@ -128,7 +128,7 @@ export default function ReaderBottomBar({
           currentPage >= totalPages - 1 && (chapterIdx ?? 0) >= chapterCount - 1
         }
       >
-        →
+        ❯
       </button>
     </div>
   );

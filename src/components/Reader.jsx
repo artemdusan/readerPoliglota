@@ -197,6 +197,7 @@ export default function Reader({
   const settingsMenuRef = useRef(null);
   const settingsToggleRef = useRef(null);
   const ttsPagePauseModeRef = useRef(null);
+  const swipeTouchStartXRef = useRef(null);
 
   useWakeLock(Boolean(bookId));
 
@@ -967,10 +968,10 @@ export default function Reader({
     void persistPosition({ immediate: true, activeLang });
   }, [activeLang, bookId, persistPosition]);
 
-  /* ── Page navigation with Kindle flash ── */
+  /* ── Page navigation ── */
   function goToPage(page, options = {}) {
-    const { animate = true, pauseTts = false } =
-      typeof options === "boolean" ? { animate: options } : options;
+    const { pauseTts = false } =
+      typeof options === "boolean" ? {} : options;
     const inner = chInnerRef.current;
     const container = chScrollRef.current;
     if (!inner || !container) return;
@@ -980,28 +981,11 @@ export default function Reader({
     clearPageTurnState();
     if (pauseTts) pauseTtsForManualPageTurn();
 
-    if (animate) {
-      flippingRef.current = true;
-      container.classList.add("page-turning");
-      pageTurnTimerRef.current = window.setTimeout(() => {
-        pageTurnTimerRef.current = null;
-        if (!chInnerRef.current || !chScrollRef.current) {
-          clearPageTurnState();
-          return;
-        }
-        chInnerRef.current.style.transition = "";
-        syncPageViewport(clampedPage);
-        setCurrentPage(clampedPage);
-        currentPageRef.current = clampedPage;
-        clearPageTurnState();
-        persistPosition();
-      }, 90);
-    } else {
-      inner.style.transition = "";
-      syncPageViewport(clampedPage);
-      setCurrentPage(clampedPage);
-      currentPageRef.current = clampedPage;
-    }
+    inner.style.transition = "";
+    syncPageViewport(clampedPage);
+    setCurrentPage(clampedPage);
+    currentPageRef.current = clampedPage;
+    persistPosition();
   }
 
   function prevPage() {
@@ -1021,6 +1005,34 @@ export default function Reader({
     goToPage(currentPageRef.current + 1, { pauseTts: true });
   }
 
+  /* ── Swipe left/right to navigate pages ── */
+  const prevPageRef = useRef(prevPage);
+  const nextPageRef = useRef(nextPage);
+  prevPageRef.current = prevPage;
+  nextPageRef.current = nextPage;
+
+  useEffect(() => {
+    const el = chScrollRef.current;
+    if (!el) return;
+    function onTouchStart(e) {
+      swipeTouchStartXRef.current = e.touches[0].clientX;
+    }
+    function onTouchEnd(e) {
+      if (swipeTouchStartXRef.current === null) return;
+      const dx = e.changedTouches[0].clientX - swipeTouchStartXRef.current;
+      swipeTouchStartXRef.current = null;
+      if (Math.abs(dx) < 50) return;
+      if (dx > 0) prevPageRef.current();
+      else nextPageRef.current();
+    }
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
+
   function goToSearchMatch(index) {
     if (!searchMatches.length) return;
     const nextIndex =
@@ -1032,7 +1044,7 @@ export default function Reader({
     );
 
     if (target) {
-      goToPage(getElementPage(target), { animate: false, pauseTts: true });
+      goToPage(getElementPage(target), { pauseTts: true });
     }
 
     setActiveSearchIdx(nextIndex);
@@ -1093,7 +1105,6 @@ export default function Reader({
 
     if (bookmark.chapterIndex === chapterIdx) {
       goToPage(getBookmarkPageIndex(bookmark, totalPagesRef.current), {
-        animate: false,
         pauseTts: true,
       });
       void persistPosition({ immediate: true, progress: bookmark.progress });
@@ -1246,7 +1257,7 @@ export default function Reader({
   function handlePageSliderChange(e) {
     const nextPage = Number(e.target.value);
     if (!Number.isFinite(nextPage)) return;
-    goToPage(nextPage, { animate: false });
+    goToPage(nextPage);
     void persistPosition();
   }
 
