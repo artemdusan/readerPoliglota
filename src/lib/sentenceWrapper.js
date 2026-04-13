@@ -18,7 +18,7 @@ export function annotateParagraphsInHtml(html, lang = "en") {
 /**
  * Backward-compatible sentence extraction built on top of the shared structure.
  */
-export function annotateSentencesInHtml(html, lang = "en") {
+function annotateSentencesInHtml(html, lang = "en") {
   const { html: annotatedHtml, sentences } = annotateOriginalChapterHtml(
     html,
     lang,
@@ -35,7 +35,7 @@ export function annotateSentencesInHtml(html, lang = "en") {
   };
 }
 
-export function buildSentenceFragmentsFromHtml(html, lang = "en") {
+function buildSentenceFragmentsFromHtml(html, lang = "en") {
   return buildChapterStructure(html, lang).sentences.map((sentence, index) => ({
     id: index,
     sentenceId: sentence.id,

@@ -12,7 +12,7 @@ db.version(6).stores({
 
 // ─── Pending sync helpers ─────────────────────────────────────────────────────
 
-export async function markChapterMetaPending(chapterId) {
+async function markChapterMetaPending(chapterId) {
   const ch = await db.chapters.get(chapterId);
   if (!ch) return;
   const pending = ch.pendingSync ?? { meta: false, langs: [] };
@@ -22,7 +22,7 @@ export async function markChapterMetaPending(chapterId) {
   });
 }
 
-export async function markPolyPending(chapterId, lang) {
+async function markPolyPending(chapterId, lang) {
   const ch = await db.chapters.get(chapterId);
   if (!ch) return;
   const pending = ch.pendingSync ?? { meta: false, langs: [] };
@@ -214,7 +214,7 @@ export async function savePolyglotCache(chapterId, targetLang, value) {
   await markPolyPending(chapterId, targetLang);
 }
 
-export async function deletePolyglotCache(chapterId, targetLang) {
+async function deletePolyglotCache(chapterId, targetLang) {
   const existing = await db.polyglotCache
     .where('[chapterId+targetLang]').equals([chapterId, targetLang]).first();
   if (!existing) return false;
@@ -377,7 +377,7 @@ export async function saveChapterLang(bookId, chapterIndex, langCode) {
 }
 
 /** Get the saved language for a specific chapter, or null. */
-export async function getChapterLang(bookId, chapterIndex) {
+async function getChapterLang(bookId, chapterIndex) {
   const pos = await db.readingPositions.get(bookId);
   if (!pos?.chapterLang) return null;
   const map = JSON.parse(pos.chapterLang);

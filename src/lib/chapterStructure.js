@@ -1,11 +1,11 @@
-export const READABLE_BLOCK_SELECTOR =
+const READABLE_BLOCK_SELECTOR =
   "p, li, blockquote, h1, h2, h3, h4, h5, h6, td, dd";
 
-export function collapseWhitespace(text) {
+function collapseWhitespace(text) {
   return String(text ?? "").replace(/\s+/g, " ").trim();
 }
 
-export function escapeHtml(text) {
+function escapeHtml(text) {
   return String(text)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -19,7 +19,7 @@ function toTrimmedRange(text, start, end) {
   return start < end ? { start, end } : null;
 }
 
-export function buildSentenceRanges(text, lang = "en") {
+function buildSentenceRanges(text, lang = "en") {
   if (!String(text ?? "").trim()) return [];
 
   if (typeof Intl !== "undefined" && typeof Intl.Segmenter === "function") {
@@ -110,7 +110,7 @@ export function buildChapterStructure(html, lang = "en") {
   return buildChapterStructureFromRoot(doc.body, lang);
 }
 
-export function buildChapterStructureFromRoot(root, lang = "en") {
+function buildChapterStructureFromRoot(root, lang = "en") {
   if (!root) return { blocks: [], sentences: [] };
 
   const blocks = [];

@@ -6,16 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "clean": "npm run clean:knip && npm run clean:css",
+    "clean": "npm run clean:knip",
     "clean:knip": "knip --fix",
-    "clean:css": "purgecss --config ./purgecss.config.js --output ./dist/assets",
-    "clean:dist": "rimraf dist",
+    "clean:src-css": "node clean-css.js --src",
+    "clean:css": "npm run build && node clean-css.js",
+    "clean:dist": "node --eval \"import('node:fs').then(m=>m.rmSync('dist',{recursive:true,force:true}))\"",
     "preview": "vite preview",
     "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "dexie": "^4.0.9",
-    "openai": "^4.67.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-icons": "^5.6.0",

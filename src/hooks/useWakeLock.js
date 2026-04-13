@@ -70,4 +70,3 @@ export function useWakeLock(active) {
   }, [active]);
 }
 
-export default useWakeLock;

@@ -93,7 +93,7 @@ async function downloadMissingPolys(bookId, remotePolys, chapters, stats) {
  * Per-chapter error isolation — one failure doesn't abort others.
  * No-op if not logged in.
  */
-export async function syncPending() {
+async function syncPending() {
   if (!getToken()) return { uploaded: 0, error: 'Brak autoryzacji' };
 
   const stats = { sent: 0, received: 0 };

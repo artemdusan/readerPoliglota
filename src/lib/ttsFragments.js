@@ -3,7 +3,7 @@ import { extractRenderedPolyglotData } from "./chapterStructure";
 /**
  * Backward-compatible helper for already-rendered polyglot HTML.
  */
-export function extractPolyglotTtsData(polyHtml) {
+function extractPolyglotTtsData(polyHtml) {
   return extractRenderedPolyglotData(polyHtml);
 }
 

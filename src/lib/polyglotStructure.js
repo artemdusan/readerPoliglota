@@ -4,7 +4,7 @@ import {
   normalizeTranslatedLayout,
 } from "./chapterStructure";
 
-export { normalizeTranslatedLayout };
+;
 
 export function buildSentencePatchSource(html, lang = "en") {
   return buildChapterStructure(html, lang);
