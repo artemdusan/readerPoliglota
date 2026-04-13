@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSettings } from './hooks/useSettings';
 import Library from './components/Library';
 import Reader  from './components/Reader';
@@ -66,12 +66,39 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [settings.syncIntervalMinutes]);
 
+  // Track view in ref so event listeners always see fresh value
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
+
+  // Push a history entry when entering reader so Android back button works
+  useEffect(() => {
+    if (view === 'reader') {
+      history.pushState({ appView: 'reader' }, '');
+    }
+  }, [view]);
+
+  // Handle Android hardware back button (popstate)
+  useEffect(() => {
+    function onPopstate() {
+      if (viewRef.current === 'reader') {
+        setView('library');
+        setCurrentBookId(null);
+      }
+    }
+    window.addEventListener('popstate', onPopstate);
+    return () => window.removeEventListener('popstate', onPopstate);
+  }, []);
+
   const openBook = useCallback((bookId) => {
     setCurrentBookId(bookId);
     setView('reader');
   }, []);
 
   const goToLibrary = useCallback(() => {
+    // Pop the history entry we pushed when entering reader
+    if (history.state?.appView === 'reader') {
+      history.back(); // fires popstate which updates state; also update directly below for safety
+    }
     setView('library');
     setCurrentBookId(null);
   }, []);
