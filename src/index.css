@@ -836,7 +836,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: transform .25s ease;
+  transition: transform .25s ease, width .25s ease, min-width .25s ease;
   flex-shrink: 0;
 }
 
@@ -1850,6 +1850,29 @@ html, body, #root {
 .reader-layout .bottombar {
   transition: transform .25s ease, opacity .25s ease;
 }
+
+/* ════════════════ DISTRACTION-FREE MODE ════════════════ */
+
+.reader-layout.distraction-free .topbar {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+.reader-layout.distraction-free .bottombar {
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+.reader-layout.distraction-free .sidebar {
+  transform: translateX(-100%);
+  width: 0;
+  min-width: 0;
+  pointer-events: none;
+}
+.reader-layout.distraction-free .sb-overlay {
+  display: none;
+}
+
 
 /* ════════════════ SETTINGS DROPDOWN ════════════════ */
 

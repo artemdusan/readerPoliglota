@@ -142,6 +142,7 @@ export default function Reader({
   const [bookmarkMenuOpen, setBookmarkMenuOpen] = useState(false);
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [distractionFree, setDistractionFree] = useState(false);
   const [fs, setFs] = useState(settings.fontSize ?? 19);
   const orderedCachedLangs = useMemo(
     () =>
@@ -198,8 +199,27 @@ export default function Reader({
   const settingsToggleRef = useRef(null);
   const ttsPagePauseModeRef = useRef(null);
   const swipeTouchStartXRef = useRef(null);
+  const swipeTouchStartYRef = useRef(null);
+  const toggleDistractionFreeRef = useRef(null);
+  toggleDistractionFreeRef.current = toggleDistractionFree;
 
   useWakeLock(Boolean(bookId));
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "f" || e.key === "F") {
+        toggleDistractionFreeRef.current?.();
+      } else if (e.key === "ArrowRight") {
+        nextPageRef.current();
+      } else if (e.key === "ArrowLeft") {
+        prevPageRef.current();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     setFs(settings.fontSize ?? 19);
@@ -1016,14 +1036,25 @@ export default function Reader({
     if (!el) return;
     function onTouchStart(e) {
       swipeTouchStartXRef.current = e.touches[0].clientX;
+      swipeTouchStartYRef.current = e.touches[0].clientY;
     }
     function onTouchEnd(e) {
       if (swipeTouchStartXRef.current === null) return;
-      const dx = e.changedTouches[0].clientX - swipeTouchStartXRef.current;
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - swipeTouchStartXRef.current;
+      const dy = touch.clientY - swipeTouchStartYRef.current;
       swipeTouchStartXRef.current = null;
-      if (Math.abs(dx) < 50) return;
-      if (dx > 0) prevPageRef.current();
-      else nextPageRef.current();
+      swipeTouchStartYRef.current = null;
+      if (Math.abs(dx) >= 50) {
+        if (dx > 0) prevPageRef.current();
+        else nextPageRef.current();
+        return;
+      }
+      // Center tap → toggle distraction-free (like Kindle)
+      if (Math.abs(dy) < 30) {
+        const cx = touch.clientX / window.innerWidth;
+        if (cx > 0.3 && cx < 0.7) toggleDistractionFreeRef.current();
+      }
     }
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
@@ -1923,16 +1954,21 @@ export default function Reader({
       if (pidEl && ttsPlaying && polyTtsParagraphs.length > 0) {
         const pid = parseInt(pidEl.dataset.pid, 10);
         if (pid !== activePolyPid) startHybridTts(pid);
+        return;
       }
-      return;
+    } else {
+      // In original mode: paragraph seek works only while TTS is already active
+      const pidEl = e.target.closest("[data-pid]");
+      if (pidEl && originalTtsPlaying && originalTtsFragments.length > 0) {
+        const pid = parseInt(pidEl.dataset.pid, 10);
+        if (pid !== activeSid) startOriginalTts(pid);
+        return;
+      }
     }
 
-    // In original mode: paragraph seek works only while TTS is already active
-    const pidEl = e.target.closest("[data-pid]");
-    if (pidEl && originalTtsPlaying && originalTtsFragments.length > 0) {
-      const pid = parseInt(pidEl.dataset.pid, 10);
-      if (pid !== activeSid) startOriginalTts(pid);
-    }
+    // Center click → toggle distraction-free (desktop equivalent of Kindle tap)
+    const cx = e.clientX / window.innerWidth;
+    if (cx > 0.3 && cx < 0.7) toggleDistractionFree();
   }
 
   /* ── TOC navigation ── */
@@ -1994,6 +2030,13 @@ export default function Reader({
   function handleOpenBatchModal() {
     setBatchModalOpen(true);
     setSidebarOpen(false);
+  }
+
+  function toggleDistractionFree() {
+    setDistractionFree((v) => {
+      if (!v) setSidebarOpen(false);
+      return !v;
+    });
   }
 
   function handleAddTranslation() {
@@ -2151,7 +2194,7 @@ export default function Reader({
   }
 
   return (
-    <div className="reader-layout">
+    <div className={`reader-layout${distractionFree ? " distraction-free" : ""}`}>
       <ReaderSidebar
         sidebarOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -2344,6 +2387,7 @@ export default function Reader({
           onPageSliderCommit={handlePageSliderCommit}
         />
       </div>
+
     </div>
   );
 }
