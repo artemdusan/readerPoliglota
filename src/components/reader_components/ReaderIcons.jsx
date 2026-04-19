@@ -11,6 +11,8 @@ import {
   RiTranslate2,
   RiMenuLine,
   RiSettings4Line,
+  RiSunLine,
+  RiMoonLine,
 } from "react-icons/ri";
 
 const ICON_MAP = {
@@ -26,6 +28,8 @@ const ICON_MAP = {
   translate: RiTranslate2,
   menu:      RiMenuLine,
   settings:  RiSettings4Line,
+  sun:       RiSunLine,
+  moon:      RiMoonLine,
 };
 
 export function UiIcon({ name, className = "", title }) {

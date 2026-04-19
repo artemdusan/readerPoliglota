@@ -19,6 +19,86 @@
   --fs:          19px;
 }
 
+html[data-theme="light"] {
+  --bg:          #f5f0e8;
+  --bg-side:     #ede8de;
+  --panel:       #e6e0d6;
+  --bg-hover:    #ddd8ce;
+  --border:      #c4bdb0;
+  --border-soft: #d0c9bc;
+  --txt-1:       #1a1714;
+  --txt-2:       #6b6059;
+  --txt-3:       #a89e94;
+  --gold:        #7a5020;
+  --gold-hi:     #8a6030;
+  --gold-dim:    rgba(122,80,32,.10);
+  --green:       #2a6f2a;
+  --red:         #8a2010;
+}
+
+/* Overrides for hardcoded dark-mode colors in light theme */
+html[data-theme="light"] .ch-body {
+  color: #1a1714;
+}
+html[data-theme="light"] .ch-body strong {
+  color: #111;
+}
+html[data-theme="light"] .ch-body blockquote {
+  color: var(--txt-2);
+}
+html[data-theme="light"] .pw-original {
+  background: #fffdf8;
+  border-color: rgba(122,80,32,.35);
+  color: #1a1714;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+}
+html[data-theme="light"] .pw-target {
+  color: var(--gold);
+  background: rgba(122,80,32,.09);
+  border-bottom-color: rgba(122,80,32,.28);
+}
+html[data-theme="light"] .pw:hover .pw-target,
+html[data-theme="light"] .pw.open .pw-target {
+  background: rgba(122,80,32,.16);
+}
+html[data-theme="light"] .settings-menu {
+  background: linear-gradient(180deg, #f0ebe1, #e8e2d8);
+  border-color: rgba(0,0,0,.10);
+  box-shadow: 0 12px 36px rgba(0,0,0,.14);
+}
+html[data-theme="light"] .settings-tool {
+  background: rgba(0,0,0,.04);
+  border-color: rgba(0,0,0,.08);
+  color: var(--txt-2);
+}
+html[data-theme="light"] .settings-tool:hover:not(:disabled) {
+  background: rgba(0,0,0,.08);
+  border-color: rgba(122,80,32,.3);
+  color: var(--txt-1);
+}
+html[data-theme="light"] .settings-toggle {
+  border-color: rgba(0,0,0,.15);
+  background: rgba(0,0,0,.05);
+}
+html[data-theme="light"] .ctl {
+  background: rgba(0,0,0,.04);
+  border-color: rgba(0,0,0,.12);
+  color: var(--txt-2);
+}
+html[data-theme="light"] .ctl:hover {
+  background: rgba(122,80,32,.10);
+  border-color: rgba(122,80,32,.35);
+  color: var(--gold);
+}
+html[data-theme="light"] [data-pid].paragraph-active {
+  background: rgba(122,80,32,.09);
+  outline-color: rgba(122,80,32,.18);
+}
+html[data-theme="light"] .tts-active {
+  background: rgba(122,80,32,.14) !important;
+  outline-color: rgba(122,80,32,.22);
+}
+
 html, body, #root {
   height: 100%;
   background: var(--bg);

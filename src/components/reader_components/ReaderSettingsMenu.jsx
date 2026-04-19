@@ -39,6 +39,8 @@ export default function ReaderSettingsMenu({
   showTargetVoiceSelect,
   showVoiceNote,
   voiceLoadState,
+  theme,
+  onToggleTheme,
   tooltipReadOnClick,
   onToggleTooltipReadOnClick,
   ttsSourceVoice,
@@ -109,6 +111,32 @@ export default function ReaderSettingsMenu({
             A+
           </button>
         </div>
+      </div>
+
+      <div className="settings-menu-row settings-menu-row-switch">
+        <div className="settings-menu-copy">
+          <span className="settings-menu-label settings-menu-label-with-icon">
+            <UiIcon name={theme === "light" ? "sun" : "moon"} />
+            <span>Motyw</span>
+          </span>
+          <span className="settings-menu-subtle">
+            {theme === "light" ? "Jasny – dobry dla e-ink" : "Ciemny – standardowy monitor"}
+          </span>
+        </div>
+        <button
+          type="button"
+          className={`settings-toggle${theme === "light" ? " is-on" : ""}`}
+          aria-pressed={theme === "light"}
+          onClick={onToggleTheme}
+          title={theme === "light" ? "Przełącz na ciemny" : "Przełącz na jasny"}
+        >
+          <span className="settings-toggle-track">
+            <span className="settings-toggle-thumb" />
+          </span>
+          <span className="settings-toggle-text">
+            {theme === "light" ? "Jasny" : "Ciemny"}
+          </span>
+        </button>
       </div>
 
       {(showAddTranslation || showRegenerateTranslation) && (

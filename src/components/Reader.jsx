@@ -1121,6 +1121,13 @@ export default function Reader({
     document.documentElement.style.setProperty("--fs", fs + "px");
   }, [fs]);
 
+  /* ── Theme sync ── */
+  const theme = settings.theme ?? "dark";
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    return () => document.documentElement.removeAttribute("data-theme");
+  }, [theme]);
+
   /* ── Close settings menu on outside click ── */
   useEffect(() => {
     if (!settingsMenuOpen) return;
@@ -2244,6 +2251,8 @@ export default function Reader({
             showTargetVoiceSelect={polyMode}
             showVoiceNote={showVoiceNote}
             voiceLoadState={voiceLoadState}
+            theme={theme}
+            onToggleTheme={() => onUpdateSetting?.("theme", theme === "dark" ? "light" : "dark")}
             tooltipReadOnClick={tooltipReadOnClick}
             onToggleTooltipReadOnClick={handleToggleTooltipReadOnClick}
             ttsSourceVoice={ttsSourceVoice}
