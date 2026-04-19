@@ -202,6 +202,7 @@ export default function Reader({
   const swipeTouchStartYRef = useRef(null);
   const toggleDistractionFreeRef = useRef(null);
   toggleDistractionFreeRef.current = toggleDistractionFree;
+  const centerTapHandledRef = useRef(false);
 
   useWakeLock(Boolean(bookId));
 
@@ -1053,7 +1054,13 @@ export default function Reader({
       // Center tap → toggle distraction-free (like Kindle)
       if (Math.abs(dy) < 30) {
         const cx = touch.clientX / window.innerWidth;
-        if (cx > 0.3 && cx < 0.7) toggleDistractionFreeRef.current();
+        if (cx > 0.3 && cx < 0.7) {
+          const el = document.elementFromPoint(touch.clientX, touch.clientY);
+          if (!el?.closest(".pw, a[href]")) {
+            centerTapHandledRef.current = true;
+            toggleDistractionFreeRef.current();
+          }
+        }
       }
     }
     el.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -1966,7 +1973,8 @@ export default function Reader({
       }
     }
 
-    // Center click → toggle distraction-free (desktop equivalent of Kindle tap)
+    // Center click → toggle distraction-free (mouse only; touch is handled in touchend)
+    if (centerTapHandledRef.current) { centerTapHandledRef.current = false; return; }
     const cx = e.clientX / window.innerWidth;
     if (cx > 0.3 && cx < 0.7) toggleDistractionFree();
   }
