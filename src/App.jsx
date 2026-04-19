@@ -45,6 +45,11 @@ export default function App() {
 
   useEffect(() => onAuthChange(setCfConnected), []);
 
+  useEffect(() => {
+    const theme = settings.theme ?? "dark";
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [settings.theme]);
+
   // Load CF JWT from Dexie into memory on startup
   useEffect(() => { initCfAuth(); }, []);
 

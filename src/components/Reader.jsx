@@ -1159,12 +1159,7 @@ export default function Reader({
     document.documentElement.style.setProperty("--fs", fs + "px");
   }, [fs]);
 
-  /* ── Theme sync ── */
   const theme = settings.theme ?? "dark";
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    return () => document.documentElement.removeAttribute("data-theme");
-  }, [theme]);
 
   /* ── Close settings menu on outside click ── */
   useEffect(() => {
