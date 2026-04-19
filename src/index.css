@@ -99,6 +99,181 @@ html[data-theme="light"] .tts-active {
   outline-color: rgba(122,80,32,.22);
 }
 
+/* ── Library ── */
+html[data-theme="light"] .lib-layout {
+  background: var(--bg);
+}
+html[data-theme="light"] .lib-header-sync {
+  background: var(--panel);
+  border-color: var(--border-soft);
+  box-shadow: 0 4px 20px rgba(0,0,0,.07);
+}
+html[data-theme="light"] .lib-sync-action-btn {
+  background: rgba(0,0,0,.04);
+  border-color: rgba(0,0,0,.12);
+  color: var(--txt-2);
+}
+html[data-theme="light"] .lib-sync-action-btn:hover:not(:disabled) {
+  background: rgba(122,80,32,.09);
+  border-color: rgba(122,80,32,.35);
+  color: var(--gold);
+}
+html[data-theme="light"] .lib-sync-progress-track {
+  background: rgba(0,0,0,.08);
+}
+html[data-theme="light"] .book-card {
+  background: #fdf8f0;
+  border-color: var(--border-soft);
+  box-shadow: 0 4px 20px rgba(0,0,0,.08);
+}
+html[data-theme="light"] .book-card::before { opacity: 0; }
+html[data-theme="light"] .book-card:hover {
+  border-color: var(--border);
+  box-shadow: 0 10px 32px rgba(0,0,0,.13);
+}
+html[data-theme="light"] .book-cover {
+  background: var(--bg-hover);
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+}
+html[data-theme="light"] .book-progress-block {
+  border-top-color: var(--border-soft);
+}
+html[data-theme="light"] .book-progress-bar {
+  background: rgba(0,0,0,.10);
+}
+html[data-theme="light"] .book-ctx-menu {
+  background: var(--bg);
+  border-color: var(--border);
+  box-shadow: 0 8px 28px rgba(0,0,0,.14);
+}
+html[data-theme="light"] .book-ctx-menu button { color: var(--txt-1); }
+html[data-theme="light"] .book-ctx-menu button:hover { background: var(--bg-hover); }
+html[data-theme="light"] .book-ctx-menu .book-ctx-primary {
+  color: var(--gold);
+  background: rgba(122,80,32,.08);
+}
+html[data-theme="light"] .book-menu-btn {
+  background: rgba(255,255,255,.88);
+  border-color: var(--border);
+  color: var(--txt-2);
+}
+html[data-theme="light"] .dropzone {
+  background: var(--panel);
+  border-color: var(--border);
+}
+
+/* ── Modals ── */
+html[data-theme="light"] .modal {
+  background: var(--bg);
+  border-color: var(--border);
+  box-shadow: 0 16px 48px rgba(0,0,0,.16);
+}
+html[data-theme="light"] .modal-head { border-bottom-color: var(--border-soft); }
+html[data-theme="light"] .modal-foot { border-top-color: var(--border-soft); }
+html[data-theme="light"] .bgen-setup-card {
+  background: var(--panel);
+  border-color: var(--border-soft);
+}
+html[data-theme="light"] .bgen-chapter-list { border-color: var(--border); }
+html[data-theme="light"] .bgen-ch-header {
+  background: var(--panel);
+  border-bottom-color: var(--border-soft);
+}
+html[data-theme="light"] .bgen-ch-row {
+  border-bottom-color: var(--border-soft);
+  color: var(--txt-1);
+}
+html[data-theme="light"] .bgen-ch-row:hover { background: var(--bg-hover); }
+html[data-theme="light"] .bgen-estimate {
+  background: var(--panel);
+  border-color: var(--border-soft);
+  color: var(--txt-2);
+}
+html[data-theme="light"] .form-select option,
+html[data-theme="light"] .tts-voice-sel option {
+  background: var(--bg);
+  color: var(--txt-1);
+}
+
+/* ── Bookmark menu ── */
+html[data-theme="light"] .bookmark-menu {
+  background: var(--bg);
+  border-color: var(--border);
+  box-shadow: 0 8px 32px rgba(0,0,0,.14);
+}
+html[data-theme="light"] .bookmark-save-btn,
+html[data-theme="light"] .bookmark-item-main {
+  background: var(--panel);
+  border-color: var(--border-soft);
+  color: var(--txt-1);
+}
+html[data-theme="light"] .bookmark-item-remove {
+  background: var(--panel);
+  border-color: var(--border-soft);
+  color: var(--txt-3);
+}
+
+/* ── Reader chrome ── */
+html[data-theme="light"] .reader-search-strip {
+  background: var(--bg-side);
+  border-bottom-color: var(--border-soft);
+}
+html[data-theme="light"] .reader-search-input {
+  background: var(--bg);
+  border-color: var(--border-soft);
+  color: var(--txt-1);
+}
+html[data-theme="light"] .reader-search-result {
+  background: var(--panel);
+  border-color: var(--border-soft);
+  color: var(--txt-2);
+}
+html[data-theme="light"] .reader-search-empty { background: var(--panel); }
+html[data-theme="light"] .tb-ver-select {
+  background-color: rgba(0,0,0,.04);
+  border-color: var(--border-soft);
+  color: var(--txt-1);
+}
+html[data-theme="light"] .tb-ver-select option {
+  background: var(--bg);
+  color: var(--txt-1);
+}
+html[data-theme="light"] .missing-lang-banner {
+  background: rgba(122,80,32,.08);
+  border-bottom-color: rgba(122,80,32,.2);
+}
+html[data-theme="light"] .nav-btn {
+  background: rgba(0,0,0,.04);
+  border-color: rgba(0,0,0,.10);
+  color: var(--txt-2);
+}
+html[data-theme="light"] .nav-btn:hover:not(:disabled) {
+  background: rgba(122,80,32,.08);
+  border-color: rgba(122,80,32,.30);
+  color: var(--gold);
+}
+html[data-theme="light"] .tts-bar-btn {
+  background: rgba(0,0,0,.04);
+  border-color: rgba(0,0,0,.12);
+  color: var(--txt-2);
+}
+html[data-theme="light"] .tts-bar-btn:hover:not(:disabled) {
+  background: rgba(122,80,32,.09);
+  border-color: rgba(122,80,32,.35);
+  color: var(--gold);
+}
+
+/* ── Settings toggle thumb (visible on light bg) ── */
+html[data-theme="light"] .settings-toggle-thumb {
+  background: var(--txt-2);
+}
+html[data-theme="light"] .settings-toggle.is-on .settings-toggle-thumb {
+  background: var(--gold);
+}
+html[data-theme="light"] .settings-toggle.is-on {
+  color: var(--gold);
+}
+
 html, body, #root {
   height: 100%;
   background: var(--bg);
