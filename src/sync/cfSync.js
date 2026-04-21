@@ -62,6 +62,9 @@ async function applyRemote(remote) {
       updatedAt: remote.updatedAt ?? Date.now(),
     },
   );
+  if (remote.bookStatus) {
+    await db.books.update(remote.bookId, { status: remote.bookStatus, statusPending: false });
+  }
 }
 
 // ─── Download missing polys (download-only — upload handled by syncPending) ──
@@ -158,12 +161,16 @@ async function syncPending() {
 }
 
 /**
- * Push a single book status change to the server.
- * Fire-and-forget — failures are retried on next syncAll via uploadBook.
+ * Push a single book status change via the progress endpoint (POST only — no PATCH needed).
+ * Fire-and-forget — failures are retried on next syncAll.
  */
-export function syncBookStatus(bookId, status) {
+export async function syncBookStatus(bookId, status) {
   if (!getToken()) return;
-  apiFetch(`/books/${bookId}`, { method: 'PATCH', body: JSON.stringify({ status }) })
+  const pos = await db.readingPositions.get(bookId);
+  const payload = pos
+    ? { ...toRemoteData(pos), status }
+    : { bookId, chapterIndex: 0, scrollTop: 0, updatedAt: Date.now(), bookmarks: [], status };
+  apiFetch(`/progress/${bookId}`, { method: 'POST', body: JSON.stringify(payload) })
     .then(() => db.books.update(bookId, { statusPending: false }))
     .catch(err => console.warn('[CF sync] syncBookStatus failed:', err.message));
 }
@@ -332,11 +339,12 @@ export async function syncAll(onProgress) {
         }, stats);
         await purgeBookData(entry.book_id, { keepBookRecord: false });
       } else if (local.statusPending) {
-        // Local status changed but not yet confirmed pushed — push to remote
-        await apiFetch(`/books/${entry.book_id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: local.status ?? 'active' }),
-        }, stats);
+        // Local status changed but not yet confirmed pushed — push via progress endpoint
+        const pos = localPosMap[entry.book_id];
+        const payload = pos
+          ? { ...toRemoteData(pos), status: local.status ?? 'active' }
+          : { bookId: entry.book_id, chapterIndex: 0, scrollTop: 0, updatedAt: Date.now(), bookmarks: [], status: local.status ?? 'active' };
+        await apiFetch(`/progress/${entry.book_id}`, { method: 'POST', body: JSON.stringify(payload) }, stats);
         await db.books.update(entry.book_id, { statusPending: false });
       } else if (entry.status && entry.status !== (local.status ?? 'active')) {
         // Remote changed (another device) — apply to local

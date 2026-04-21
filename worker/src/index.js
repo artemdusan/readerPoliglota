@@ -374,17 +374,6 @@ async function handleUpsertMeta(request, env, userId, bookId) {
   return json({ ok: true });
 }
 
-/** PATCH /books/{bookId} — update status only */
-async function handlePatchBookStatus(request, env, userId, bookId) {
-  let body;
-  try { body = await request.json(); } catch { return err('nieprawidłowy JSON'); }
-  const status = body.status;
-  if (!['active', 'read', 'archived'].includes(status)) return err('nieprawidłowy status');
-  await env.DB.prepare(
-    'UPDATE book_manifest SET status = ? WHERE user_id = ? AND book_id = ?',
-  ).bind(status, userId, bookId).run();
-  return json({ ok: true });
-}
 
 /** GET /books/{bookId} — fetch metadata only */
 async function handleGetMeta(env, userId, bookId) {
@@ -496,7 +485,8 @@ async function handleGetProgress(env, userId) {
        rp.bookmarks_json as bookmarksJson,
        rp.poly_mode as polyMode,
        rp.sentence_idx as sentenceIdx,
-       rp.updated_at as updatedAt
+       rp.updated_at as updatedAt,
+       bm.status as bookStatus
      FROM reading_positions rp
      LEFT JOIN book_manifest bm
        ON bm.user_id = rp.user_id
@@ -564,6 +554,13 @@ async function handleUpsertProgress(request, env, userId, bookId) {
      VALUES (${placeholders})
      ON CONFLICT (user_id, book_id) DO UPDATE SET ${updateClause}`,
   ).bind(...values).run();
+
+  const status = body.status;
+  if (status && ['active', 'read', 'archived'].includes(status)) {
+    await env.DB.prepare(
+      'UPDATE book_manifest SET status = ? WHERE user_id = ? AND book_id = ?',
+    ).bind(status, userId, bookId).run();
+  }
 
   return json({ ok: true });
 }
@@ -636,7 +633,6 @@ async function handleRequest(request, env) {
     if (bookMatch) {
       const bookId = bookMatch[1];
       if (method === 'POST')   return handleUpsertMeta(request, env, userId, bookId);
-      if (method === 'PATCH')  return handlePatchBookStatus(request, env, userId, bookId);
       if (method === 'GET')    return handleGetMeta(env, userId, bookId);
       if (method === 'DELETE') return handleDeleteBook(request, env, userId, bookId);
     }
