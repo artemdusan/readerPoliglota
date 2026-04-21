@@ -20,28 +20,25 @@ export default function ReaderSidebar({
     <>
       <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="sb-top">
-          <button className="btn-back" onClick={onBack}>
-            ← Biblioteka
-          </button>
-          <div className="sb-cover">
-            {book?.cover ? (
-              <img src={book.cover} alt="okładka" />
-            ) : (
-              <span className="cover-ph">📖</span>
+          <div className="sb-toprow">
+            <button className="btn-back" onClick={onBack}>
+              ← Biblioteka
+            </button>
+            {canTranslateBook && (
+              <button className="sb-translate-btn" onClick={onOpenBatchModal} title="Generuj tłumaczenia">
+                <UiIcon name="sparkles" />
+              </button>
             )}
           </div>
           <div className="sb-title">{book?.title || "…"}</div>
-          {book?.author && <div className="sb-author">{book.author}</div>}
-          {canTranslateBook && (
-            <button className="sb-translate-btn" onClick={onOpenBatchModal}>
-              <UiIcon name="sparkles" />
-              <span>Tłumacz książkę</span>
-            </button>
+          {book?.author && (
+            <div className="sb-author">
+              {book.author}
+              <span className="sb-chcount">{chapterCount} rozdz.</span>
+            </div>
           )}
-          <div className="sb-stats">{chapterCount} rozdziałów</div>
         </div>
 
-        <div className="toc-label">Spis treści</div>
         <div className="toc-scroll">
           <ul className="toc-list">
             {tocItems.map((item, index) => {
@@ -84,9 +81,7 @@ export default function ReaderSidebar({
                             className="toc-bdg toc-bdg-tr"
                             title={`Tłumaczenie: ${lang.name}`}
                             aria-label={`Tłumaczenie: ${lang.name}`}
-                          >
-                            {lang.flag}
-                          </span>
+                          />
                         ))}
                       </span>
                     )}
