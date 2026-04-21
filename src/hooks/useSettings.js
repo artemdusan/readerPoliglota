@@ -31,6 +31,7 @@ const DEFAULTS = {
   polyglotModel: DEFAULT_POLYGLOT_MODEL,
   polyglotSentencesPerRequest: DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST,
   fontSize: 19,
+  readerFont: "garamond",
   theme: "dark",
   syncIntervalMinutes: 30,
   tooltipReadOnClick: true,

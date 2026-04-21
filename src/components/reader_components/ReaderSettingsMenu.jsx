@@ -1,5 +1,10 @@
 import { UiIcon } from "./ReaderIcons";
-import { getVoiceId } from "./readerUtils";
+import {
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  READER_FONT_OPTIONS,
+  getVoiceId,
+} from "./readerUtils";
 
 const THEME_OPTIONS = [
   { value: "dark", label: "Ciemny", icon: "moon" },
@@ -33,7 +38,10 @@ export default function ReaderSettingsMenu({
   isTtsPaused,
   hasTtsAvailable,
   fontSize,
+  readerFont,
   onChangeFontSize,
+  onSetFontSize,
+  onChangeReaderFont,
   showAddTranslation,
   showRegenerateTranslation,
   onAddTranslation,
@@ -106,17 +114,44 @@ export default function ReaderSettingsMenu({
       <div className="settings-menu-row settings-menu-row-compact">
         <span className="settings-menu-label settings-menu-label-with-icon">
           <UiIcon name="type" />
-          <span>Czcionka</span>
+          <span>Rozmiar</span>
         </span>
         <div className="settings-menu-ctrl">
           <button className="ctl" onClick={() => onChangeFontSize(-1)}>
             A-
           </button>
-          <span className="fs-val">{fontSize}</span>
+          <input
+            className="fs-val fs-input"
+            type="number"
+            min={FONT_SIZE_MIN}
+            max={FONT_SIZE_MAX}
+            value={fontSize}
+            onChange={(event) => onSetFontSize?.(Number(event.target.value))}
+            aria-label="Rozmiar czcionki"
+          />
           <button className="ctl" onClick={() => onChangeFontSize(1)}>
             A+
           </button>
         </div>
+      </div>
+
+      <div className="settings-menu-row settings-menu-row-font">
+        <span className="settings-menu-label settings-menu-label-with-icon">
+          <UiIcon name="book" />
+          <span>Krój</span>
+        </span>
+        <select
+          className="reader-font-sel"
+          value={readerFont}
+          onChange={(event) => onChangeReaderFont?.(event.target.value)}
+          aria-label="Krój czcionki"
+        >
+          {READER_FONT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="settings-menu-row settings-menu-row-theme">

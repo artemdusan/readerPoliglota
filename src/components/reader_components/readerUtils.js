@@ -1,6 +1,46 @@
 export const SEARCH_BLOCK_SELECTOR = "p, h1, h2, h3, h4, h5, h6, li";
 export const FONT_SIZE_MIN = 13;
-export const FONT_SIZE_MAX = 30;
+export const FONT_SIZE_MAX = 99;
+
+export const READER_FONT_OPTIONS = [
+  {
+    value: "garamond",
+    label: "EB Garamond",
+    stack: '"EB Garamond", Georgia, serif',
+  },
+  {
+    value: "georgia",
+    label: "Georgia",
+    stack: 'Georgia, "Times New Roman", serif',
+  },
+  {
+    value: "charter",
+    label: "Charter",
+    stack: 'Charter, "Bitstream Charter", "Sitka Text", Cambria, serif',
+  },
+  {
+    value: "cambria",
+    label: "Cambria",
+    stack: "Cambria, Georgia, serif",
+  },
+  {
+    value: "sans",
+    label: "DM Sans",
+    stack: '"DM Sans", system-ui, sans-serif',
+  },
+  {
+    value: "system",
+    label: "Systemowa",
+    stack: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  },
+];
+
+export function getReaderFontStack(value) {
+  return (
+    READER_FONT_OPTIONS.find((option) => option.value === value)?.stack ||
+    READER_FONT_OPTIONS[0].stack
+  );
+}
 
 function flattenToc(items, depth = 0) {
   const result = [];

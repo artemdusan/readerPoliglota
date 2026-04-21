@@ -38,6 +38,7 @@ import {
   SEARCH_BLOCK_SELECTOR,
   FONT_SIZE_MIN,
   FONT_SIZE_MAX,
+  getReaderFontStack,
   navigableTocItems,
   getVoiceId,
   findVoiceById,
@@ -202,6 +203,8 @@ export default function Reader({
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [distractionFree, setDistractionFree] = useState(false);
   const [fs, setFs] = useState(settings.fontSize ?? 19);
+  const readerFont = settings.readerFont ?? "garamond";
+  const readerFontStack = getReaderFontStack(readerFont);
   const orderedCachedLangs = useMemo(
     () =>
       [...cachedLangs].sort(
@@ -740,6 +743,7 @@ export default function Reader({
     chapter?.id,
     polyMode,
     fs,
+    readerFontStack,
     renderedPolyHtml,
     originalHtmlAnnotated,
     layoutKey,
@@ -1344,6 +1348,17 @@ export default function Reader({
     });
   }
 
+  function setReaderFontSize(value) {
+    if (!Number.isFinite(value)) return;
+    setFs((current) => {
+      const next = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, value));
+      if (next !== current) {
+        void onUpdateSetting?.("fontSize", next);
+      }
+      return next;
+    });
+  }
+
   function changeFontSize(delta) {
     setFs((current) => {
       const next = Math.max(
@@ -1355,6 +1370,11 @@ export default function Reader({
       }
       return next;
     });
+  }
+
+  function changeReaderFont(nextFont) {
+    if (!nextFont || nextFont === readerFont) return;
+    void onUpdateSetting?.("readerFont", nextFont);
   }
 
   function openSearchPanel() {
@@ -2268,7 +2288,10 @@ export default function Reader({
   }
 
   return (
-    <div className={`reader-layout${distractionFree ? " distraction-free" : ""}`}>
+    <div
+      className={`reader-layout${distractionFree ? " distraction-free" : ""}`}
+      style={{ "--fs": `${fs}px`, "--reader-font": readerFontStack }}
+    >
       <ReaderSidebar
         sidebarOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -2352,7 +2375,10 @@ export default function Reader({
             isTtsPaused={activeTtsPaused}
             hasTtsAvailable={hasTtsAvailable}
             fontSize={fs}
+            readerFont={readerFont}
             onChangeFontSize={changeFontSize}
+            onSetFontSize={setReaderFontSize}
+            onChangeReaderFont={changeReaderFont}
             showAddTranslation={!polyMode && Boolean(chapter?.text)}
             showRegenerateTranslation={
               polyMode &&
