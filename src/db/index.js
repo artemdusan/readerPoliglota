@@ -10,6 +10,14 @@ db.version(6).stores({
   settings:         'key',
 });
 
+db.version(7).stores({
+  books:            'id, title, createdAt, deletedAt, status',
+  chapters:         'id, bookId, chapterIndex, [bookId+chapterIndex], pendingSyncFlag',
+  polyglotCache:    'id, chapterId, targetLang, [chapterId+targetLang]',
+  readingPositions: 'bookId',
+  settings:         'key',
+});
+
 // ─── Pending sync helpers ─────────────────────────────────────────────────────
 
 async function markChapterMetaPending(chapterId) {
@@ -153,6 +161,10 @@ export async function purgeBookData(bookId, { keepBookRecord = true } = {}) {
 export async function getActiveBooks() {
   const all = await db.books.orderBy('createdAt').toArray();
   return all.filter(b => !b.deletedAt);
+}
+
+export async function setBookStatus(bookId, status) {
+  await db.books.update(bookId, { status });
 }
 
 export async function getBook(bookId) {

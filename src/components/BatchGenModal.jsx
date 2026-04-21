@@ -347,20 +347,6 @@ export default function BatchGenModal({
                 </div>
               </div>
 
-              <div className="bgen-info">
-                <span>
-                  Wybrane: <strong>{toGenerate.length}</strong> /{" "}
-                  {chapters.length} rozdziałów
-                </span>
-                <span className="bgen-sep">·</span>
-                <span>
-                  Tryb:{" "}
-                  <strong>
-                    {settings.polyglotSentencesPerRequest ?? 4} zd.
-                  </strong>
-                </span>
-              </div>
-
               <div className="bgen-chapter-list">
                 <div className="bgen-ch-header">
                   <span className="bgen-ch-label">
@@ -399,135 +385,79 @@ export default function BatchGenModal({
                       {ch.title || `Rozdział ${i + 1}`}
                     </span>
                     <span className="bgen-ch-status">
-                      {ch.hasPoly ? (
-                        <span
-                          className="bgen-dot done"
-                          title="Tłumaczenie już istnieje. Generowanie nadpisze je."
-                        >
-                          ✓
-                        </span>
-                      ) : errors[ch.id] ? (
-                        <span className="bgen-dot error" title={errors[ch.id]}>
-                          ✕
-                        </span>
-                      ) : (
-                        <span className="bgen-dot empty" title="Brak">
-                          ○
-                        </span>
-                      )}
+                      <span
+                        className={`bgen-dot ${ch.hasPoly ? "done" : errors[ch.id] ? "error" : "empty"}`}
+                        title={ch.hasPoly ? "Tłumaczenie istnieje" : errors[ch.id] ?? "Brak tłumaczenia"}
+                      />
                     </span>
                   </label>
                 ))}
               </div>
 
-              {toGenerate.length > 0 && !generating && !done && (
-                <div className="bgen-estimate">
-                  <span>
-                    <strong>{toGenerate.length}</strong>{" "}
-                    {toGenerate.length === 1 ? "rozdział" : "rozdziały"}
-                  </span>
-                  <span className="bgen-sep">·</span>
-                  <span>
-                    <strong>{totalSentences}</strong>{" "}
-                    {totalSentences === 1
-                      ? "zdanie"
-                      : totalSentences < 5
-                        ? "zdania"
-                        : "zdań"}
-                  </span>
-                  <span className="bgen-sep">·</span>
-                  <span>
-                    <strong>{totalRequests}</strong>{" "}
-                    {totalRequests === 1
-                      ? "zapytanie"
-                      : totalRequests < 5
-                        ? "zapytania"
-                        : "zapytań"}
-                  </span>
-                  <span className="bgen-sep">·</span>
-                  <span>
-                    Czas: <strong>{fmtTime(timeSec)}</strong>
-                  </span>
-                  <span className="bgen-sep">·</span>
-                  <span>
-                    Koszt: <strong>{fmtCost(costUSD)}</strong>
-                  </span>
-                </div>
-              )}
-
-              {generating && genStep && (
-                <div className="bgen-progress">
-                  <div className="bgen-progress-label">
-                    Rozdziały {genStep.doneChapters} / {genStep.totalChapters}
-                    {genStep.activeChapters > 0
-                      ? ` · aktywne ${genStep.activeChapters}`
-                      : ""}
-                    {genStep.batchTotal > 0
-                      ? genStep.batchDone === 0
-                        ? ` — wysyłam ${genStep.batchTotal} zapytań…`
-                        : ` — przetworzono ${genStep.batchDone}/${genStep.batchTotal} zapytań`
-                      : " — łączenie…"}
-                  </div>
-                  {genStep.batchTotal > 0 && (
-                    <div
-                      className="poly-progress-bar"
-                      style={{ width: "100%", marginTop: 8 }}
-                    >
-                      <div
-                        className="poly-progress-fill"
-                        style={{
-                          width: `${(genStep.batchDone / genStep.batchTotal) * 100}%`,
-                        }}
-                      />
-                    </div>
-                  )}
-                  <div
-                    className="poly-progress-bar"
-                    style={{ width: "100%", marginTop: 6 }}
-                  >
-                    <div
-                      className="poly-progress-fill"
-                      style={{
-                        width: `${genStep.totalChapters > 0 ? (genStep.doneChapters / genStep.totalChapters) * 100 : 0}%`,
-                        background: "rgba(192,144,80,.35)",
-                      }}
-                    />
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 8,
-                      fontSize: 12,
-                      color: "var(--txt-2)",
-                    }}
-                  >
-                    Rozdziały są generowane równolegle, a requesty do API są
-                    wspólnie limitowane globalnie.
-                  </div>
-                  {rescueNote && (
-                    <div
-                      style={{
-                        marginTop: 6,
-                        fontSize: 12,
-                        color: "var(--amber, #c09050)",
-                      }}
-                    >
-                      {rescueNote}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {done && (
-                <div className="bgen-done">
-                  Generowanie zakończone.{" "}
-                  {Object.keys(errors).length > 0
-                    ? `${Object.keys(errors).length} błędów.`
-                    : "Wszystko gotowe ✓"}
-                </div>
-              )}
             </>
           )}
         </div>
+
+        {!loading && (
+          <div className="bgen-summary">
+            {toGenerate.length > 0 && !generating && !done && (
+              <div className="bgen-estimate">
+                <div className="bgen-estimate-item">
+                  <span className="bgen-estimate-val">{toGenerate.length}</span>
+                  <span className="bgen-estimate-key">rozdziałów</span>
+                </div>
+                <div className="bgen-estimate-item">
+                  <span className="bgen-estimate-val">{totalSentences}</span>
+                  <span className="bgen-estimate-key">zdań</span>
+                </div>
+                <div className="bgen-estimate-item">
+                  <span className="bgen-estimate-val">{fmtTime(timeSec)}</span>
+                  <span className="bgen-estimate-key">czas</span>
+                </div>
+                <div className="bgen-estimate-item">
+                  <span className="bgen-estimate-val">{fmtCost(costUSD)}</span>
+                  <span className="bgen-estimate-key">koszt</span>
+                </div>
+              </div>
+            )}
+
+            {generating && genStep && (
+              <div className="bgen-progress">
+                <div className="bgen-progress-label">
+                  Rozdziały {genStep.doneChapters} / {genStep.totalChapters}
+                  {genStep.batchTotal > 0
+                    ? genStep.batchDone === 0
+                      ? ` — wysyłam ${genStep.batchTotal} zapytań…`
+                      : ` — ${genStep.batchDone}/${genStep.batchTotal} zapytań`
+                    : " — łączenie…"}
+                </div>
+                {genStep.batchTotal > 0 && (
+                  <div className="poly-progress-bar bgen-bar-full">
+                    <div
+                      className="poly-progress-fill"
+                      style={{ width: `${(genStep.batchDone / genStep.batchTotal) * 100}%` }}
+                    />
+                  </div>
+                )}
+                <div className="poly-progress-bar bgen-bar-full">
+                  <div
+                    className="poly-progress-fill bgen-bar-chapters"
+                    style={{ width: `${genStep.totalChapters > 0 ? (genStep.doneChapters / genStep.totalChapters) * 100 : 0}%` }}
+                  />
+                </div>
+                {rescueNote && <div className="bgen-rescue">{rescueNote}</div>}
+              </div>
+            )}
+
+            {done && (
+              <div className={`bgen-done ${Object.keys(errors).length > 0 ? "has-errors" : ""}`}>
+                {Object.keys(errors).length > 0
+                  ? <>Zakończono z <strong>{Object.keys(errors).length}</strong> błędami.</>
+                  : <>Wszystkie tłumaczenia gotowe.</>}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="modal-foot">
           {!generating && !done && (

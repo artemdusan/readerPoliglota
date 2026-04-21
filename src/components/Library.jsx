@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { BsSun, BsMoon, BsGear, BsArrowRepeat, BsPlus } from "react-icons/bs";
 import { EpubParser } from "../lib/epubParser";
 import {
   getActiveBooks,
@@ -7,6 +8,7 @@ import {
   softDeleteBook,
   purgeBookData,
   getReadingPosition,
+  setBookStatus,
 } from "../db";
 import BatchGenModal from "./BatchGenModal";
 import BookMetadataDialog from "./BookMetadataDialog";
@@ -125,6 +127,8 @@ export default function Library({
     return value ? Number(value) : null;
   });
   const [showFeedback, setShowFeedback] = useState(false);
+  const [activeTab, setActiveTab] = useState('active');
+  const [search, setSearch] = useState('');
   const fileInputRef = useRef(null);
 
   useEffect(
@@ -349,6 +353,13 @@ export default function Library({
     }
   }
 
+  async function handleStatusChange(e, bookId, status) {
+    e.stopPropagation();
+    await setBookStatus(bookId, status);
+    setBooks(prev => prev.map(b => b.id === bookId ? { ...b, status } : b));
+    setCtxBookId(null);
+  }
+
   function progressLabel(bookId, chapterCount) {
     const pos = positions[bookId];
     if (!pos || !chapterCount) return "Nieotwarta";
@@ -363,6 +374,28 @@ export default function Library({
       Math.min(100, Math.round(((pos.chapterIndex + 1) / chapterCount) * 100)),
     );
   }
+
+  const activeBooks   = books.filter(b => !b.status || b.status === 'active');
+  const readBooks     = books.filter(b => b.status === 'read');
+  const archivedBooks = books.filter(b => b.status === 'archived');
+
+  const q = search.trim().toLowerCase();
+  const allFiltered = q
+    ? books.filter(b => b.title.toLowerCase().includes(q) || b.author?.toLowerCase().includes(q))
+    : null;
+
+  const baseTabBooks = allFiltered
+    ? allFiltered
+    : activeTab === 'read' ? readBooks : activeTab === 'archived' ? archivedBooks : activeBooks;
+
+  const tabBooks = (!allFiltered && activeTab === 'active')
+    ? [...baseTabBooks].sort((a, b) => {
+        const aTs = positions[a.id]?.updatedAt ?? 0;
+        const bTs = positions[b.id]?.updatedAt ?? 0;
+        if (bTs !== aTs) return bTs - aTs;
+        return (b.createdAt ?? 0) - (a.createdAt ?? 0);
+      })
+    : baseTabBooks;
 
   const syncTone = getSyncCardTone(cfConnected, syncActivity.phase);
   const syncTitle = getSyncCardTitle(cfConnected, syncActivity.phase);
@@ -380,92 +413,76 @@ export default function Library({
         ? `Ostatni sync: ${formatLastSync(lastSync)} (${formatRelativeSync(lastSync, syncNow)})`
         : "Jeszcze nie wykonano pierwszej synchronizacji.";
 
+  const currentTheme = settings?.theme ?? "dark";
+
+  function handleThemeToggle() {
+    onUpdateSetting("theme", currentTheme === "dark" ? "light" : "dark");
+  }
+
   return (
     <div className="lib-layout">
-      {/* NOWY GÓRNY PASEK – STYL APPLE DESIGN */}
-      <header className="lib-header">
-        <div className="lib-header-sync">
-          <div className="lib-sync-main">
-            {/* Status synchronizacji */}
-            <div className={`lib-sync-state ${syncTone}`}>
-              <span className={`lib-sync-dot ${syncTone}`} aria-hidden="true" />
-              <span className="lib-sync-title">{syncTitle}</span>
-            </div>
-
-            {/* Meta + konto */}
-            <div className="lib-sync-meta">
-              {cfConnected && accountName && (
-                <span className="lib-sync-account">Konto: {accountName}</span>
-              )}
-              <span className="lib-sync-meta-text">{syncMetaText}</span>
-            </div>
+      <header className="lib-topbar">
+        <div className="lib-topbar-inner">
+          <div className="lib-topbar-left">
+            <span className={`lib-topbar-dot ${syncTone}`} aria-hidden="true" />
+            {cfConnected && accountName
+              ? <span className="lib-topbar-account">{accountName}</span>
+              : <span className="lib-topbar-account is-offline">Offline</span>
+            }
+            {cfConnected && lastSync && (
+              <span className="lib-topbar-sync-time">
+                {formatRelativeSync(lastSync, syncNow)}
+              </span>
+            )}
           </div>
 
-          {/* Przyciski akcji */}
-          <div className="lib-sync-actions">
-            <button className="lib-sync-action-btn" onClick={onOpenSettings} title="Konto">
-              <span className="lib-btn-icon" aria-hidden="true">⚙</span>
-              <span className="lib-btn-label">Konto</span>
-            </button>
-
+          <div className="lib-topbar-actions">
             <button
-              className={`lib-sync-action-btn ${isSyncing ? "is-syncing" : ""}`}
+              className="lib-topbar-btn"
+              onClick={handleThemeToggle}
+              title={currentTheme === "dark" ? "Tryb jasny" : "Tryb ciemny"}
+            >
+              {currentTheme === "dark" ? <BsSun /> : <BsMoon />}
+            </button>
+            <button
+              className="lib-topbar-btn"
+              onClick={onOpenSettings}
+              title="Ustawienia"
+            >
+              <BsGear />
+            </button>
+            <button
+              className={`lib-topbar-btn ${isSyncing ? "is-spinning" : ""}`}
               onClick={handleSyncButton}
               disabled={isSyncing}
-              title={cfConnected ? "Synchronizuj teraz" : "Połącz konto"}
+              title={cfConnected ? "Synchronizuj" : "Połącz konto"}
             >
-              <span className="lib-btn-icon" aria-hidden="true">↺</span>
-              <span className="lib-btn-label">
-                {cfConnected
-                  ? isSyncing
-                    ? "Synchronizowanie…"
-                    : "Synchronizuj teraz"
-                  : "Połącz konto"}
-              </span>
-            </button>
-
-            <button
-              className="lib-sync-action-btn lib-add-book-btn"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={adding}
-              title="Dodaj książkę"
-            >
-              <span className="lib-btn-icon" aria-hidden="true">
-                {adding ? "…" : "+"}
-              </span>
-              <span className="lib-btn-label">Dodaj książkę</span>
+              <BsArrowRepeat />
             </button>
           </div>
-
-          {/* Progress bar (tylko podczas synchronizacji) */}
-          {isSyncing && syncProgress && (
-            <div className="lib-sync-progress">
-              <div className="lib-sync-progress-track">
-                <div
-                  className="lib-sync-progress-fill"
-                  style={{
-                    width:
-                      syncProgress.total > 0
-                        ? `${(syncProgress.done / syncProgress.total) * 100}%`
-                        : "0%",
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Feedback po synchronizacji */}
-          {cfConnected && syncResult && !isSyncing && showFeedback && (
-            <div
-              className={`lib-sync-feedback ${syncResult.error ? "is-error" : "is-success"}`}
-            >
-              {syncResult.error
-                ? `Błąd: ${syncResult.error}`
-                : `Zsynchronizowano ${syncResult.synced} elementów · ↑ ${formatTransfer(syncResult.sentBytes)} · ↓ ${formatTransfer(syncResult.receivedBytes)}`}
-            </div>
-          )}
         </div>
+
+        {isSyncing && syncProgress && (
+          <div className="lib-topbar-progress">
+            <div
+              className="lib-topbar-progress-fill"
+              style={{
+                width: syncProgress.total > 0
+                  ? `${(syncProgress.done / syncProgress.total) * 100}%`
+                  : "10%",
+              }}
+            />
+          </div>
+        )}
       </header>
+
+      {cfConnected && syncResult && !isSyncing && showFeedback && (
+        <div className={`lib-toast ${syncResult.error ? "is-error" : "is-success"}`}>
+          {syncResult.error
+            ? `Błąd: ${syncResult.error}`
+            : `Zsynchronizowano ${syncResult.synced} elementów · ↑ ${formatTransfer(syncResult.sentBytes)} · ↓ ${formatTransfer(syncResult.receivedBytes)}`}
+        </div>
+      )}
 
       <input
         ref={fileInputRef}
@@ -481,8 +498,37 @@ export default function Library({
       <div className="lib-body">
         <div className="lib-content">
           <section className="lib-toolbar">
-            <div className="lib-toolbar-copy">
-              <span className="lib-kicker">Biblioteka</span>
+            <div className="lib-search-wrap">
+              <input
+                className="lib-search"
+                type="search"
+                placeholder="Szukaj książki…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="lib-tabs">
+              <button
+                className={`lib-tab ${activeTab === 'active' ? 'is-active' : ''}`}
+                onClick={() => setActiveTab('active')}
+              >
+                Czytane
+                {activeBooks.length > 0 && <span className="lib-tab-count">{activeBooks.length}</span>}
+              </button>
+              <button
+                className={`lib-tab ${activeTab === 'read' ? 'is-active' : ''}`}
+                onClick={() => setActiveTab('read')}
+              >
+                Przeczytane
+                {readBooks.length > 0 && <span className="lib-tab-count">{readBooks.length}</span>}
+              </button>
+              <button
+                className={`lib-tab ${activeTab === 'archived' ? 'is-active' : ''}`}
+                onClick={() => setActiveTab('archived')}
+              >
+                Archiwum
+                {archivedBooks.length > 0 && <span className="lib-tab-count">{archivedBooks.length}</span>}
+              </button>
             </div>
           </section>
 
@@ -492,7 +538,8 @@ export default function Library({
             <div className="lib-loading">
               <div className="spin-ring" />
             </div>
-          ) : books.length === 0 ? (
+          ) : tabBooks.length === 0 ? (
+            activeTab === 'active' ? (
             <div
               className={`dropzone ${dragging ? "over" : ""}`}
               onClick={() => fileInputRef.current?.click()}
@@ -513,6 +560,11 @@ export default function Library({
                 {adding ? "Ładowanie..." : "Wybierz plik EPUB"}
               </button>
             </div>
+            ) : (
+              <div className="lib-empty-tab">
+                {activeTab === 'read' ? 'Brak przeczytanych książek.' : 'Archiwum jest puste.'}
+              </div>
+            )
           ) : (
             <div
               className="lib-grid"
@@ -523,7 +575,7 @@ export default function Library({
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
             >
-              {books.map((book) => {
+              {tabBooks.map((book) => {
                 const isStarted = Boolean(positions[book.id]);
                 const percent = progressPercent(book.id, book.chapterCount);
 
@@ -576,6 +628,31 @@ export default function Library({
                         >
                           Edytuj
                         </button>
+                        {(!book.status || book.status === 'active') && (
+                          <button onClick={(e) => handleStatusChange(e, book.id, 'read')}>
+                            ✓ Oznacz jako przeczytaną
+                          </button>
+                        )}
+                        {(!book.status || book.status === 'active') && (
+                          <button onClick={(e) => handleStatusChange(e, book.id, 'archived')}>
+                            ⬛ Archiwizuj
+                          </button>
+                        )}
+                        {(book.status === 'read' || book.status === 'archived') && (
+                          <button onClick={(e) => handleStatusChange(e, book.id, 'active')}>
+                            ↩ Przywróć do biblioteki
+                          </button>
+                        )}
+                        {book.status === 'read' && (
+                          <button onClick={(e) => handleStatusChange(e, book.id, 'archived')}>
+                            ⬛ Archiwizuj
+                          </button>
+                        )}
+                        {book.status === 'archived' && (
+                          <button onClick={(e) => handleStatusChange(e, book.id, 'read')}>
+                            ✓ Przenieś do przeczytanych
+                          </button>
+                        )}
                         <button
                           className="book-ctx-delete"
                           onClick={(e) => {
@@ -589,6 +666,12 @@ export default function Library({
                     )}
 
                     <div className="book-meta">
+                      {book.status === 'read' && (
+                        <span className="book-status-badge is-read">Przeczytana</span>
+                      )}
+                      {book.status === 'archived' && (
+                        <span className="book-status-badge is-archived">Archiwum</span>
+                      )}
                       <div className="book-title">{book.title}</div>
                       {book.author && (
                         <div className="book-author">{book.author}</div>
@@ -648,7 +731,17 @@ export default function Library({
         />
       )}
 
-      <footer className="lib-footer">v{version}</footer>
+      <button
+        className={`lib-fab ${adding ? "is-loading" : ""}`}
+        onClick={() => fileInputRef.current?.click()}
+        disabled={adding}
+        title="Dodaj książkę EPUB"
+        aria-label="Dodaj książkę"
+      >
+        {adding ? <span className="lib-fab-spin" /> : <BsPlus />}
+      </button>
+
+      <div className="lib-version">v{version}</div>
     </div>
   );
 }
