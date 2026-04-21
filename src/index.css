@@ -603,6 +603,7 @@ body,
 
 .book-card {
   position: relative;
+  z-index: 0;
   cursor: pointer;
   border-radius: 22px;
   overflow: visible;
@@ -619,8 +620,12 @@ body,
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
 }
 .book-card:hover {
+  z-index: 2;
   transform: translateY(-5px);
   box-shadow: 0 24px 46px rgba(0, 0, 0, 0.24);
+}
+.book-card.has-open-menu {
+  z-index: 10;
 }
 
 .book-cover {

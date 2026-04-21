@@ -583,7 +583,7 @@ export default function Library({
                 return (
                   <article
                     key={book.id}
-                    className="book-card"
+                    className={`book-card ${ctxBookId === book.id ? 'has-open-menu' : ''}`}
                     onClick={() => onOpenBook(book.id)}
                   >
                     <div className="book-cover">
