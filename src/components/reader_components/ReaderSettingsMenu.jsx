@@ -1,6 +1,12 @@
 import { UiIcon } from "./ReaderIcons";
 import { getVoiceId } from "./readerUtils";
 
+const THEME_OPTIONS = [
+  { value: "dark", label: "Ciemny", icon: "moon" },
+  { value: "light", label: "Jasny", icon: "sun" },
+  { value: "boox", label: "BOOX", icon: "book" },
+];
+
 function getVoiceNoteText(voiceLoadState) {
   if (voiceLoadState === "unsupported") {
     return "Ta przeglądarka nie udostępnia listy głosów Web Speech.";
@@ -40,7 +46,7 @@ export default function ReaderSettingsMenu({
   showVoiceNote,
   voiceLoadState,
   theme,
-  onToggleTheme,
+  onChangeTheme,
   tooltipReadOnClick,
   onToggleTooltipReadOnClick,
   ttsSourceVoice,
@@ -113,26 +119,26 @@ export default function ReaderSettingsMenu({
         </div>
       </div>
 
-      <div className="settings-menu-row settings-menu-row-switch">
+      <div className="settings-menu-row settings-menu-row-theme">
         <span className="settings-menu-label settings-menu-label-with-icon">
-          <UiIcon name={theme === "light" ? "sun" : "moon"} />
+          <UiIcon name={theme === "light" ? "sun" : theme === "boox" ? "book" : "moon"} />
           <span>Motyw</span>
         </span>
-        <div className="settings-toggle-wrap">
-          <span className="settings-toggle-hint">
-            {theme === "light" ? "Jasny" : "Ciemny"}
-          </span>
-          <button
-            type="button"
-            className={`settings-toggle${theme === "light" ? " is-on" : ""}`}
-            aria-pressed={theme === "light"}
-            onClick={onToggleTheme}
-            title={theme === "light" ? "Przełącz na ciemny" : "Przełącz na jasny"}
-          >
-            <span className="settings-toggle-track">
-              <span className="settings-toggle-thumb" />
-            </span>
-          </button>
+        <div className="theme-segmented" role="radiogroup" aria-label="Motyw">
+          {THEME_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`theme-segment${theme === option.value ? " is-active" : ""}`}
+              role="radio"
+              aria-checked={theme === option.value}
+              onClick={() => onChangeTheme?.(option.value)}
+              title={option.label}
+            >
+              <UiIcon name={option.icon} />
+              <span>{option.label}</span>
+            </button>
+          ))}
         </div>
       </div>
 

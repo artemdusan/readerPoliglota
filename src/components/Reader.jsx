@@ -74,6 +74,64 @@ function getLanguageDisplayLabel(code, meta = null) {
   return normalized.toUpperCase();
 }
 
+const NEXT_PAGE_KEY_NAMES = new Set([
+  "ArrowRight",
+  "PageDown",
+  "VolumeDown",
+  "AudioVolumeDown",
+  "BrowserForward",
+  "MediaTrackNext",
+]);
+const PREV_PAGE_KEY_NAMES = new Set([
+  "ArrowLeft",
+  "PageUp",
+  "VolumeUp",
+  "AudioVolumeUp",
+  "BrowserBack",
+  "MediaTrackPrevious",
+]);
+const NEXT_PAGE_CODES = new Set(["ArrowRight", "PageDown", "VolumeDown", "Space"]);
+const PREV_PAGE_CODES = new Set(["ArrowLeft", "PageUp", "VolumeUp"]);
+const NEXT_PAGE_KEY_CODES = new Set([32, 34, 39, 93, 167, 174, 25]);
+const PREV_PAGE_KEY_CODES = new Set([33, 37, 92, 166, 175, 24]);
+
+function getPageTurnDirection(event) {
+  const key = event.key;
+  const code = event.code;
+  const keyCode = event.keyCode ?? event.which;
+
+  if (key === " " || key === "Spacebar" || code === "Space") {
+    return event.shiftKey ? -1 : 1;
+  }
+  if (
+    NEXT_PAGE_KEY_NAMES.has(key) ||
+    NEXT_PAGE_CODES.has(code) ||
+    NEXT_PAGE_KEY_CODES.has(keyCode)
+  ) {
+    return 1;
+  }
+  if (
+    PREV_PAGE_KEY_NAMES.has(key) ||
+    PREV_PAGE_CODES.has(code) ||
+    PREV_PAGE_KEY_CODES.has(keyCode)
+  ) {
+    return -1;
+  }
+  return 0;
+}
+
+function isTextEntryElement(element) {
+  if (!element) return false;
+  const tag = element.tagName;
+  if (element.isContentEditable || tag === "TEXTAREA" || tag === "SELECT") {
+    return true;
+  }
+  if (tag !== "INPUT") return false;
+  return !["button", "checkbox", "radio", "range", "submit"].includes(
+    element.type,
+  );
+}
+
 /* ═══════════════════════════════════════════
    Helpers
 ═══════════════════════════════════════════ */
@@ -201,6 +259,7 @@ export default function Reader({
   const swipeTouchStartXRef = useRef(null);
   const swipeTouchStartYRef = useRef(null);
   const toggleDistractionFreeRef = useRef(null);
+  const keyPageTurnAtRef = useRef(0);
   toggleDistractionFreeRef.current = toggleDistractionFree;
   const centerTapHandledRef = useRef(false);
 
@@ -208,13 +267,25 @@ export default function Reader({
 
   useEffect(() => {
     function onKeyDown(e) {
-      const tag = document.activeElement?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTextEntryElement(document.activeElement)) return;
       if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
         toggleDistractionFreeRef.current?.();
-      } else if (e.key === "ArrowRight") {
+        return;
+      }
+
+      const direction = getPageTurnDirection(e);
+      if (!direction) return;
+
+      e.preventDefault();
+      const now = Date.now();
+      if (e.repeat && now - keyPageTurnAtRef.current < 180) return;
+      keyPageTurnAtRef.current = now;
+
+      if (direction > 0) {
         nextPageRef.current();
-      } else if (e.key === "ArrowLeft") {
+      } else {
         prevPageRef.current();
       }
     }
@@ -2298,7 +2369,7 @@ export default function Reader({
             showVoiceNote={showVoiceNote}
             voiceLoadState={voiceLoadState}
             theme={theme}
-            onToggleTheme={() => onUpdateSetting?.("theme", theme === "dark" ? "light" : "dark")}
+            onChangeTheme={(nextTheme) => onUpdateSetting?.("theme", nextTheme)}
             tooltipReadOnClick={tooltipReadOnClick}
             onToggleTooltipReadOnClick={handleToggleTooltipReadOnClick}
             ttsSourceVoice={ttsSourceVoice}

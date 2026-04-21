@@ -42,6 +42,24 @@ html[data-theme="light"] {
   --red: #8a2010;
 }
 
+html[data-theme="boox"] {
+  color-scheme: light;
+  --bg: #f6f5ec;
+  --bg-side: #ece9dc;
+  --panel: #fbfaf2;
+  --bg-hover: #e4e0d1;
+  --border: #9f9a8c;
+  --border-soft: #d0cabc;
+  --txt-1: #10100e;
+  --txt-2: #3f4038;
+  --txt-3: #6f6d63;
+  --gold: #245f68;
+  --gold-hi: #173f48;
+  --gold-dim: rgba(36, 95, 104, 0.14);
+  --green: #246f4b;
+  --red: #8a2f22;
+}
+
 /* Overrides for hardcoded dark-mode colors in light theme */
 html[data-theme="light"] .ch-body {
   color: #1a1714;
@@ -84,6 +102,18 @@ html[data-theme="light"] .settings-tool:hover:not(:disabled) {
 }
 html[data-theme="light"] .settings-toggle-track {
   background: rgba(0, 0, 0, 0.18);
+}
+html[data-theme="light"] .theme-segmented {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+html[data-theme="light"] .theme-segment {
+  color: var(--txt-2);
+}
+html[data-theme="light"] .theme-segment.is-active {
+  background: #fffdf8;
+  color: var(--gold);
+  box-shadow: inset 0 0 0 1px rgba(122, 80, 32, 0.28);
 }
 html[data-theme="light"] .ctl {
   background: rgba(0, 0, 0, 0.04);
@@ -291,6 +321,157 @@ html[data-theme="light"] .tts-bar-btn:hover:not(:disabled) {
 
 html[data-theme="light"] .settings-toggle.is-on .settings-toggle-track {
   background: var(--gold);
+}
+
+/* BOOX Go Color: crisp, high-contrast surfaces for color e-ink */
+html[data-theme="boox"] *,
+html[data-theme="boox"] *::before,
+html[data-theme="boox"] *::after {
+  text-shadow: none !important;
+}
+html[data-theme="boox"] .reader-layout *,
+html[data-theme="boox"] .reader-layout *::before,
+html[data-theme="boox"] .reader-layout *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+}
+html[data-theme="boox"] .ch-body {
+  color: var(--txt-1);
+  -webkit-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+}
+html[data-theme="boox"] .ch-body strong {
+  color: #000;
+}
+html[data-theme="boox"] .ch-body blockquote {
+  color: var(--txt-2);
+}
+html[data-theme="boox"] .ch-body img {
+  opacity: 1;
+}
+html[data-theme="boox"] .pw-original {
+  background: var(--panel);
+  border-color: var(--gold);
+  color: var(--txt-1);
+  box-shadow: none;
+}
+html[data-theme="boox"] .pw-target {
+  color: var(--gold-hi);
+  background: rgba(36, 95, 104, 0.12);
+  border-bottom-color: rgba(36, 95, 104, 0.42);
+}
+html[data-theme="boox"] .pw:hover .pw-target,
+html[data-theme="boox"] .pw.open .pw-target {
+  background: rgba(36, 95, 104, 0.2);
+}
+html[data-theme="boox"] .lib-layout,
+html[data-theme="boox"] .reader-layout,
+html[data-theme="boox"] .reader-main,
+html[data-theme="boox"] .ch-scroll,
+html[data-theme="boox"] .loading-screen {
+  background: var(--bg);
+}
+html[data-theme="boox"] .lib-topbar,
+html[data-theme="boox"] .topbar,
+html[data-theme="boox"] .bottombar,
+html[data-theme="boox"] .reader-search-strip {
+  background: var(--bg-side);
+  border-color: var(--border-soft);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+html[data-theme="boox"] .sidebar,
+html[data-theme="boox"] .settings-menu,
+html[data-theme="boox"] .bookmark-menu,
+html[data-theme="boox"] .book-ctx-menu,
+html[data-theme="boox"] .modal {
+  background: var(--panel);
+  border-color: var(--border);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+html[data-theme="boox"] .settings-tool,
+html[data-theme="boox"] .ctl,
+html[data-theme="boox"] .nav-btn,
+html[data-theme="boox"] .tts-bar-btn,
+html[data-theme="boox"] .bookmark-save-btn,
+html[data-theme="boox"] .bookmark-item-main,
+html[data-theme="boox"] .bookmark-item-remove,
+html[data-theme="boox"] .reader-search-input,
+html[data-theme="boox"] .reader-search-result,
+html[data-theme="boox"] .tb-ver-select,
+html[data-theme="boox"] .tts-voice-sel,
+html[data-theme="boox"] .form-select,
+html[data-theme="boox"] .lib-search {
+  background: rgba(255, 255, 255, 0.52);
+  border-color: var(--border-soft);
+  color: var(--txt-1);
+}
+html[data-theme="boox"] .settings-tool:hover:not(:disabled),
+html[data-theme="boox"] .ctl:hover,
+html[data-theme="boox"] .nav-btn:hover:not(:disabled),
+html[data-theme="boox"] .tts-bar-btn:hover:not(:disabled),
+html[data-theme="boox"] .reader-search-result:hover {
+  background: rgba(36, 95, 104, 0.1);
+  border-color: var(--gold);
+  color: var(--gold-hi);
+}
+html[data-theme="boox"] .settings-tool-active,
+html[data-theme="boox"] .toc-entry.active,
+html[data-theme="boox"] .lib-tab.is-active {
+  background: rgba(36, 95, 104, 0.14);
+  border-color: var(--gold);
+  color: var(--gold-hi);
+  box-shadow: none;
+}
+html[data-theme="boox"] .book-card {
+  background: var(--panel);
+  border-color: var(--border-soft);
+  box-shadow: none;
+}
+html[data-theme="boox"] .book-card::before {
+  opacity: 0;
+}
+html[data-theme="boox"] .book-card:hover,
+html[data-theme="boox"] .book-card.has-open-menu {
+  border-color: var(--border);
+  box-shadow: none;
+}
+html[data-theme="boox"] .book-cover {
+  background: var(--bg-hover);
+  box-shadow: none;
+}
+html[data-theme="boox"] .book-progress-bar,
+html[data-theme="boox"] .settings-toggle-track,
+html[data-theme="boox"] .lib-tabs {
+  background: var(--bg-hover);
+}
+html[data-theme="boox"] .settings-toggle.is-on .settings-toggle-track {
+  background: var(--gold);
+}
+html[data-theme="boox"] .theme-segmented {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+html[data-theme="boox"] .theme-segment {
+  color: var(--txt-2);
+}
+html[data-theme="boox"] .theme-segment.is-active {
+  background: var(--panel);
+  color: var(--gold-hi);
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+html[data-theme="boox"] [data-pid].paragraph-active,
+html[data-theme="boox"] .tts-active {
+  background: rgba(36, 95, 104, 0.16) !important;
+  outline-color: rgba(36, 95, 104, 0.36);
+}
+html[data-theme="boox"] .form-select option,
+html[data-theme="boox"] .tts-voice-sel option,
+html[data-theme="boox"] .tb-ver-select option {
+  background: var(--panel);
+  color: var(--txt-1);
 }
 
 html,
@@ -2944,6 +3125,61 @@ html[data-theme="light"] .book-status-badge.is-archived {
   align-items: center;
   gap: 6px;
 }
+.settings-menu-row-theme {
+  align-items: center;
+}
+.theme-segmented {
+  width: min(218px, 100%);
+  min-width: 196px;
+  height: 34px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.theme-segment {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--txt-2);
+  font-family: "DM Sans", sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.theme-segment .ui-icon {
+  width: 13px;
+  height: 13px;
+}
+.theme-segment span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.theme-segment:hover {
+  color: var(--txt-1);
+}
+.theme-segment.is-active {
+  background: rgba(192, 144, 80, 0.16);
+  color: var(--gold-hi);
+  box-shadow: inset 0 0 0 1px rgba(192, 144, 80, 0.35);
+}
 .settings-menu-select-wrap {
   flex: 1;
   min-width: 0;
@@ -3038,6 +3274,14 @@ html[data-theme="light"] .book-status-badge.is-archived {
   .settings-menu-row.settings-menu-row-select {
     align-items: stretch;
     flex-direction: column;
+  }
+  .settings-menu-row-theme {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .theme-segmented {
+    width: 100%;
+    min-width: 0;
   }
 }
 

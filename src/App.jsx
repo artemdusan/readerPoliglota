@@ -10,6 +10,12 @@ import { getSyncActivity } from './sync/syncActivity';
 let startupSyncPromise = null;
 let lastStartupSyncAttemptAt = 0;
 
+const THEME_COLORS = {
+  dark: '#17110d',
+  light: '#f5f0e8',
+  boox: '#f6f5ec',
+};
+
 function shouldRunStartupSync(intervalMinutes) {
   const minutes = Number(intervalMinutes ?? 30);
   if (!minutes || minutes < 1 || !navigator.onLine || !isLoggedIn()) return false;
@@ -48,6 +54,9 @@ export default function App() {
   useEffect(() => {
     const theme = settings.theme ?? "dark";
     document.documentElement.setAttribute("data-theme", theme);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', THEME_COLORS[theme] ?? THEME_COLORS.dark);
   }, [settings.theme]);
 
   // Load CF JWT from Dexie into memory on startup

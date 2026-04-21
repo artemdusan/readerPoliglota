@@ -13,6 +13,7 @@ import {
   RiSettings4Line,
   RiSunLine,
   RiMoonLine,
+  RiBookOpenLine,
   RiFullscreenLine,
   RiFullscreenExitLine,
 } from "react-icons/ri";
@@ -32,6 +33,7 @@ const ICON_MAP = {
   settings:       RiSettings4Line,
   sun:            RiSunLine,
   moon:           RiMoonLine,
+  book:           RiBookOpenLine,
   fullscreen:     RiFullscreenLine,
   fullscreenExit: RiFullscreenExitLine,
 };
