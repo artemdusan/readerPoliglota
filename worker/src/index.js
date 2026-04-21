@@ -333,7 +333,7 @@ async function handleTranslate(request, env) {
 
 async function handleGetBooks(env, userId) {
   const { results } = await env.DB.prepare(
-    'SELECT book_id, title, author, chapter_count, created_at, deleted_at FROM book_manifest WHERE user_id = ?',
+    'SELECT book_id, title, author, chapter_count, created_at, deleted_at, status FROM book_manifest WHERE user_id = ?',
   ).bind(userId).all();
   return json(results);
 }
@@ -355,11 +355,12 @@ async function handleUpsertMeta(request, env, userId, bookId) {
   await r2PutJson(env, metaKey(userId, bookId), cleanMeta);
 
   await env.DB.prepare(
-    `INSERT INTO book_manifest (user_id, book_id, title, author, chapter_count, created_at, deleted_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO book_manifest (user_id, book_id, title, author, chapter_count, created_at, deleted_at, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (user_id, book_id) DO UPDATE SET
        title = excluded.title, author = excluded.author,
-       chapter_count = excluded.chapter_count, deleted_at = excluded.deleted_at`,
+       chapter_count = excluded.chapter_count, deleted_at = excluded.deleted_at,
+       status = excluded.status`,
   ).bind(
     userId, bookId,
     cleanMeta.title || 'Bez tytułu',
@@ -367,8 +368,21 @@ async function handleUpsertMeta(request, env, userId, bookId) {
     cleanMeta.chapterCount || 0,
     cleanMeta.createdAt || Date.now(),
     cleanMeta.deletedAt || null,
+    cleanMeta.status || 'active',
   ).run();
 
+  return json({ ok: true });
+}
+
+/** PATCH /books/{bookId} — update status only */
+async function handlePatchBookStatus(request, env, userId, bookId) {
+  let body;
+  try { body = await request.json(); } catch { return err('nieprawidłowy JSON'); }
+  const status = body.status;
+  if (!['active', 'read', 'archived'].includes(status)) return err('nieprawidłowy status');
+  await env.DB.prepare(
+    'UPDATE book_manifest SET status = ? WHERE user_id = ? AND book_id = ?',
+  ).bind(status, userId, bookId).run();
   return json({ ok: true });
 }
 
@@ -622,6 +636,7 @@ async function handleRequest(request, env) {
     if (bookMatch) {
       const bookId = bookMatch[1];
       if (method === 'POST')   return handleUpsertMeta(request, env, userId, bookId);
+      if (method === 'PATCH')  return handlePatchBookStatus(request, env, userId, bookId);
       if (method === 'GET')    return handleGetMeta(env, userId, bookId);
       if (method === 'DELETE') return handleDeleteBook(request, env, userId, bookId);
     }

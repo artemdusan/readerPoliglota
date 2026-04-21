@@ -158,6 +158,16 @@ async function syncPending() {
 }
 
 /**
+ * Push a single book status change to the server.
+ * Fire-and-forget — failures are retried on next syncAll via uploadBook.
+ */
+export function syncBookStatus(bookId, status) {
+  if (!getToken()) return;
+  apiFetch(`/books/${bookId}`, { method: 'PATCH', body: JSON.stringify({ status }) })
+    .catch(err => console.warn('[CF sync] syncBookStatus failed:', err.message));
+}
+
+/**
  * Fire-and-forget wrapper around syncPending.
  * Call after any local write (savePolyglotCache, saveBook) to push to server.
  */
@@ -305,7 +315,7 @@ export async function syncAll(onProgress) {
       updateSyncActivity(synced, total);
     }
 
-    // ── Apply deletedAt from remote manifest → local DB ──
+    // ── Apply deletedAt + status from remote manifest → local DB ──
     for (const entry of remoteManifest) {
       const local = localBookMap[entry.book_id];
       if (!local) continue;
@@ -320,6 +330,8 @@ export async function syncAll(onProgress) {
           body: JSON.stringify({ deletedAt: local.deletedAt }),
         }, stats);
         await purgeBookData(entry.book_id, { keepBookRecord: false });
+      } else if (entry.status && entry.status !== (local.status ?? 'active')) {
+        await db.books.update(entry.book_id, { status: entry.status });
       }
     }
 

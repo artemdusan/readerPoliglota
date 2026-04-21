@@ -15,7 +15,7 @@ import BookMetadataDialog from "./BookMetadataDialog";
 import ImportDialog from "./ImportDialog";
 import { version } from "../../package.json";
 import { getUsername, isLoggedIn, onAuthChange } from "../sync/cfAuth";
-import { syncAll, uploadBook, deleteRemoteBook } from "../sync/cfSync";
+import { syncAll, uploadBook, deleteRemoteBook, syncBookStatus } from "../sync/cfSync";
 import { getSyncActivity, subscribeSyncActivity } from "../sync/syncActivity";
 
 function getDroppedFiles(dataTransfer) {
@@ -358,6 +358,7 @@ export default function Library({
     await setBookStatus(bookId, status);
     setBooks(prev => prev.map(b => b.id === bookId ? { ...b, status } : b));
     setCtxBookId(null);
+    syncBookStatus(bookId, status);
   }
 
   function progressLabel(bookId, chapterCount) {

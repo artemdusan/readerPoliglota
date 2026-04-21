@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS book_manifest (
   created_at INTEGER NOT NULL,
   deleted_at    INTEGER,            -- NULL = active; ms timestamp = soft-deleted
   chapter_count INTEGER NOT NULL DEFAULT 0,
+  status        TEXT    NOT NULL DEFAULT 'active',
   PRIMARY KEY (user_id, book_id)
 );
 
