@@ -164,7 +164,7 @@ export async function getActiveBooks() {
 }
 
 export async function setBookStatus(bookId, status) {
-  await db.books.update(bookId, { status });
+  await db.books.update(bookId, { status, statusPending: true });
 }
 
 export async function getBook(bookId) {

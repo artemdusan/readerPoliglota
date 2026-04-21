@@ -164,6 +164,7 @@ async function syncPending() {
 export function syncBookStatus(bookId, status) {
   if (!getToken()) return;
   apiFetch(`/books/${bookId}`, { method: 'PATCH', body: JSON.stringify({ status }) })
+    .then(() => db.books.update(bookId, { statusPending: false }))
     .catch(err => console.warn('[CF sync] syncBookStatus failed:', err.message));
 }
 
@@ -330,7 +331,15 @@ export async function syncAll(onProgress) {
           body: JSON.stringify({ deletedAt: local.deletedAt }),
         }, stats);
         await purgeBookData(entry.book_id, { keepBookRecord: false });
+      } else if (local.statusPending) {
+        // Local status changed but not yet confirmed pushed — push to remote
+        await apiFetch(`/books/${entry.book_id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: local.status ?? 'active' }),
+        }, stats);
+        await db.books.update(entry.book_id, { statusPending: false });
       } else if (entry.status && entry.status !== (local.status ?? 'active')) {
+        // Remote changed (another device) — apply to local
         await db.books.update(entry.book_id, { status: entry.status });
       }
     }
