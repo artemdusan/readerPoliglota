@@ -76,6 +76,10 @@ async function readBytes(zip, path) {
   return e.getData();
 }
 
+function safeDecode(s) {
+  try { return decodeURIComponent(s); } catch { return s; }
+}
+
 function resolvePath(dir, rel) {
   if (!rel) return '';
   if (/^[a-z][a-z\d+\-.]*:/i.test(rel)) return rel;
@@ -181,7 +185,7 @@ function parseNavOl(ol, baseDir) {
     const a = li.querySelector('a'), span = li.querySelector('span');
     const label = (a || span)?.textContent.trim() ?? '';
     const rawHref = a?.getAttribute('href') ?? '';
-    const href = rawHref ? resolvePath(baseDir, rawHref.split('#')[0]) : '';
+    const href = rawHref ? resolvePath(baseDir, safeDecode(rawHref).split('#')[0]) : '';
     const childOl = li.querySelector(':scope > ol') || li.querySelector('ol');
     return { title: label, href, children: childOl ? parseNavOl(childOl, baseDir) : [] };
   });
@@ -200,7 +204,7 @@ function parseNavPoints(parent, baseDir) {
     const title   = textEl ? textEl.textContent.trim() : '';
     const contentEl = firstByLocalName(pt, 'content');
     const src = contentEl ? (contentEl.getAttribute('src') ?? '') : '';
-    const href = src ? resolvePath(baseDir, src.split('#')[0]) : '';
+    const href = src ? resolvePath(baseDir, safeDecode(src).split('#')[0]) : '';
     return { title, href, children: parseNavPoints(pt, baseDir) };
   });
 }

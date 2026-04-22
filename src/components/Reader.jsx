@@ -2068,13 +2068,14 @@ export default function Reader({
   /* ── TOC navigation ── */
   function goToHref(href) {
     if (!href || !book) return;
-    const clean = href.split("#")[0];
+    const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
+    const clean = safeDecode(href.split("#")[0]);
     db.chapters
       .where("bookId")
       .equals(bookId)
       .toArray()
       .then((chs) => {
-        const found = chs.find((c) => c.href.split("#")[0] === clean);
+        const found = chs.find((c) => safeDecode(c.href.split("#")[0]) === clean);
         if (found) navigate(found.chapterIndex);
       });
     setSidebarOpen(false);
