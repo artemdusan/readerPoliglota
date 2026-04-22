@@ -44,20 +44,20 @@ html[data-theme="light"] {
 
 html[data-theme="boox"] {
   color-scheme: light;
-  --bg: #f6f5ec;
-  --bg-side: #ece9dc;
-  --panel: #fbfaf2;
-  --bg-hover: #e4e0d1;
-  --border: #9f9a8c;
-  --border-soft: #d0cabc;
-  --txt-1: #10100e;
-  --txt-2: #3f4038;
-  --txt-3: #6f6d63;
-  --gold: #245f68;
-  --gold-hi: #173f48;
-  --gold-dim: rgba(36, 95, 104, 0.14);
-  --green: #246f4b;
-  --red: #8a2f22;
+  --bg: #faf7ef;
+  --bg-side: #ede6d9;
+  --panel: #ffffff;
+  --bg-hover: #e6ddcd;
+  --border: #6e6a61;
+  --border-soft: #c8c2b8;
+  --txt-1: #0f0f0f;
+  --txt-2: #3f3f3a;
+  --txt-3: #6d695f;
+  --gold: #000000;
+  --gold-hi: #0f0f0f;
+  --gold-dim: #ede6d9;
+  --green: #2e2e2e;
+  --red: #0f0f0f;
 }
 
 /* Overrides for hardcoded dark-mode colors in light theme */
@@ -329,7 +329,7 @@ html[data-theme="light"] .settings-toggle.is-on .settings-toggle-track {
   background: var(--gold);
 }
 
-/* BOOX Go Color: crisp, high-contrast surfaces for color e-ink */
+/* BOOX Carta: monochrome paper surfaces with solid fills for low ghosting */
 html[data-theme="boox"] *,
 html[data-theme="boox"] *::before,
 html[data-theme="boox"] *::after {
@@ -363,12 +363,12 @@ html[data-theme="boox"] .pw-original {
 }
 html[data-theme="boox"] .pw-target {
   color: var(--gold-hi);
-  background: rgba(36, 95, 104, 0.12);
-  border-bottom-color: rgba(36, 95, 104, 0.42);
+  background: var(--gold-dim);
+  border-bottom-color: var(--border);
 }
 html[data-theme="boox"] .pw:hover .pw-target,
 html[data-theme="boox"] .pw.open .pw-target {
-  background: rgba(36, 95, 104, 0.2);
+  background: var(--bg-hover);
 }
 html[data-theme="boox"] .lib-layout,
 html[data-theme="boox"] .reader-layout,
@@ -411,7 +411,7 @@ html[data-theme="boox"] .tts-voice-sel,
 html[data-theme="boox"] .reader-font-sel,
 html[data-theme="boox"] .form-select,
 html[data-theme="boox"] .lib-search {
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--panel);
   border-color: var(--border-soft);
   color: var(--txt-1);
 }
@@ -420,14 +420,14 @@ html[data-theme="boox"] .ctl:hover,
 html[data-theme="boox"] .nav-btn:hover:not(:disabled),
 html[data-theme="boox"] .tts-bar-btn:hover:not(:disabled),
 html[data-theme="boox"] .reader-search-result:hover {
-  background: rgba(36, 95, 104, 0.1);
+  background: var(--gold-dim);
   border-color: var(--gold);
   color: var(--gold-hi);
 }
 html[data-theme="boox"] .settings-tool-active,
 html[data-theme="boox"] .toc-entry.active,
 html[data-theme="boox"] .lib-tab.is-active {
-  background: rgba(36, 95, 104, 0.14);
+  background: var(--gold-dim);
   border-color: var(--gold);
   color: var(--gold-hi);
   box-shadow: none;
@@ -471,8 +471,8 @@ html[data-theme="boox"] .theme-segment.is-active {
 }
 html[data-theme="boox"] [data-pid].paragraph-active,
 html[data-theme="boox"] .tts-active {
-  background: rgba(36, 95, 104, 0.16) !important;
-  outline-color: rgba(36, 95, 104, 0.36);
+  background: var(--gold-dim) !important;
+  outline-color: var(--border);
 }
 html[data-theme="boox"] .form-select option,
 html[data-theme="boox"] .tts-voice-sel option,
@@ -3524,4 +3524,275 @@ html[data-theme="light"] .book-status-badge.is-archived {
   z-index: 9999;
   pointer-events: none;
   white-space: nowrap;
+}
+
+/* Final BOOX overrides: solid, monochrome UI for Carta E Ink panels. */
+html[data-theme="boox"] {
+  scrollbar-color: var(--border) var(--bg-side);
+  -webkit-tap-highlight-color: var(--gold-dim);
+}
+
+html[data-theme="boox"] *,
+html[data-theme="boox"] *::before,
+html[data-theme="boox"] *::after {
+  animation: none !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transition: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-theme="boox"] ::selection {
+  background: #000000;
+  color: #ffffff;
+}
+
+html[data-theme="boox"] body,
+html[data-theme="boox"] #root,
+html[data-theme="boox"] .lib-layout,
+html[data-theme="boox"] .reader-layout,
+html[data-theme="boox"] .reader-main,
+html[data-theme="boox"] .ch-scroll,
+html[data-theme="boox"] .loading-screen {
+  background: var(--bg);
+  color: var(--txt-1);
+}
+
+html[data-theme="boox"] .lib-topbar,
+html[data-theme="boox"] .topbar,
+html[data-theme="boox"] .bottombar,
+html[data-theme="boox"] .reader-search-strip,
+html[data-theme="boox"] .missing-lang-banner {
+  background: var(--bg-side);
+  border-color: var(--border);
+}
+
+html[data-theme="boox"] .lib-topbar {
+  border-bottom-width: 2px;
+}
+
+html[data-theme="boox"] .topbar,
+html[data-theme="boox"] .reader-search-strip,
+html[data-theme="boox"] .missing-lang-banner {
+  border-bottom-width: 2px;
+}
+
+html[data-theme="boox"] .bottombar {
+  border-top-width: 2px;
+}
+
+html[data-theme="boox"] .sidebar {
+  background: var(--panel);
+  border-right: 2px solid var(--border);
+}
+
+html[data-theme="boox"] .settings-menu,
+html[data-theme="boox"] .bookmark-menu,
+html[data-theme="boox"] .book-ctx-menu,
+html[data-theme="boox"] .modal,
+html[data-theme="boox"] .bgen-setup-card,
+html[data-theme="boox"] .bgen-chapter-list,
+html[data-theme="boox"] .dropzone {
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 6px;
+}
+
+html[data-theme="boox"] .modal-overlay {
+  background: var(--bg);
+}
+
+html[data-theme="boox"] .book-card {
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  transform: none;
+}
+
+html[data-theme="boox"] .book-card:hover,
+html[data-theme="boox"] .book-card.has-open-menu {
+  border-color: #000000;
+  transform: none;
+}
+
+html[data-theme="boox"] .book-card::before {
+  display: none;
+}
+
+html[data-theme="boox"] .book-cover,
+html[data-theme="boox"] .import-cover {
+  background: var(--bg-side);
+  border: 2px solid var(--border);
+  border-radius: 4px;
+}
+
+html[data-theme="boox"] .settings-tool,
+html[data-theme="boox"] .ctl,
+html[data-theme="boox"] .nav-btn,
+html[data-theme="boox"] .tts-bar-btn,
+html[data-theme="boox"] .lib-topbar-btn,
+html[data-theme="boox"] .lib-fab,
+html[data-theme="boox"] .book-menu-btn,
+html[data-theme="boox"] .bookmark-save-btn,
+html[data-theme="boox"] .bookmark-item-main,
+html[data-theme="boox"] .bookmark-item-remove,
+html[data-theme="boox"] .reader-search-input,
+html[data-theme="boox"] .reader-search-result,
+html[data-theme="boox"] .tb-ver-select,
+html[data-theme="boox"] .tts-voice-sel,
+html[data-theme="boox"] .reader-font-sel,
+html[data-theme="boox"] .form-input,
+html[data-theme="boox"] .form-select,
+html[data-theme="boox"] .lib-search,
+html[data-theme="boox"] .modal-close,
+html[data-theme="boox"] .book-ctx-menu button,
+html[data-theme="boox"] .theme-segment,
+html[data-theme="boox"] .lib-tab,
+html[data-theme="boox"] .bgen-ch-row,
+html[data-theme="boox"] .reader-search-empty {
+  background: var(--panel);
+  border: 2px solid var(--border-soft);
+  border-radius: 6px;
+  color: var(--txt-1);
+}
+
+html[data-theme="boox"] .settings-tool:hover:not(:disabled),
+html[data-theme="boox"] .ctl:hover,
+html[data-theme="boox"] .nav-btn:hover:not(:disabled),
+html[data-theme="boox"] .tts-bar-btn:hover:not(:disabled),
+html[data-theme="boox"] .lib-topbar-btn:hover,
+html[data-theme="boox"] .lib-fab:hover,
+html[data-theme="boox"] .book-menu-btn:hover,
+html[data-theme="boox"] .reader-search-result:hover,
+html[data-theme="boox"] .modal-close:hover,
+html[data-theme="boox"] .book-ctx-menu button:hover,
+html[data-theme="boox"] .bgen-ch-row:hover,
+html[data-theme="boox"] .theme-segment:hover,
+html[data-theme="boox"] .lib-tab:hover,
+html[data-theme="boox"] .lib-search:focus,
+html[data-theme="boox"] .form-input:focus,
+html[data-theme="boox"] .form-select:focus,
+html[data-theme="boox"] .reader-font-sel:hover,
+html[data-theme="boox"] .reader-font-sel:focus {
+  background: var(--gold-dim);
+  border-color: #000000;
+  color: #000000;
+  outline: none;
+  transform: none;
+}
+
+html[data-theme="boox"] .settings-tool-active,
+html[data-theme="boox"] .ctl-active,
+html[data-theme="boox"] .tts-bar-btn.tts-bar-play.active,
+html[data-theme="boox"] .toc-entry.active,
+html[data-theme="boox"] .theme-segment.is-active,
+html[data-theme="boox"] .lib-tab.is-active,
+html[data-theme="boox"] .book-ctx-menu .book-ctx-primary {
+  background: #000000;
+  border-color: #000000;
+  color: #ffffff;
+}
+
+html[data-theme="boox"] .theme-segmented,
+html[data-theme="boox"] .lib-tabs {
+  background: var(--bg-side);
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  gap: 4px;
+  padding: 4px;
+}
+
+html[data-theme="boox"] .theme-segmented {
+  height: 44px;
+}
+
+html[data-theme="boox"] .settings-toggle-track {
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 999px;
+}
+
+html[data-theme="boox"] .settings-toggle.is-on .settings-toggle-track {
+  background: #000000;
+}
+
+html[data-theme="boox"] .settings-toggle-thumb {
+  background: #ffffff;
+  border: 1px solid #000000;
+}
+
+html[data-theme="boox"] .lib-topbar-progress,
+html[data-theme="boox"] .book-progress-bar,
+html[data-theme="boox"] .poly-progress-bar,
+html[data-theme="boox"] .bgen-progress,
+html[data-theme="boox"] .settings-sync-progress-track {
+  background: var(--bg-side);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  min-height: 6px;
+}
+
+html[data-theme="boox"] .lib-topbar-progress-fill,
+html[data-theme="boox"] .book-progress-fill,
+html[data-theme="boox"] .poly-progress-fill,
+html[data-theme="boox"] .bgen-progress-fill,
+html[data-theme="boox"] .settings-sync-progress-fill {
+  background: #000000;
+  border-radius: 1px;
+}
+
+html[data-theme="boox"] .pw-target,
+html[data-theme="boox"] .ch-body.tts-ready .pw:hover,
+html[data-theme="boox"] [data-pid].paragraph-active,
+html[data-theme="boox"] .tts-active {
+  background: var(--gold-dim) !important;
+  outline-color: var(--border);
+}
+
+html[data-theme="boox"] .pw-original {
+  background: var(--panel);
+  border: 2px solid #000000;
+  color: var(--txt-1);
+}
+
+html[data-theme="boox"] .lib-toast,
+html[data-theme="boox"] .tts-error-toast,
+html[data-theme="boox"] .lib-error-banner,
+html[data-theme="boox"] .poly-error {
+  background: var(--panel);
+  border: 2px solid #000000;
+  border-radius: 6px;
+  color: #000000;
+}
+
+html[data-theme="boox"] .lib-topbar-dot {
+  border: 2px solid #000000;
+}
+
+html[data-theme="boox"] .book-status-badge,
+html[data-theme="boox"] .book-status-badge.is-read,
+html[data-theme="boox"] .book-status-badge.is-archived {
+  background: var(--gold-dim);
+  border: 1px solid var(--border);
+  color: #000000;
+}
+
+html[data-theme="boox"] .bgen-ch-header,
+html[data-theme="boox"] .bgen-estimate,
+html[data-theme="boox"] .bgen-estimate-item,
+html[data-theme="boox"] .bgen-progress {
+  background: var(--bg-side);
+  border-color: var(--border);
+}
+
+html[data-theme="boox"] .bgen-ch-row.has-error {
+  background: var(--gold-dim);
+  border-color: #000000;
+}
+
+html[data-theme="boox"] .import-cover-hint {
+  background: #000000;
+  color: #ffffff;
 }
