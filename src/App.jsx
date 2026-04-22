@@ -13,7 +13,7 @@ let lastStartupSyncAttemptAt = 0;
 const THEME_COLORS = {
   dark: '#17110d',
   light: '#f5f0e8',
-  boox: '#f6f5ec',
+  boox: '#faf7ef',
 };
 
 function shouldRunStartupSync(intervalMinutes) {
