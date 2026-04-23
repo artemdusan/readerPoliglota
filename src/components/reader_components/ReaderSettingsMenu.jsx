@@ -33,6 +33,8 @@ export default function ReaderSettingsMenu({
   onSearchToolClick,
   onBookmarksToolClick,
   onToggleTts,
+  isFullscreen,
+  onToggleFullscreen,
   ttsButtonTitle,
   ttsButtonLabel,
   isTtsPlaying,
@@ -67,7 +69,9 @@ export default function ReaderSettingsMenu({
   onTargetVoiceChange,
 }) {
   const [fsInput, setFsInput] = useState(String(fontSize));
-  useEffect(() => { setFsInput(String(fontSize)); }, [fontSize]);
+  useEffect(() => {
+    setFsInput(String(fontSize));
+  }, [fontSize]);
 
   return (
     <div className="settings-menu" ref={menuRef}>
@@ -113,6 +117,17 @@ export default function ReaderSettingsMenu({
           </span>
           <span className="settings-tool-text">{ttsButtonLabel}</span>
         </button>
+
+        <button
+          className={`settings-tool`}
+          onClick={onToggleFullscreen}
+          title={isFullscreen ? "Wyjdź z pełnego ekranu" : "Peły ekran"}
+        >
+          <span className="settings-tool-icon">
+            <UiIcon name={isFullscreen ? "fullscreenExit" : "fullscreen"} />
+          </span>
+          <span className="settings-tool-text">Ekran</span>
+        </button>
       </div>
 
       <div className="settings-menu-divider" />
@@ -139,7 +154,9 @@ export default function ReaderSettingsMenu({
               if (Number.isFinite(n) && n >= 1) onSetFontSize?.(n);
               else setFsInput(String(fontSize));
             }}
-            onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.target.blur();
+            }}
             aria-label="Rozmiar czcionki"
           />
           <button className="ctl" onClick={() => onChangeFontSize(1)}>
@@ -169,7 +186,11 @@ export default function ReaderSettingsMenu({
 
       <div className="settings-menu-row settings-menu-row-theme">
         <span className="settings-menu-label settings-menu-label-with-icon">
-          <UiIcon name={theme === "light" ? "sun" : theme === "boox" ? "book" : "moon"} />
+          <UiIcon
+            name={
+              theme === "light" ? "sun" : theme === "boox" ? "book" : "moon"
+            }
+          />
           <span>Motyw</span>
         </span>
         <div className="theme-segmented" role="radiogroup" aria-label="Motyw">
@@ -204,7 +225,10 @@ export default function ReaderSettingsMenu({
             <span>Rozdział</span>
           </span>
           <div className="settings-menu-ctrl">
-            <button className="ctl ctl-gold ctl-wide" onClick={onAddTranslation}>
+            <button
+              className="ctl ctl-gold ctl-wide"
+              onClick={onAddTranslation}
+            >
               <UiIcon name="sparkles" />
               Dodaj
             </button>
@@ -223,7 +247,11 @@ export default function ReaderSettingsMenu({
               <UiIcon name="refresh" />
               Regeneruj
             </button>
-            <button className="ctl" onClick={onDeleteTranslation} title="Usuń tłumaczenie">
+            <button
+              className="ctl"
+              onClick={onDeleteTranslation}
+              title="Usuń tłumaczenie"
+            >
               <UiIcon name="delete" />
             </button>
           </div>
@@ -294,7 +322,9 @@ export default function ReaderSettingsMenu({
           disabled={!sourceVoices.length}
           onChange={(event) => onSourceVoiceChange(event.target.value)}
         >
-          <option value="">{sourceVoices.length ? "Domyślny głos" : "Głos systemowy"}</option>
+          <option value="">
+            {sourceVoices.length ? "Domyślny głos" : "Głos systemowy"}
+          </option>
           {sourceVoices.map((voice) => (
             <option key={getVoiceId(voice)} value={getVoiceId(voice)}>
               {voice.name}
@@ -316,7 +346,9 @@ export default function ReaderSettingsMenu({
             disabled={!targetVoices.length}
             onChange={(event) => onTargetVoiceChange(event.target.value)}
           >
-            <option value="">{targetVoices.length ? "Domyślny głos" : "Głos systemowy"}</option>
+            <option value="">
+              {targetVoices.length ? "Domyślny głos" : "Głos systemowy"}
+            </option>
             {targetVoices.map((voice) => (
               <option key={getVoiceId(voice)} value={getVoiceId(voice)}>
                 {voice.name}
@@ -327,7 +359,9 @@ export default function ReaderSettingsMenu({
       )}
 
       {showVoiceNote && (
-        <div className="settings-menu-note">{getVoiceNoteText(voiceLoadState)}</div>
+        <div className="settings-menu-note">
+          {getVoiceNoteText(voiceLoadState)}
+        </div>
       )}
     </div>
   );

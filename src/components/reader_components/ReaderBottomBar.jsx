@@ -22,6 +22,9 @@ export default function ReaderBottomBar({
   onPageSliderChange,
   onPageSliderCommit,
 }) {
+  const pageProgress =
+    totalPages > 1 ? Math.round((currentPage / (totalPages - 1)) * 100) : 0;
+
   return (
     <div className="bottombar">
       <button
@@ -101,7 +104,7 @@ export default function ReaderBottomBar({
       ) : (
         <div className="prog-wrap">
           <div className="prog-lbl">
-            {currentPage + 1}/{totalPages}
+            {currentPage + 1}/{totalPages} • {pageProgress}%
           </div>
           <input
             className="page-slider"
