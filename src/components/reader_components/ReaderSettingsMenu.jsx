@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { UiIcon } from "./ReaderIcons";
 import {
   FONT_SIZE_MAX,
@@ -46,6 +47,7 @@ export default function ReaderSettingsMenu({
   showRegenerateTranslation,
   onAddTranslation,
   onRegenerateTranslation,
+  onDeleteTranslation,
   sourceLanguageLabel,
   targetLanguageLabel,
   sourceVoices,
@@ -57,11 +59,16 @@ export default function ReaderSettingsMenu({
   onChangeTheme,
   tooltipReadOnClick,
   onToggleTooltipReadOnClick,
+  showAllTranslations,
+  onToggleShowAllTranslations,
   ttsSourceVoice,
   ttsTargetVoice,
   onSourceVoiceChange,
   onTargetVoiceChange,
 }) {
+  const [fsInput, setFsInput] = useState(String(fontSize));
+  useEffect(() => { setFsInput(String(fontSize)); }, [fontSize]);
+
   return (
     <div className="settings-menu" ref={menuRef}>
       <div className="settings-menu-toolbar">
@@ -125,8 +132,14 @@ export default function ReaderSettingsMenu({
             type="number"
             min={FONT_SIZE_MIN}
             max={FONT_SIZE_MAX}
-            value={fontSize}
-            onChange={(event) => onSetFontSize?.(Number(event.target.value))}
+            value={fsInput}
+            onChange={(e) => setFsInput(e.target.value)}
+            onBlur={() => {
+              const n = Number(fsInput);
+              if (Number.isFinite(n) && n >= 1) onSetFontSize?.(n);
+              else setFsInput(String(fontSize));
+            }}
+            onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
             aria-label="Rozmiar czcionki"
           />
           <button className="ctl" onClick={() => onChangeFontSize(1)}>
@@ -205,10 +218,13 @@ export default function ReaderSettingsMenu({
             <UiIcon name="translate" />
             <span>Rozdział</span>
           </span>
-          <div className="settings-menu-ctrl">
+          <div className="settings-menu-ctrl" style={{ gap: 6 }}>
             <button className="ctl ctl-wide" onClick={onRegenerateTranslation}>
               <UiIcon name="refresh" />
               Regeneruj
+            </button>
+            <button className="ctl" onClick={onDeleteTranslation} title="Usuń tłumaczenie">
+              <UiIcon name="delete" />
             </button>
           </div>
         </div>
@@ -232,6 +248,29 @@ export default function ReaderSettingsMenu({
             aria-pressed={tooltipReadOnClick}
             onClick={onToggleTooltipReadOnClick}
             title={tooltipReadOnClick ? "Wyłącz" : "Włącz"}
+          >
+            <span className="settings-toggle-track">
+              <span className="settings-toggle-thumb" />
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-menu-row settings-menu-row-switch">
+        <span className="settings-menu-label settings-menu-label-with-icon">
+          <UiIcon name="translate" />
+          <span>Pokaż tłumaczenia</span>
+        </span>
+        <div className="settings-toggle-wrap">
+          <span className="settings-toggle-hint">
+            {showAllTranslations ? "Wł." : "Wył."}
+          </span>
+          <button
+            type="button"
+            className={`settings-toggle${showAllTranslations ? " is-on" : ""}`}
+            aria-pressed={showAllTranslations}
+            onClick={onToggleShowAllTranslations}
+            title={showAllTranslations ? "Wyłącz" : "Włącz"}
           >
             <span className="settings-toggle-track">
               <span className="settings-toggle-thumb" />

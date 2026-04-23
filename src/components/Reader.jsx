@@ -5,6 +5,7 @@ import {
   getChapter,
   getPolyglotCache,
   savePolyglotCache,
+  deletePolyglotCache,
   getChapterCachedLangs,
   getReadingPosition,
   saveReadingPosition,
@@ -202,6 +203,7 @@ export default function Reader({
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [distractionFree, setDistractionFree] = useState(false);
+  const [showAllTranslations, setShowAllTranslations] = useState(false);
   const [fs, setFs] = useState(settings.fontSize ?? 19);
   const readerFont = settings.readerFont ?? "garamond";
   const readerFontStack = getReaderFontStack(readerFont);
@@ -277,7 +279,6 @@ export default function Reader({
         toggleDistractionFreeRef.current?.();
         return;
       }
-
       const direction = getPageTurnDirection(e);
       if (!direction) return;
 
@@ -291,6 +292,7 @@ export default function Reader({
       } else {
         prevPageRef.current();
       }
+      setDistractionFree(true);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -1090,7 +1092,7 @@ export default function Reader({
       navigate((chapterIdx ?? 0) - 1, { progressOverride: 1 });
       return;
     }
-    goToPage(currentPageRef.current - 1, { pauseTts: true });
+    goToPage(currentPageRef.current - 1);
   }
   function nextPage() {
     if (currentPageRef.current >= totalPagesRef.current - 1) {
@@ -1098,7 +1100,7 @@ export default function Reader({
       navigate((chapterIdx ?? 0) + 1);
       return;
     }
-    goToPage(currentPageRef.current + 1, { pauseTts: true });
+    goToPage(currentPageRef.current + 1);
   }
 
   /* ── Swipe left/right to navigate pages ── */
@@ -1124,18 +1126,8 @@ export default function Reader({
       if (Math.abs(dx) >= 50) {
         if (dx > 0) prevPageRef.current();
         else nextPageRef.current();
+        setDistractionFree(true);
         return;
-      }
-      // Center tap → toggle distraction-free (like Kindle)
-      if (Math.abs(dy) < 30) {
-        const cx = touch.clientX / window.innerWidth;
-        if (cx > 0.3 && cx < 0.7) {
-          const el = document.elementFromPoint(touch.clientX, touch.clientY);
-          if (!el?.closest(".pw, a[href]")) {
-            centerTapHandledRef.current = true;
-            toggleDistractionFreeRef.current();
-          }
-        }
       }
     }
     el.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -1423,6 +1415,13 @@ export default function Reader({
     }
     setSettingsMenuOpen(false);
     startGeneration(activeLang);
+  }
+
+  async function deleteCurrentTranslation() {
+    if (!activeLang || !chapter?.id) return;
+    setSettingsMenuOpen(false);
+    await deletePolyglotCache(chapter.id, activeLang);
+    switchToLang(null);
   }
 
   async function startGeneration(forcedLangCode = null) {
@@ -2036,7 +2035,7 @@ export default function Reader({
     if (polyMode) {
       const pw = e.target.closest(".pw");
       if (pw) {
-        openTooltip(pw);
+        if (!showAllTranslations) openTooltip(pw);
         const wordId = Number.parseInt(pw.dataset.wordId, 10);
         if (tooltipReadOnClick && Number.isInteger(wordId)) {
           playSingleWord(wordId, { skipTooltip: true });
@@ -2059,10 +2058,6 @@ export default function Reader({
       }
     }
 
-    // Center click → toggle distraction-free (mouse only; touch is handled in touchend)
-    if (centerTapHandledRef.current) { centerTapHandledRef.current = false; return; }
-    const cx = e.clientX / window.innerWidth;
-    if (cx > 0.3 && cx < 0.7) toggleDistractionFree();
   }
 
   /* ── TOC navigation ── */
@@ -2291,6 +2286,7 @@ export default function Reader({
   return (
     <div
       className={`reader-layout${distractionFree ? " distraction-free" : ""}`}
+      data-show-all={showAllTranslations ? "true" : undefined}
       style={{ "--fs": `${fs}px`, "--reader-font": readerFontStack }}
     >
       <ReaderSidebar
@@ -2329,6 +2325,7 @@ export default function Reader({
           settingsToggleRef={settingsToggleRef}
           onToggleSidebar={() => setSidebarOpen((open) => !open)}
           onToggleSettings={handleToggleSettingsMenu}
+          onHideBars={() => setDistractionFree(true)}
         />
 
         {searchOpen && (
@@ -2388,6 +2385,7 @@ export default function Reader({
             }
             onAddTranslation={handleAddTranslation}
             onRegenerateTranslation={regenerateCurrentTranslation}
+            onDeleteTranslation={deleteCurrentTranslation}
             sourceLanguageLabel={sourceLanguageLabel}
             targetLanguageLabel={targetLanguageLabel}
             sourceVoices={sourceVoices}
@@ -2399,6 +2397,8 @@ export default function Reader({
             onChangeTheme={(nextTheme) => onUpdateSetting?.("theme", nextTheme)}
             tooltipReadOnClick={tooltipReadOnClick}
             onToggleTooltipReadOnClick={handleToggleTooltipReadOnClick}
+            showAllTranslations={showAllTranslations}
+            onToggleShowAllTranslations={() => setShowAllTranslations((v) => !v)}
             ttsSourceVoice={ttsSourceVoice}
             ttsTargetVoice={ttsTargetVoice}
             onSourceVoiceChange={handleSourceVoiceChange}
@@ -2488,6 +2488,16 @@ export default function Reader({
           onPageSliderCommit={handlePageSliderCommit}
         />
       </div>
+
+      {distractionFree && (
+        <button
+          className={`ui-toggle-btn${showAllTranslations ? " translations-active" : ""}`}
+          onClick={toggleDistractionFree}
+          aria-label="Pokaż/ukryj UI"
+        >
+          ≡
+        </button>
+      )}
 
     </div>
   );

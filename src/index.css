@@ -2975,7 +2975,7 @@ html[data-theme="light"] .book-status-badge.is-archived {
   background: rgba(192, 144, 80, 0.08);
 }
 
-/* ════════════════ TOOLBAR HIDE (centre tap) ════════════════ */
+/* ════════════════ TOOLBAR HIDE TRANSITION ════════════════ */
 
 .reader-layout .topbar,
 .reader-layout .bottombar {
@@ -3002,6 +3002,79 @@ html[data-theme="light"] .book-status-badge.is-archived {
 }
 .reader-layout.distraction-free .sb-overlay {
   display: none;
+}
+
+/* ════════════════ UI TOGGLE BUTTON ════════════════ */
+
+.ui-toggle-btn {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  font-size: 18px;
+  line-height: 1;
+  z-index: 999;
+  opacity: 0.45;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  padding: 0;
+}
+.ui-toggle-btn:active {
+  opacity: 1;
+}
+.ui-toggle-btn.translations-active {
+  opacity: 0.75;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* ════════════════ SHOW ALL TRANSLATIONS MODE ════════════════ */
+
+/* Position above the word — uses absolute so layout/pagination never shifts */
+.reader-layout[data-show-all="true"] .pw-original {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: auto;
+  bottom: 100%;
+  transform: none;
+  background: none;
+  border: none;
+  box-shadow: none;
+  font-size: 0.6em;
+  font-style: normal;
+  line-height: 1.2;
+  opacity: 0.55;
+  white-space: nowrap;
+  max-width: none;
+  padding: 0;
+  pointer-events: none;
+  z-index: 2;
+  color: inherit;
+}
+/* When word is tapped in show-all mode, normal tooltip takes over */
+.reader-layout[data-show-all="true"] .pw.open .pw-original {
+  left: var(--pw-tooltip-left, 50%);
+  top: var(--pw-tooltip-top, auto);
+  bottom: auto;
+  transform: translateX(-50%);
+  background: #1c1916;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+  font-size: 0.95rem;
+  font-style: italic;
+  line-height: 1.5;
+  opacity: 1;
+  white-space: normal;
+  max-width: 55vw;
+  padding: 8px 12px;
+  pointer-events: none;
 }
 
 /* ════════════════ SETTINGS DROPDOWN ════════════════ */
@@ -3790,6 +3863,22 @@ html[data-theme="boox"] .bgen-progress {
 html[data-theme="boox"] .bgen-ch-row.has-error {
   background: var(--gold-dim);
   border-color: #000000;
+}
+
+html[data-theme="boox"] .reader-layout .topbar,
+html[data-theme="boox"] .reader-layout .bottombar {
+  transition: none;
+}
+
+html[data-theme="boox"] .ui-toggle-btn {
+  background: rgba(0, 0, 0, 0.08);
+  border: 2px solid #000000;
+  opacity: 0.5;
+}
+
+html[data-theme="boox"] .ui-toggle-btn.translations-active {
+  background: rgba(0, 0, 0, 0.18);
+  opacity: 0.85;
 }
 
 html[data-theme="boox"] .import-cover-hint {

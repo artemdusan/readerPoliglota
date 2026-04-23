@@ -226,7 +226,7 @@ export async function savePolyglotCache(chapterId, targetLang, value) {
   await markPolyPending(chapterId, targetLang);
 }
 
-async function deletePolyglotCache(chapterId, targetLang) {
+export async function deletePolyglotCache(chapterId, targetLang) {
   const existing = await db.polyglotCache
     .where('[chapterId+targetLang]').equals([chapterId, targetLang]).first();
   if (!existing) return false;
@@ -361,16 +361,23 @@ export async function restoreChapter(chapterData) {
 export async function restorePolyglotCache(chapterId, targetLang, value) {
   const normalized = normalizePolyglotValue(value);
   if (!normalized) return false;
+  const serverCreatedAt = typeof value?.createdAt === 'number' ? value.createdAt : 0;
   const exists = await db.polyglotCache
     .where('[chapterId+targetLang]').equals([chapterId, targetLang]).first();
-  if (exists) return;
+  if (exists) {
+    if (serverCreatedAt > (exists.createdAt ?? 0)) {
+      await db.polyglotCache.put({ ...exists, ...normalized, createdAt: serverCreatedAt });
+      return true;
+    }
+    return false;
+  }
   const { v4: uuid } = await import('uuid');
   await db.polyglotCache.put({
     id: uuid(),
     chapterId,
     targetLang,
     ...normalized,
-    createdAt: Date.now(),
+    createdAt: serverCreatedAt || Date.now(),
   });
   return true;
 }

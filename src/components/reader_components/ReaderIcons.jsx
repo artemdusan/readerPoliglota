@@ -16,6 +16,8 @@ import {
   RiBookOpenLine,
   RiFullscreenLine,
   RiFullscreenExitLine,
+  RiArrowUpSLine,
+  RiDeleteBinLine,
 } from "react-icons/ri";
 
 const ICON_MAP = {
@@ -36,6 +38,8 @@ const ICON_MAP = {
   book:           RiBookOpenLine,
   fullscreen:     RiFullscreenLine,
   fullscreenExit: RiFullscreenExitLine,
+  "chevron-up":   RiArrowUpSLine,
+  delete:         RiDeleteBinLine,
 };
 
 export function UiIcon({ name, className = "", title }) {

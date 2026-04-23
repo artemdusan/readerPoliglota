@@ -138,6 +138,7 @@ async function syncPending() {
                 format: poly.format ?? null,
                 rawText: poly.rawText ?? null,
                 payload: poly.payload ?? null,
+                createdAt: poly.createdAt ?? Date.now(),
               }),
             },
             stats,

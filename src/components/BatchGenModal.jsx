@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { getBookChaptersWithCacheStatus, savePolyglotCache } from "../db";
+import { getBookChaptersWithCacheStatus, savePolyglotCache, deletePolyglotCache } from "../db";
 import {
   estimatePolyglotGeneration,
   estimatePolyglotCostUsd,
@@ -51,6 +51,7 @@ export default function BatchGenModal({
   const [chapters, setChapters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(new Set());
+  const [mode, setMode] = useState("generate");
   const [generating, setGenerating] = useState(false);
   const [genStep, setGenStep] = useState(null);
   const [errors, setErrors] = useState({});
@@ -63,10 +64,14 @@ export default function BatchGenModal({
     setLoading(true);
     getBookChaptersWithCacheStatus(bookId, selectedLang.code).then((chs) => {
       setChapters(chs);
-      setSelected(new Set(chs.filter((c) => !c.hasPoly).map((c) => c.id)));
+      setSelected(
+        mode === "delete"
+          ? new Set(chs.filter((c) => c.hasPoly).map((c) => c.id))
+          : new Set(chs.filter((c) => !c.hasPoly).map((c) => c.id)),
+      );
       setLoading(false);
     });
-  }, [bookId, selectedLang.code]);
+  }, [bookId, selectedLang.code, mode]);
 
   const toGenerate = useMemo(
     () => chapters.filter((c) => selected.has(c.id)),
@@ -152,6 +157,28 @@ export default function BatchGenModal({
     setSelectedLang(lang);
     setDone(false);
     setErrors({});
+  }
+
+  function switchMode(m) {
+    setMode(m);
+    setDone(false);
+    setErrors({});
+  }
+
+  async function handleDelete() {
+    setGenerating(true);
+    setDone(false);
+    setErrors({});
+    const toDelete = chapters.filter((c) => selected.has(c.id) && c.hasPoly);
+    for (const ch of toDelete) {
+      await deletePolyglotCache(ch.id, selectedLang.code);
+    }
+    setGenerating(false);
+    setDone(true);
+    // refresh chapters list
+    const chs = await getBookChaptersWithCacheStatus(bookId, selectedLang.code);
+    setChapters(chs);
+    setSelected(new Set());
   }
 
   async function handleGenerate() {
@@ -289,7 +316,9 @@ export default function BatchGenModal({
     >
       <div className="modal bgen-modal">
         <div className="modal-head">
-          <div className="modal-title">Generuj tłumaczenia</div>
+          <div className="modal-title">
+            {mode === "delete" ? "Usuń tłumaczenia" : "Generuj tłumaczenia"}
+          </div>
           <button
             className="modal-close"
             onClick={onClose}
@@ -347,10 +376,27 @@ export default function BatchGenModal({
                 </div>
               </div>
 
+              <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                <button
+                  className={`ctl${mode === "generate" ? " ctl-active" : ""}`}
+                  onClick={() => switchMode("generate")}
+                  disabled={generating}
+                >
+                  Generuj
+                </button>
+                <button
+                  className={`ctl${mode === "delete" ? " ctl-active" : ""}`}
+                  onClick={() => switchMode("delete")}
+                  disabled={generating}
+                >
+                  Usuń
+                </button>
+              </div>
+
               <div className="bgen-chapter-list">
                 <div className="bgen-ch-header">
                   <span className="bgen-ch-label">
-                    Rozdziały ({chapters.length})
+                    Rozdziały ({mode === "delete" ? chapters.filter((c) => c.hasPoly).length : chapters.length})
                   </span>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button
@@ -369,7 +415,9 @@ export default function BatchGenModal({
                     </button>
                   </div>
                 </div>
-                {chapters.map((ch, i) => (
+                {chapters
+                  .filter((ch) => mode === "delete" ? ch.hasPoly : true)
+                  .map((ch, i) => (
                   <label
                     key={ch.id}
                     className={`bgen-ch-row ${ch.hasPoly ? "has-poly" : ""} ${errors[ch.id] ? "has-error" : ""}`}
@@ -400,7 +448,7 @@ export default function BatchGenModal({
 
         {!loading && (
           <div className="bgen-summary">
-            {toGenerate.length > 0 && !generating && !done && (
+            {toGenerate.length > 0 && !generating && !done && mode === "generate" && (
               <div className="bgen-estimate">
                 <div className="bgen-estimate-item">
                   <span className="bgen-estimate-val">{toGenerate.length}</span>
@@ -466,6 +514,17 @@ export default function BatchGenModal({
             </button>
           )}
           {!done ? (
+            mode === "delete" ? (
+              <button
+                className="btn-primary"
+                onClick={handleDelete}
+                disabled={generating || selected.size === 0}
+              >
+                {generating
+                  ? "Usuwam…"
+                  : `Usuń (${selected.size})`}
+              </button>
+            ) : (
             <button
               className="btn-primary"
               onClick={handleGenerate}
@@ -475,6 +534,7 @@ export default function BatchGenModal({
                 ? "Generuję…"
                 : `Generuj ${toGenerate.length > 0 ? `(${toGenerate.length})` : ""}`}
             </button>
+            )
           ) : (
             <button className="btn-primary" onClick={onClose}>
               Zamknij

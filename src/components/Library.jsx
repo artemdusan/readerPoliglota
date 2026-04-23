@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { BsSun, BsMoon, BsGear, BsArrowRepeat, BsPlus } from "react-icons/bs";
+import { BsSun, BsMoon, BsGear, BsArrowRepeat, BsPlus, BsBook } from "react-icons/bs";
 import { EpubParser } from "../lib/epubParser";
 import {
   getActiveBooks,
@@ -416,8 +416,16 @@ export default function Library({
 
   const currentTheme = settings?.theme ?? "dark";
 
+  const THEME_CYCLE = { dark: "light", light: "boox", boox: "dark" };
+  const THEME_NEXT_LABEL = { dark: "Tryb jasny", light: "BOOX", boox: "Tryb ciemny" };
+  const THEME_NEXT_ICON = {
+    dark: <BsSun />,
+    light: <BsBook />,
+    boox: <BsMoon />,
+  };
+
   function handleThemeToggle() {
-    onUpdateSetting("theme", currentTheme === "dark" ? "light" : "dark");
+    onUpdateSetting("theme", THEME_CYCLE[currentTheme] ?? "dark");
   }
 
   return (
@@ -441,9 +449,9 @@ export default function Library({
             <button
               className="lib-topbar-btn"
               onClick={handleThemeToggle}
-              title={currentTheme === "dark" ? "Tryb jasny" : "Tryb ciemny"}
+              title={THEME_NEXT_LABEL[currentTheme] ?? "Motyw"}
             >
-              {currentTheme === "dark" ? <BsSun /> : <BsMoon />}
+              {THEME_NEXT_ICON[currentTheme] ?? <BsMoon />}
             </button>
             <button
               className="lib-topbar-btn"
@@ -481,7 +489,7 @@ export default function Library({
         <div className={`lib-toast ${syncResult.error ? "is-error" : "is-success"}`}>
           {syncResult.error
             ? `Błąd: ${syncResult.error}`
-            : `Zsynchronizowano ${syncResult.synced} elementów · ↑ ${formatTransfer(syncResult.sentBytes)} · ↓ ${formatTransfer(syncResult.receivedBytes)}`}
+            : `Zsynchronizowano ↑ ${formatTransfer(syncResult.sentBytes)} · ↓ ${formatTransfer(syncResult.receivedBytes)}`}
         </div>
       )}
 
