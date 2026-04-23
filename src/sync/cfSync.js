@@ -121,7 +121,6 @@ async function syncPending() {
               href:         ch.href,
               title:        ch.title,
               html:         await gzipEncode(ch.html ?? ''),
-              text:         await gzipEncode(ch.text ?? ''),
             }),
           }, stats);
         }

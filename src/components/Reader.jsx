@@ -1404,7 +1404,7 @@ export default function Reader({
       onOpenSettings();
       return;
     }
-    if (!chapter?.text) return;
+    if (!chapter?.html) return;
     clearPageTurnState();
     const lastCode = localStorage.getItem("vocabapp:lastLang") || settings.targetLang;
     const initialCode =
@@ -1415,7 +1415,7 @@ export default function Reader({
   }
 
   function regenerateCurrentTranslation() {
-    if (!activeLang || !chapter?.text) return;
+    if (!activeLang || !chapter?.html) return;
     if (!isLoggedIn()) {
       onOpenSettings();
       return;
@@ -1432,7 +1432,7 @@ export default function Reader({
   }
 
   async function startGeneration(forcedLangCode = null) {
-    if (!chapter?.text) return;
+    if (!chapter?.html) return;
     const token = ++genTokenRef.current;
     const langCode =
       typeof forcedLangCode === "string" && forcedLangCode
@@ -1450,7 +1450,7 @@ export default function Reader({
 
     try {
       const { cacheValue } = await generatePolyglot(
-        { text: chapter.text, html: chapter.html },
+        { html: chapter.html },
         {
           targetLangName: langObj.name,
           sourceLangName: book?.lang || "",
@@ -2197,10 +2197,10 @@ export default function Reader({
   );
   const estimatedSentenceCount = generationEstimate.sentenceCount;
   const estimatedBatchCount = generationEstimate.generationBatches;
-  const estimatedCost = chapter?.text
-    ? estimatePolyglotCostUsd(chapter.text.length)
+  const estimatedCost = chapter?.html
+    ? estimatePolyglotCostUsd(chapter.html.length)
     : 0;
-  const estimatedSecs = chapter?.text
+  const estimatedSecs = chapter?.html
     ? estimatePolyglotTimeSec(
         estimatedBatchCount,
         generationEstimate.requestConcurrency,
@@ -2418,7 +2418,7 @@ export default function Reader({
             onChangeFontSize={changeFontSize}
             onSetFontSize={setReaderFontSize}
             onChangeReaderFont={changeReaderFont}
-            showAddTranslation={!polyMode && Boolean(chapter?.text)}
+            showAddTranslation={!polyMode && Boolean(chapter?.html)}
             showRegenerateTranslation={
               polyMode &&
               polyState === "done" &&

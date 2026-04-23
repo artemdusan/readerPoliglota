@@ -103,7 +103,7 @@ export default function BatchGenModal({
     timeSec,
   } = useMemo(() => {
     const totalChars = toGenerate.reduce(
-      (sum, chapter) => sum + (chapter.text?.length ?? 0),
+      (sum, chapter) => sum + (chapter.html?.length ?? 0),
       0,
     );
     const totalSentences = [...generationStatsByChapterId.values()].reduce(
@@ -223,7 +223,7 @@ export default function BatchGenModal({
 
       try {
         const { cacheValue } = await generatePolyglot(
-          { text: chapter.text, html: chapter.html },
+          { html: chapter.html },
           {
             targetLangName: selectedLang.name,
             sourceLangName: book?.lang || "",

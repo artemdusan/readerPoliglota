@@ -353,15 +353,15 @@ async function handleUpsertChapterV2(request, env, userId, bookId, chapterId) {
   try { ch = await request.json(); } catch { return err('nieprawidłowy JSON'); }
 
   await env.DB.prepare(
-    `INSERT INTO book_chapters (user_id, book_id, chapter_id, chapter_index, href, title, html, text)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO book_chapters (user_id, book_id, chapter_id, chapter_index, href, title, html)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (user_id, book_id, chapter_id) DO UPDATE SET
        chapter_index = excluded.chapter_index, href = excluded.href,
-       title = excluded.title, html = excluded.html, text = excluded.text`,
+       title = excluded.title, html = excluded.html`,
   ).bind(
     userId, bookId, chapterId,
     ch.chapterIndex ?? 0, ch.href ?? '', ch.title ?? '',
-    ch.html ?? '', ch.text ?? '',
+    ch.html ?? '',
   ).run();
 
   return json({ ok: true });
@@ -371,7 +371,7 @@ async function handleUpsertChapterV2(request, env, userId, bookId, chapterId) {
 async function handleGetChapterV2(env, userId, bookId, chapterId) {
   const row = await env.DB.prepare(
     `SELECT chapter_id as id, book_id as bookId, chapter_index as chapterIndex,
-            href, title, html, text
+            href, title, html
      FROM book_chapters WHERE user_id = ? AND book_id = ? AND chapter_id = ?`,
   ).bind(userId, bookId, chapterId).first();
   if (!row) return err('nie znaleziono', 404);

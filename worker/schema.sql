@@ -41,7 +41,6 @@ CREATE TABLE IF NOT EXISTS book_chapters (
   href          TEXT    NOT NULL DEFAULT '',
   title         TEXT    NOT NULL DEFAULT '',
   html          TEXT    NOT NULL DEFAULT '',
-  text          TEXT    NOT NULL DEFAULT '',
   PRIMARY KEY (user_id, book_id, chapter_id)
 );
 

@@ -107,7 +107,6 @@ export async function saveBook(bookData, chaptersData) {
     href: ch.href || '',
     title: ch.title || '',
     html: ch.html || '',
-    text: ch.text || '',
     pendingSync:     { meta: true, langs: [] },
     pendingSyncFlag: 1,
   }));
@@ -364,7 +363,6 @@ export async function restoreChapter(chapterData) {
   await db.chapters.add({
     ...chapterData,
     html: await gzipDecode(chapterData.html),
-    text: await gzipDecode(chapterData.text),
     pendingSync:     null,
     pendingSyncFlag: 0,
   });
