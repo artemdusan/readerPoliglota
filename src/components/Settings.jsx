@@ -5,7 +5,6 @@ import {
   login,
   logout,
   onAuthChange,
-  register,
 } from "../sync/cfAuth";
 import { syncAll } from "../sync/cfSync";
 import { getSyncActivity, subscribeSyncActivity } from "../sync/syncActivity";
@@ -41,7 +40,6 @@ function formatLastSync(ts) {
 export default function Settings({ settings, onUpdateSetting, onClose }) {
   const [cfConnected, setCfConnected] = useState(() => isLoggedIn());
   const [accountName, setAccountName] = useState(() => getUsername());
-  const [authMode, setAuthMode] = useState("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
@@ -79,8 +77,7 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
     setAuthError("");
 
     try {
-      if (authMode === "login") await login(username, password);
-      else await register(username, password);
+      await login(username, password);
       setUsername("");
       setPassword("");
     } catch (error) {
@@ -160,29 +157,6 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
               </>
             ) : (
               <form onSubmit={handleAuth} className="settings-auth-form">
-                <div className="settings-auth-switch">
-                  <button
-                    type="button"
-                    className={`ctl ${authMode === "login" ? "ctl-active" : ""}`}
-                    onClick={() => {
-                      setAuthMode("login");
-                      setAuthError("");
-                    }}
-                  >
-                    Zaloguj
-                  </button>
-                  <button
-                    type="button"
-                    className={`ctl ${authMode === "register" ? "ctl-active" : ""}`}
-                    onClick={() => {
-                      setAuthMode("register");
-                      setAuthError("");
-                    }}
-                  >
-                    Zarejestruj
-                  </button>
-                </div>
-
                 <input
                   type="text"
                   className="form-input"
@@ -199,14 +173,12 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                 <input
                   type="password"
                   className="form-input"
-                  placeholder="Hasło (min. 8 znaków)"
+                  placeholder="Hasło"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
                   minLength={8}
-                  autoComplete={
-                    authMode === "login" ? "current-password" : "new-password"
-                  }
+                  autoComplete="current-password"
                 />
 
                 {authError && (
@@ -219,13 +191,7 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                   disabled={authWorking}
                   style={{ alignSelf: "flex-start" }}
                 >
-                  {authWorking
-                    ? authMode === "login"
-                      ? "Logowanie..."
-                      : "Rejestracja..."
-                    : authMode === "login"
-                      ? "Zaloguj"
-                      : "Zarejestruj"}
+                  {authWorking ? "Logowanie..." : "Zaloguj"}
                 </button>
               </form>
             )}

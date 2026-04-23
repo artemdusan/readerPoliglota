@@ -181,6 +181,129 @@ async function requireAuth(request, env) {
   }
 }
 
+// ─── ADMIN HTML ──────────────────────────────────────────────────────────────
+
+const ADMIN_HTML = `<!DOCTYPE html>
+<html lang="pl">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VocabApp Admin</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui;background:#0f0f0f;color:#e0e0e0;padding:24px;max-width:680px;margin:0 auto}
+h1{font-size:1.2rem;margin-bottom:20px;color:#fff}
+h2{font-size:.9rem;margin-bottom:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em}
+section{background:#1c1c1c;border-radius:8px;padding:18px;margin-bottom:14px}
+input{background:#2a2a2a;border:1px solid #3a3a3a;color:#e0e0e0;padding:8px 10px;border-radius:6px;width:100%;margin-bottom:8px;font-size:14px}
+button{background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:14px}
+button:hover{background:#1d4ed8}
+button.danger{background:#dc2626}button.danger:hover{background:#b91c1c}
+button.ghost{background:#374151}button.ghost:hover{background:#4b5563}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:7px 8px;text-align:left;border-bottom:1px solid #2a2a2a}
+th{color:#6b7280;font-weight:500}
+.msg{padding:7px 10px;border-radius:6px;margin-bottom:10px;font-size:13px;display:none}
+.msg.ok{background:#14532d;color:#86efac;display:block}
+.msg.err{background:#450a0a;color:#fca5a5;display:block}
+#login-wrap{max-width:340px;margin:80px auto}
+</style>
+</head>
+<body>
+<div id="login-wrap">
+  <h1>VocabApp Admin</h1>
+  <div id="login-msg" class="msg"></div>
+  <input type="password" id="admin-key" placeholder="Admin key" />
+  <button onclick="doLogin()">Zaloguj</button>
+</div>
+<div id="main" style="display:none">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <h1>VocabApp Admin</h1>
+    <button class="ghost" onclick="doLogout()">Wyloguj</button>
+  </div>
+
+  <section>
+    <h2>Użytkownicy</h2>
+    <div id="users-msg" class="msg"></div>
+    <table><thead><tr><th>ID</th><th>Email</th><th>Utworzony</th><th></th></tr></thead>
+    <tbody id="users-tbody"></tbody></table>
+  </section>
+
+  <section>
+    <h2>Nowy użytkownik</h2>
+    <div id="create-msg" class="msg"></div>
+    <input type="text" id="new-email" placeholder="Nazwa użytkownika" autocomplete="off" />
+    <input type="password" id="new-pass" placeholder="Hasło (min. 8 znaków)" />
+    <button onclick="createUser()">Utwórz</button>
+  </section>
+
+  <section>
+    <h2>Zmień hasło</h2>
+    <div id="pw-msg" class="msg"></div>
+    <input type="number" id="pw-id" placeholder="ID użytkownika" />
+    <input type="password" id="pw-val" placeholder="Nowe hasło (min. 8 znaków)" />
+    <button onclick="changePassword()">Zmień hasło</button>
+  </section>
+
+  <section>
+    <h2>Manifest — oczyszczanie</h2>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Usuwa wpisy z book_manifest gdzie brak meta_json. Po oczyszczeniu uruchom re-sync na urządzeniu z danymi.</p>
+    <div id="prune-msg" class="msg"></div>
+    <button class="danger" onclick="pruneManifest()">Usuń nieważne wpisy</button>
+  </section>
+</div>
+<script>
+let KEY='';
+function api(path,opts={}){
+  return fetch(path,{...opts,headers:{'Authorization':'Bearer '+KEY,'Content-Type':'application/json',...(opts.headers||{})}})
+    .then(r=>r.json().then(d=>({ok:r.ok,data:d})));
+}
+function setMsg(id,text,ok){
+  const el=document.getElementById(id);
+  el.textContent=text;el.className='msg '+(ok?'ok':'err');
+}
+async function doLogin(){
+  KEY=document.getElementById('admin-key').value.trim();
+  const {ok}=await api('/admin/users');
+  if(ok){
+    document.getElementById('login-wrap').style.display='none';
+    document.getElementById('main').style.display='block';
+    loadUsers();
+  }else{setMsg('login-msg','Nieprawidłowy klucz',false);KEY='';}
+}
+function doLogout(){
+  KEY='';
+  document.getElementById('login-wrap').style.display='block';
+  document.getElementById('main').style.display='none';
+  document.getElementById('admin-key').value='';
+}
+async function loadUsers(){
+  const {ok,data}=await api('/admin/users');
+  if(!ok){setMsg('users-msg',data.error,false);return;}
+  document.getElementById('users-tbody').innerHTML=data.map(u=>
+    '<tr><td>'+u.id+'</td><td>'+u.email+'</td><td>'+new Date(u.created_at).toLocaleDateString('pl')+'</td><td></td></tr>'
+  ).join('');
+}
+async function createUser(){
+  const email=document.getElementById('new-email').value.trim();
+  const password=document.getElementById('new-pass').value;
+  const {ok,data}=await api('/admin/users',{method:'POST',body:JSON.stringify({email,password})});
+  setMsg('create-msg',ok?'Użytkownik utworzony':data.error,ok);
+  if(ok){document.getElementById('new-email').value='';document.getElementById('new-pass').value='';loadUsers();}
+}
+async function changePassword(){
+  const id=document.getElementById('pw-id').value;
+  const password=document.getElementById('pw-val').value;
+  const {ok,data}=await api('/admin/users/'+id+'/password',{method:'POST',body:JSON.stringify({password})});
+  setMsg('pw-msg',ok?'Hasło zmienione':data.error,ok);
+  if(ok)document.getElementById('pw-val').value='';
+}
+async function pruneManifest(){
+  const {ok,data}=await api('/admin/manifest/prune',{method:'POST'});
+  setMsg('prune-msg',ok?'Usunięto '+data.deleted+' wpisów':data.error,ok);
+}
+document.getElementById('admin-key').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+</script>
+</body></html>`;
+
 // ─── ROUTE HANDLERS ──────────────────────────────────────────────────────────
 
 async function handleRegister(request, env) {
@@ -543,6 +666,66 @@ async function handleUpsertProgress(request, env, userId, bookId) {
   return json({ ok: true });
 }
 
+// ─── ADMIN ───────────────────────────────────────────────────────────────────
+
+function requireAdmin(request, env) {
+  if (!env.ADMIN_KEY) return false;
+  const auth = request.headers.get('Authorization') ?? '';
+  return auth === `Bearer ${env.ADMIN_KEY}`;
+}
+
+function handleAdminPage() {
+  return new Response(ADMIN_HTML, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
+async function handleAdminListUsers(env) {
+  const { results } = await env.DB.prepare(
+    'SELECT id, email, created_at FROM users ORDER BY id',
+  ).all();
+  return json(results);
+}
+
+async function handleAdminCreateUser(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const username = normalizeAuthIdentifier(body.email ?? body.username);
+  const password = typeof body.password === 'string' ? body.password : '';
+
+  if (!username || !password) return err('email i hasło są wymagane');
+  if (password.length < 8) return err('hasło musi mieć co najmniej 8 znaków');
+
+  const existing = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(username).first();
+  if (existing) return err('użytkownik już istnieje', 409);
+
+  const hash = await hashPassword(password);
+  const result = await env.DB.prepare(
+    'INSERT INTO users (email, hash, created_at) VALUES (?, ?, ?) RETURNING id',
+  ).bind(username, hash, Date.now()).first();
+
+  return json({ ok: true, id: result.id });
+}
+
+async function handleAdminChangePassword(request, env, userId) {
+  const body = await request.json().catch(() => ({}));
+  const password = typeof body.password === 'string' ? body.password : '';
+
+  if (!password || password.length < 8) return err('hasło musi mieć co najmniej 8 znaków');
+
+  const user = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(userId).first();
+  if (!user) return err('użytkownik nie istnieje', 404);
+
+  const hash = await hashPassword(password);
+  await env.DB.prepare('UPDATE users SET hash = ? WHERE id = ?').bind(hash, userId).run();
+
+  return json({ ok: true });
+}
+
+async function handleAdminPruneManifest(env) {
+  const result = await env.DB.prepare(
+    'DELETE FROM book_manifest WHERE meta_json IS NULL',
+  ).run();
+  return json({ ok: true, deleted: result.meta.changes });
+}
+
 // ─── HEALTH CHECK ────────────────────────────────────────────────────────────
 
 async function handleHealth(env) {
@@ -593,8 +776,18 @@ async function handleRequest(request, env) {
 
     // Public routes
     if (method === 'GET'  && path === '/health')        return handleHealth(env);
-    if (method === 'POST' && path === '/auth/register') return handleRegister(request, env);
     if (method === 'POST' && path === '/auth/login')    return handleLogin(request, env);
+
+    // Admin routes (ADMIN_KEY auth, not JWT)
+    if (method === 'GET' && path === '/admin') return handleAdminPage();
+    if (path.startsWith('/admin/')) {
+      if (!requireAdmin(request, env)) return err('Unauthorized', 401);
+      if (method === 'GET'  && path === '/admin/users')             return handleAdminListUsers(env);
+      if (method === 'POST' && path === '/admin/users')             return handleAdminCreateUser(request, env);
+      if (method === 'POST' && path === '/admin/manifest/prune')    return handleAdminPruneManifest(env);
+      const pwMatch = path.match(/^\/admin\/users\/(\d+)\/password$/);
+      if (pwMatch && method === 'POST') return handleAdminChangePassword(request, env, Number(pwMatch[1]));
+    }
 
     // All remaining routes require JWT
     const userId = await requireAuth(request, env);
