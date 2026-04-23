@@ -2027,7 +2027,8 @@ body,
 .prog-lbl {
   font-size: 10.5px;
   color: var(--txt-3);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 .page-slider {
   width: min(320px, 100%);
@@ -3114,7 +3115,7 @@ html[data-theme="light"] .book-status-badge.is-archived {
 }
 .settings-menu-toolbar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   padding: 0 10px 10px;
 }
@@ -3418,7 +3419,7 @@ html[data-theme="light"] .book-status-badge.is-archived {
     width: calc(100vw - 20px);
   }
   .settings-menu-toolbar {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .settings-menu-row.settings-menu-row-select {
     align-items: stretch;

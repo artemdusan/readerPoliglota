@@ -203,6 +203,9 @@ export default function Reader({
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [distractionFree, setDistractionFree] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(
+    () => Boolean(document.fullscreenElement)
+  );
   const [showAllTranslations, setShowAllTranslations] = useState(
     () => localStorage.getItem('vocabapp:showAllTranslations') === 'true'
   );
@@ -265,9 +268,9 @@ export default function Reader({
   const ttsPagePauseModeRef = useRef(null);
   const swipeTouchStartXRef = useRef(null);
   const swipeTouchStartYRef = useRef(null);
-  const toggleDistractionFreeRef = useRef(null);
+  const toggleFullscreenRef = useRef(null);
   const keyPageTurnAtRef = useRef(0);
-  toggleDistractionFreeRef.current = toggleDistractionFree;
+  toggleFullscreenRef.current = toggleFullscreen;
   const centerTapHandledRef = useRef(false);
 
   useWakeLock(Boolean(bookId));
@@ -278,7 +281,7 @@ export default function Reader({
       if (isTextEntryElement(document.activeElement)) return;
       if (e.key === "f" || e.key === "F") {
         e.preventDefault();
-        toggleDistractionFreeRef.current?.();
+        toggleFullscreenRef.current?.();
         return;
       }
       const direction = getPageTurnDirection(e);
@@ -2131,21 +2134,24 @@ export default function Reader({
     });
   }
 
-  useEffect(() => {
-    if (distractionFree) {
-      document.documentElement.requestFullscreen?.().catch(() => {});
-    } else if (document.fullscreenElement) {
-      document.exitFullscreen?.();
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.()?.catch(() => {});
+      return;
     }
-  }, [distractionFree]);
+    document.documentElement.requestFullscreen?.().catch(() => {});
+  }
+
+  useEffect(() => {
+    document.documentElement.requestFullscreen?.().catch(() => {});
+  }, []);
 
   useEffect(() => {
     function onFullscreenChange() {
-      if (!document.fullscreenElement) {
-        setDistractionFree(false);
-      }
+      setIsFullscreen(Boolean(document.fullscreenElement));
     }
     document.addEventListener("fullscreenchange", onFullscreenChange);
+    onFullscreenChange();
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
@@ -2387,6 +2393,8 @@ export default function Reader({
             onToggleTts={
               activeTtsMode === "hybrid" ? toggleHybridTts : toggleOriginalTts
             }
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
             ttsButtonTitle={ttsButtonTitle}
             ttsButtonLabel={ttsButtonLabel}
             isTtsPlaying={activeTtsPlaying}
@@ -2523,7 +2531,9 @@ export default function Reader({
             ≡
           </button>
           <div className="fs-page-indicator">
-            Strona {currentPage + 1}/{totalPages}
+            Strona {currentPage + 1}/{totalPages} • {Math.round(
+              totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0,
+            )}%
           </div>
         </>
       )}
