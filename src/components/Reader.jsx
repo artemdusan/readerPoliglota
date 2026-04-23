@@ -203,7 +203,9 @@ export default function Reader({
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [distractionFree, setDistractionFree] = useState(false);
-  const [showAllTranslations, setShowAllTranslations] = useState(false);
+  const [showAllTranslations, setShowAllTranslations] = useState(
+    () => localStorage.getItem('vocabapp:showAllTranslations') === 'true'
+  );
   const [fs, setFs] = useState(settings.fontSize ?? 19);
   const readerFont = settings.readerFont ?? "garamond";
   const readerFontStack = getReaderFontStack(readerFont);
@@ -2416,7 +2418,11 @@ export default function Reader({
             tooltipReadOnClick={tooltipReadOnClick}
             onToggleTooltipReadOnClick={handleToggleTooltipReadOnClick}
             showAllTranslations={showAllTranslations}
-            onToggleShowAllTranslations={() => setShowAllTranslations((v) => !v)}
+            onToggleShowAllTranslations={() => setShowAllTranslations((v) => {
+              const next = !v;
+              localStorage.setItem('vocabapp:showAllTranslations', next);
+              return next;
+            })}
             ttsSourceVoice={ttsSourceVoice}
             ttsTargetVoice={ttsTargetVoice}
             onSourceVoiceChange={handleSourceVoiceChange}
