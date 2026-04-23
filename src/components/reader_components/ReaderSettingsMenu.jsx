@@ -89,11 +89,7 @@ export default function ReaderSettingsMenu({
 
         <button
           ref={bookmarkToggleRef}
-          className={`settings-tool${
-            bookmarkMenuOpen || hasCurrentPageBookmarks
-              ? " settings-tool-active"
-              : ""
-          }`}
+          className={`settings-tool`}
           onClick={onBookmarksToolClick}
           title="Zakładki"
         >
