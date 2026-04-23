@@ -7,10 +7,6 @@ binding = "DB"
 database_name = "reader-db"
 database_id   = "efe0a67c-2eea-4d05-a972-1f743310d57e"
 
-[[r2_buckets]]
-bucket_name = "reader-books"
-binding = "reader_books"
-
 [observability]
 enabled = true
 

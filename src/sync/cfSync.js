@@ -1,9 +1,7 @@
-// Cloudflare sync — delta sync with UUID-based R2 paths
-// R2 structure: {userId}/{bookId}/meta.json
-//               {userId}/{bookId}/{chapterUUID}/metadata.json
-//               {userId}/{bookId}/{chapterUUID}/{lang}.json
+// Cloudflare sync — delta sync with D1 storage
 
 import { db, saveReadingPosition, getBookWithChapters, restoreBook, restoreChapter, restorePolyglotCache, getPendingChapters, clearChapterPending, clearPolyPending, purgeBookData } from '../db';
+import { gzipEncode } from '../utils/gzip';
 import { getToken } from './cfAuth';
 import { getWorkerUrl } from '../config/workerUrl';
 import { startSyncActivity, updateSyncActivity, finishSyncActivity } from './syncActivity';
@@ -67,7 +65,7 @@ async function applyRemote(remote) {
   }
 }
 
-// ─── Download missing polys (download-only — upload handled by syncPending) ──
+// ─── Download missing/updated polys (download-only — upload handled by syncPending) ──
 
 async function downloadMissingPolys(bookId, remotePolys, chapters, stats) {
   const chapterById = Object.fromEntries(chapters.map(c => [c.id, c]));
@@ -75,11 +73,13 @@ async function downloadMissingPolys(bookId, remotePolys, chapters, stats) {
   const localPolys  = chapterIds.length
     ? await db.polyglotCache.where('chapterId').anyOf(chapterIds).toArray()
     : [];
-  const localPolySet = new Set(localPolys.map(p => `${p.chapterId}:${p.targetLang}`));
+  const localPolyMap = new Map(localPolys.map(p => [`${p.chapterId}:${p.targetLang}`, p.createdAt ?? 0]));
 
-  for (const { chapterId, lang } of remotePolys) {
-    if (localPolySet.has(`${chapterId}:${lang}`)) continue;
+  for (const { chapterId, lang, createdAt: serverCreatedAt = 0 } of remotePolys) {
     if (!chapterById[chapterId]) continue;
+    const localCreatedAt = localPolyMap.get(`${chapterId}:${lang}`);
+    // pomiń tylko jeśli lokalna wersja jest równie nowa lub nowsza
+    if (localCreatedAt !== undefined && serverCreatedAt <= localCreatedAt) continue;
     try {
       const poly = await apiFetch(`/books/${bookId}/chapters/${chapterId}/translations/${lang}`, {}, stats);
       await restorePolyglotCache(chapterId, lang, poly);
@@ -120,8 +120,8 @@ async function syncPending() {
               chapterIndex: ch.chapterIndex,
               href:         ch.href,
               title:        ch.title,
-              html:         ch.html,
-              text:         ch.text,
+              html:         await gzipEncode(ch.html ?? ''),
+              text:         await gzipEncode(ch.text ?? ''),
             }),
           }, stats);
         }
@@ -135,9 +135,9 @@ async function syncPending() {
             {
               method: 'POST',
               body: JSON.stringify({
-                format: poly.format ?? null,
-                rawText: poly.rawText ?? null,
-                payload: poly.payload ?? null,
+                format:    poly.format ?? null,
+                rawText:   poly.rawText ?? null,
+                payload:   await gzipEncode(JSON.stringify(poly.payload ?? null)),
                 createdAt: poly.createdAt ?? Date.now(),
               }),
             },

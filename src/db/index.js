@@ -1,4 +1,5 @@
 import Dexie from 'dexie';
+import { gzipDecode } from '../utils/gzip';
 
 export const db = new Dexie('ReaderDB');
 
@@ -360,12 +361,23 @@ export async function restoreBook(bookData) {
 export async function restoreChapter(chapterData) {
   const exists = await db.chapters.get(chapterData.id);
   if (exists) return;
-  // Restored chapters are already on server — not pending
-  await db.chapters.add({ ...chapterData, pendingSync: null, pendingSyncFlag: 0 });
+  await db.chapters.add({
+    ...chapterData,
+    html: await gzipDecode(chapterData.html),
+    text: await gzipDecode(chapterData.text),
+    pendingSync:     null,
+    pendingSyncFlag: 0,
+  });
 }
 
 export async function restorePolyglotCache(chapterId, targetLang, value) {
-  const normalized = normalizePolyglotValue(value);
+  const decompressed = {
+    ...value,
+    payload: typeof value.payload === 'string'
+      ? JSON.parse(await gzipDecode(value.payload))
+      : value.payload,
+  };
+  const normalized = normalizePolyglotValue(decompressed);
   if (!normalized) return false;
   const serverCreatedAt = typeof value?.createdAt === 'number' ? value.createdAt : 0;
   const exists = await db.polyglotCache
@@ -435,6 +447,18 @@ export async function getChapterStatusMap(bookId) {
     };
   }
   return map;
+}
+
+/** Mark all local chapters as pending upload — call once after D1 migration to re-sync. */
+export async function markAllBooksPending() {
+  const chapters = await db.chapters.toArray();
+  for (const ch of chapters) {
+    const langs = (await db.polyglotCache.where('chapterId').equals(ch.id).toArray()).map(p => p.targetLang);
+    await db.chapters.update(ch.id, {
+      pendingSync:     { meta: true, langs },
+      pendingSyncFlag: 1,
+    });
+  }
 }
 
 /** Returns chapters sorted by index, each with hasPoly flag for given targetLang. */

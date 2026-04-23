@@ -1,4 +1,5 @@
 -- Run once: wrangler d1 execute reader-db --file=schema.sql --remote
+-- After adding new tables: wrangler d1 execute reader-db --command "ALTER TABLE book_manifest ADD COLUMN meta_json TEXT" --remote
 
 CREATE TABLE IF NOT EXISTS users (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,4 +31,28 @@ CREATE TABLE IF NOT EXISTS reading_positions (
   sentence_idx INTEGER NOT NULL DEFAULT -1,
   updated_at   INTEGER NOT NULL,
   PRIMARY KEY (user_id, book_id)
+);
+
+CREATE TABLE IF NOT EXISTS book_chapters (
+  user_id       INTEGER NOT NULL,
+  book_id       TEXT    NOT NULL,
+  chapter_id    TEXT    NOT NULL,
+  chapter_index INTEGER NOT NULL DEFAULT 0,
+  href          TEXT    NOT NULL DEFAULT '',
+  title         TEXT    NOT NULL DEFAULT '',
+  html          TEXT    NOT NULL DEFAULT '',
+  text          TEXT    NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, book_id, chapter_id)
+);
+
+CREATE TABLE IF NOT EXISTS book_translations (
+  user_id    INTEGER NOT NULL,
+  book_id    TEXT    NOT NULL,
+  chapter_id TEXT    NOT NULL,
+  lang       TEXT    NOT NULL,
+  format     TEXT,
+  raw_text   TEXT,
+  payload    TEXT,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, book_id, chapter_id, lang)
 );

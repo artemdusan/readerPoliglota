@@ -1,10 +1,5 @@
 // VocabApp Worker — single-file backend
-// Handles: auth (JWT + PBKDF2), translation proxy (xAI Grok), book sync (D1 + R2)
-//
-// R2 structure per book:
-//   {userId}/{bookId}/meta.json
-//   {userId}/{bookId}/{chapterUUID}/metadata.json
-//   {userId}/{bookId}/{chapterUUID}/{lang}.json
+// Handles: auth (JWT + PBKDF2), translation proxy (xAI Grok), book sync (D1 only)
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 
@@ -186,37 +181,6 @@ async function requireAuth(request, env) {
   }
 }
 
-// ─── R2 KEY HELPERS ──────────────────────────────────────────────────────────
-
-const metaKey      = (u, b)          => `${u}/${b}/meta.json`;
-const chapterKeyV2 = (u, b, chId)    => `${u}/${b}/${chId}/metadata.json`;
-const polyKeyV2    = (u, b, chId, l) => `${u}/${b}/${chId}/${l}.json`;
-const bookPrefix   = (u, b)          => `${u}/${b}/`;
-
-async function r2PutJson(env, key, data) {
-  await env.reader_books.put(key, JSON.stringify(data), {
-    httpMetadata: { contentType: 'application/json' },
-  });
-}
-
-async function r2GetJson(env, key) {
-  const obj = await env.reader_books.get(key);
-  if (!obj) return null;
-  return obj.json();
-}
-
-/** List all R2 keys under a prefix (handles pagination). */
-async function r2ListKeys(env, prefix) {
-  const keys = [];
-  let cursor;
-  do {
-    const result = await env.reader_books.list({ prefix, cursor });
-    for (const obj of result.objects) keys.push(obj.key);
-    cursor = result.truncated ? result.cursor : undefined;
-  } while (cursor);
-  return keys;
-}
-
 // ─── ROUTE HANDLERS ──────────────────────────────────────────────────────────
 
 async function handleRegister(request, env) {
@@ -340,7 +304,7 @@ async function handleGetBooks(env, userId) {
 
 // ─── BOOK META ────────────────────────────────────────────────────────────────
 
-/** POST /books/{bookId} — store metadata (without chapters) */
+/** POST /books/{bookId} — store full metadata in book_manifest.meta_json */
 async function handleUpsertMeta(request, env, userId, bookId) {
   let meta;
   try {
@@ -349,18 +313,15 @@ async function handleUpsertMeta(request, env, userId, bookId) {
     return err('nieprawidłowy JSON');
   }
 
-  // Strip chapters if accidentally included
   const { chapters: _ch, ...cleanMeta } = meta;
 
-  await r2PutJson(env, metaKey(userId, bookId), cleanMeta);
-
   await env.DB.prepare(
-    `INSERT INTO book_manifest (user_id, book_id, title, author, chapter_count, created_at, deleted_at, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO book_manifest (user_id, book_id, title, author, chapter_count, created_at, deleted_at, status, meta_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (user_id, book_id) DO UPDATE SET
        title = excluded.title, author = excluded.author,
        chapter_count = excluded.chapter_count, deleted_at = excluded.deleted_at,
-       status = excluded.status`,
+       status = excluded.status, meta_json = excluded.meta_json`,
   ).bind(
     userId, bookId,
     cleanMeta.title || 'Bez tytułu',
@@ -369,87 +330,101 @@ async function handleUpsertMeta(request, env, userId, bookId) {
     cleanMeta.createdAt || Date.now(),
     cleanMeta.deletedAt || null,
     cleanMeta.status || 'active',
+    JSON.stringify(cleanMeta),
   ).run();
 
   return json({ ok: true });
 }
 
-
-/** GET /books/{bookId} — fetch metadata only */
+/** GET /books/{bookId} — fetch full metadata from book_manifest.meta_json */
 async function handleGetMeta(env, userId, bookId) {
-  const data = await r2GetJson(env, metaKey(userId, bookId));
-  if (!data) return err('nie znaleziono', 404);
-  return json(data);
+  const row = await env.DB.prepare(
+    'SELECT meta_json FROM book_manifest WHERE user_id = ? AND book_id = ?',
+  ).bind(userId, bookId).first();
+  if (!row?.meta_json) return err('nie znaleziono', 404);
+  return new Response(row.meta_json, { status: 200, headers: { 'Content-Type': 'application/json' } });
 }
 
 // ─── CHAPTERS ─────────────────────────────────────────────────────────────────
 
 /** POST /books/{bookId}/chapters/{chapterId} */
 async function handleUpsertChapterV2(request, env, userId, bookId, chapterId) {
-  let chapter;
-  try { chapter = await request.json(); } catch { return err('nieprawidłowy JSON'); }
-  await r2PutJson(env, chapterKeyV2(userId, bookId, chapterId), chapter);
+  let ch;
+  try { ch = await request.json(); } catch { return err('nieprawidłowy JSON'); }
+
+  await env.DB.prepare(
+    `INSERT INTO book_chapters (user_id, book_id, chapter_id, chapter_index, href, title, html, text)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id, book_id, chapter_id) DO UPDATE SET
+       chapter_index = excluded.chapter_index, href = excluded.href,
+       title = excluded.title, html = excluded.html, text = excluded.text`,
+  ).bind(
+    userId, bookId, chapterId,
+    ch.chapterIndex ?? 0, ch.href ?? '', ch.title ?? '',
+    ch.html ?? '', ch.text ?? '',
+  ).run();
+
   return json({ ok: true });
 }
 
 /** GET /books/{bookId}/chapters/{chapterId} */
 async function handleGetChapterV2(env, userId, bookId, chapterId) {
-  const data = await r2GetJson(env, chapterKeyV2(userId, bookId, chapterId));
-  if (!data) return err('nie znaleziono', 404);
-  return json(data);
+  const row = await env.DB.prepare(
+    `SELECT chapter_id as id, book_id as bookId, chapter_index as chapterIndex,
+            href, title, html, text
+     FROM book_chapters WHERE user_id = ? AND book_id = ? AND chapter_id = ?`,
+  ).bind(userId, bookId, chapterId).first();
+  if (!row) return err('nie znaleziono', 404);
+  return json(row);
 }
 
-/**
- * GET /books/{bookId}/chapters — list chapter UUIDs for a book.
- * Scans R2 for keys ending in /metadata.json to find UUID folders.
- */
+/** GET /books/{bookId}/chapters — list chapter UUIDs ordered by chapter_index */
 async function handleListChapters(env, userId, bookId) {
-  const prefix = bookPrefix(userId, bookId);
-  const keys = await r2ListKeys(env, prefix);
-  const uuids = [...new Set(
-    keys
-      .filter(k => k.endsWith('/metadata.json'))
-      .map(k => {
-        const rel = k.slice(prefix.length); // "{chUUID}/metadata.json"
-        return rel.split('/')[0];
-      }),
-  )];
-  return json(uuids);
+  const { results } = await env.DB.prepare(
+    'SELECT chapter_id FROM book_chapters WHERE user_id = ? AND book_id = ? ORDER BY chapter_index',
+  ).bind(userId, bookId).all();
+  return json(results.map(r => r.chapter_id));
 }
 
 /** POST /books/{bookId}/chapters/{chapterId}/translations/{lang} */
 async function handleUpsertPolyV2(request, env, userId, bookId, chapterId, lang) {
   let poly;
   try { poly = await request.json(); } catch { return err('nieprawidłowy JSON'); }
-  await r2PutJson(env, polyKeyV2(userId, bookId, chapterId, lang), poly);
+
+  await env.DB.prepare(
+    `INSERT INTO book_translations (user_id, book_id, chapter_id, lang, format, raw_text, payload, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id, book_id, chapter_id, lang) DO UPDATE SET
+       format = excluded.format, raw_text = excluded.raw_text,
+       payload = excluded.payload, created_at = excluded.created_at`,
+  ).bind(
+    userId, bookId, chapterId, lang,
+    poly.format ?? null,
+    poly.rawText ?? null,
+    poly.payload ?? null,
+    poly.createdAt || Date.now(),
+  ).run();
+
   return json({ ok: true });
 }
 
 /** GET /books/{bookId}/chapters/{chapterId}/translations/{lang} */
 async function handleGetPolyV2(env, userId, bookId, chapterId, lang) {
-  const data = await r2GetJson(env, polyKeyV2(userId, bookId, chapterId, lang));
-  if (!data) return err('nie znaleziono', 404);
-  return json(data);
+  const row = await env.DB.prepare(
+    `SELECT format, raw_text as rawText, payload, created_at as createdAt
+     FROM book_translations WHERE user_id = ? AND book_id = ? AND chapter_id = ? AND lang = ?`,
+  ).bind(userId, bookId, chapterId, lang).first();
+  if (!row) return err('nie znaleziono', 404);
+  return json(row);
 }
 
-/**
- * GET /books/{bookId}/polys — list all translations for a book.
- * Returns [{chapterId, lang}] by scanning UUID folder keys.
- */
+/** GET /books/{bookId}/polys — list all translations with createdAt for sync */
 async function handleListPolysV2(env, userId, bookId) {
-  const prefix = bookPrefix(userId, bookId);
-  const keys = await r2ListKeys(env, prefix);
-  const polys = [];
-  for (const k of keys) {
-    const rel = k.slice(prefix.length); // "{chUUID}/{file}.json"
-    const parts = rel.split('/');
-    if (parts.length !== 2) continue;
-    const [chapterId, langFile] = parts;
-    const name = langFile.replace(/\.json$/, '');
-    if (name === 'metadata') continue; // skip chapter metadata files
-    polys.push({ chapterId, lang: name });
-  }
-  return json(polys);
+  const { results } = await env.DB.prepare(
+    `SELECT chapter_id as chapterId, lang, created_at as createdAt
+     FROM book_translations WHERE user_id = ? AND book_id = ?`,
+  ).bind(userId, bookId).all();
+  return json(results);
 }
 
 // ─── DELETE BOOK ──────────────────────────────────────────────────────────────
@@ -457,7 +432,6 @@ async function handleListPolysV2(env, userId, bookId) {
 async function handleDeleteBook(request, env, userId, bookId) {
   const { deletedAt } = await request.json().catch(() => ({ deletedAt: Date.now() }));
 
-  // Soft delete in D1
   await env.DB.prepare(
     'UPDATE book_manifest SET deleted_at = ? WHERE user_id = ? AND book_id = ?',
   ).bind(deletedAt || Date.now(), userId, bookId).run();
@@ -466,9 +440,13 @@ async function handleDeleteBook(request, env, userId, bookId) {
     'DELETE FROM reading_positions WHERE user_id = ? AND book_id = ?',
   ).bind(userId, bookId).run();
 
-  // Hard delete all R2 objects under this book prefix
-  const keys = await r2ListKeys(env, bookPrefix(userId, bookId));
-  await Promise.all(keys.map(k => env.reader_books.delete(k)));
+  await env.DB.prepare(
+    'DELETE FROM book_chapters WHERE user_id = ? AND book_id = ?',
+  ).bind(userId, bookId).run();
+
+  await env.DB.prepare(
+    'DELETE FROM book_translations WHERE user_id = ? AND book_id = ?',
+  ).bind(userId, bookId).run();
 
   return json({ ok: true });
 }
