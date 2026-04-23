@@ -357,6 +357,7 @@ export async function syncAll(onProgress) {
       const bookId = entry.book_id;
       try {
         const meta = await apiFetch(`/books/${bookId}`, {}, stats);
+        if (entry.status) meta.status = entry.status;
         await restoreBook(meta);
 
         const chapterUUIDs = await apiFetch(`/books/${bookId}/chapters`, {}, stats);
