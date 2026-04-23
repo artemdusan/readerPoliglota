@@ -7,15 +7,20 @@ export default function ReaderBookmarkMenu({
   onAddBookmark,
   onJumpToBookmark,
   onRemoveBookmark,
-  formatBookmarkPage,
+  formatBookmarkProgress,
 }) {
+  const currentProgress =
+    totalPages > 1
+      ? Math.round(((currentPage / (totalPages - 1)) + Number.EPSILON) * 100)
+      : 0;
+
   return (
     <div className="bookmark-menu" ref={menuRef}>
       <div className="bookmark-menu-head">
         <div>
           <div className="bookmark-menu-title">Zakładki</div>
           <div className="bookmark-menu-sub">
-            Zapisz bieżącą stronę i zsynchronizuj ją z kontem.
+            Zapisz bieżący postęp i zsynchronizuj go z kontem.
           </div>
         </div>
       </div>
@@ -27,10 +32,10 @@ export default function ReaderBookmarkMenu({
         title="Zapisz zakładkę"
       >
         <span className="bookmark-save-btn-label">
-          {hasCurrentPageBookmark ? "Zapisano tę stronę" : "Zapisz zakładkę"}
+          {hasCurrentPageBookmark ? "Zapisano ten postęp" : "Zapisz zakładkę"}
         </span>
         <span className="bookmark-save-btn-meta">
-          Strona {currentPage + 1}/{totalPages}
+          Postęp {currentProgress}%
         </span>
       </button>
 
@@ -48,7 +53,7 @@ export default function ReaderBookmarkMenu({
                     {bookmark.chapterTitle || `Rozdział ${bookmark.chapterIndex + 1}`}
                   </span>
                   <span className="bookmark-item-meta">
-                    Strona {formatBookmarkPage(bookmark)}
+                    Postęp {formatBookmarkProgress(bookmark)}
                   </span>
                   {bookmark.preview && (
                     <span className="bookmark-item-preview">{bookmark.preview}</span>

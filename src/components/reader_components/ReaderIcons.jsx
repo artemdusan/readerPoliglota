@@ -1,5 +1,6 @@
 import {
   RiSearchLine,
+  RiBookmarkFill,
   RiBookmarkLine,
   RiPlayFill,
   RiPauseLine,
@@ -23,6 +24,7 @@ import {
 const ICON_MAP = {
   search:         RiSearchLine,
   bookmark:       RiBookmarkLine,
+  bookmarkFill:   RiBookmarkFill,
   play:           RiPlayFill,
   pause:          RiPauseLine,
   type:           RiFontSize,

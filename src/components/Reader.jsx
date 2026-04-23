@@ -35,6 +35,7 @@ import ReaderSettingsMenu from "./reader_components/ReaderSettingsMenu";
 import ReaderMissingLangBanner from "./reader_components/ReaderMissingLangBanner";
 import ReaderChapterContent from "./reader_components/ReaderChapterContent";
 import ReaderBottomBar from "./reader_components/ReaderBottomBar";
+import { UiIcon } from "./reader_components/ReaderIcons";
 import {
   SEARCH_BLOCK_SELECTOR,
   FONT_SIZE_MIN,
@@ -48,7 +49,9 @@ import {
   normalizeInlineText,
   buildSearchSnippet,
   getBookmarkPageIndex,
-  formatBookmarkPage,
+  getProgressPercent,
+  getBookmarkProgressPercent,
+  formatBookmarkProgress,
 } from "./reader_components/readerUtils";
 
 const LANGUAGE_META = Object.fromEntries(
@@ -1166,32 +1169,31 @@ export default function Reader({
     const now = Date.now();
     const page = currentPageRef.current;
     const currentProgress = getCurrentProgress();
-    const currentPageBookmark = bookmarks.find(
+    const currentProgressPercent = getProgressPercent(currentProgress);
+    const currentProgressBookmark = bookmarks.find(
       (bookmark) =>
         !bookmark.deletedAt &&
         bookmark.chapterIndex === chapterIdx &&
-        getBookmarkPageIndex(bookmark, totalPagesRef.current) === page,
+        getBookmarkProgressPercent(bookmark) === currentProgressPercent,
     );
 
     const nextBookmark = {
       id:
-        currentPageBookmark?.id ||
+        currentProgressBookmark?.id ||
         (globalThis.crypto?.randomUUID?.() ??
-          `${bookId}-${chapterIdx}-${page}-${now}`),
+          `${bookId}-${chapterIdx}-${currentProgressPercent}-${now}`),
       chapterIndex: chapterIdx,
       chapterTitle: chapterLabel,
       progress: currentProgress,
-      page,
-      totalPages: totalPagesRef.current,
       preview: getPagePreview(page),
-      createdAt: currentPageBookmark?.createdAt ?? now,
+      createdAt: currentProgressBookmark?.createdAt ?? now,
       updatedAt: now,
       deletedAt: null,
     };
 
-    const nextBookmarks = currentPageBookmark
+    const nextBookmarks = currentProgressBookmark
       ? bookmarks.map((bookmark) =>
-          bookmark.id === currentPageBookmark.id ? nextBookmark : bookmark,
+          bookmark.id === currentProgressBookmark.id ? nextBookmark : bookmark,
         )
       : [...bookmarks, nextBookmark];
 
@@ -2243,11 +2245,22 @@ export default function Reader({
       visibleBookmarks.filter(
         (bookmark) =>
           bookmark.chapterIndex === chapterIdx &&
-          getBookmarkPageIndex(bookmark, totalPages) === currentPage,
+          getBookmarkProgressPercent(bookmark) ===
+            getProgressPercent(
+              totalPages > 1 ? currentPage / (totalPages - 1) : 0,
+            ),
       ),
     [visibleBookmarks, chapterIdx, totalPages, currentPage],
   );
   const hasCurrentPageBookmark = currentPageBookmarks.length > 0;
+  async function toggleCurrentBookmark() {
+    const currentBookmark = currentPageBookmarks[0];
+    if (currentBookmark) {
+      await removeBookmark(currentBookmark.id);
+      return;
+    }
+    await addBookmark();
+  }
   const bookmarkList = useMemo(
     () =>
       [...visibleBookmarks].sort((a, b) => {
@@ -2376,7 +2389,7 @@ export default function Reader({
             onAddBookmark={addBookmark}
             onJumpToBookmark={jumpToBookmark}
             onRemoveBookmark={removeBookmark}
-            formatBookmarkPage={formatBookmarkPage}
+            formatBookmarkProgress={formatBookmarkProgress}
           />
         )}
 
@@ -2535,6 +2548,24 @@ export default function Reader({
               totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0,
             )}%
           </div>
+          <button
+            type="button"
+            className={`fs-bookmark-toggle${hasCurrentPageBookmark ? " is-active" : ""}`}
+            onClick={toggleCurrentBookmark}
+            title={
+              hasCurrentPageBookmark
+                ? "Usuń zakładkę z tego miejsca"
+                : "Dodaj zakładkę w tym miejscu"
+            }
+            aria-label={
+              hasCurrentPageBookmark
+                ? "Usuń zakładkę z tego miejsca"
+                : "Dodaj zakładkę w tym miejscu"
+            }
+            aria-pressed={hasCurrentPageBookmark}
+          >
+            <UiIcon name={hasCurrentPageBookmark ? "bookmarkFill" : "bookmark"} />
+          </button>
         </>
       )}
 

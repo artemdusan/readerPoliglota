@@ -261,17 +261,23 @@ function normalizeBookmark(bookmark) {
     bookmark.deletedAt === null || bookmark.deletedAt === undefined
       ? null
       : Number(bookmark.deletedAt) || updatedAt;
+  const legacyPage = Number(bookmark.page);
+  const legacyTotalPages = Number(bookmark.totalPages);
+  const progress =
+    bookmark.progress !== null && bookmark.progress !== undefined
+      ? clampProgress(bookmark.progress)
+      : Number.isFinite(legacyPage) &&
+          Number.isFinite(legacyTotalPages) &&
+          legacyTotalPages > 1
+        ? clampProgress(legacyPage / (legacyTotalPages - 1))
+        : 0;
 
   return {
     id,
     chapterIndex: Math.max(0, Math.floor(chapterIndex)),
-    progress: clampProgress(bookmark.progress ?? 0),
+    progress,
     chapterTitle: typeof bookmark.chapterTitle === 'string' ? bookmark.chapterTitle : '',
     preview: typeof bookmark.preview === 'string' ? bookmark.preview : '',
-    page: Number.isFinite(Number(bookmark.page)) ? Math.max(0, Math.floor(Number(bookmark.page))) : null,
-    totalPages: Number.isFinite(Number(bookmark.totalPages))
-      ? Math.max(1, Math.floor(Number(bookmark.totalPages)))
-      : null,
     createdAt,
     updatedAt,
     deletedAt,

@@ -3048,6 +3048,51 @@ html[data-theme="light"] .book-status-badge.is-archived {
   background: rgba(0, 0, 0, 0.2);
 }
 
+.fs-bookmark-toggle {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  color: var(--txt-2);
+  z-index: 999;
+  opacity: 0.58;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition:
+    opacity 0.16s ease,
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
+}
+.fs-bookmark-toggle .ui-icon {
+  width: 20px;
+  height: 20px;
+}
+.fs-bookmark-toggle:hover,
+.fs-bookmark-toggle:focus-visible {
+  opacity: 0.9;
+  background: rgba(0, 0, 0, 0.16);
+  border-color: rgba(192, 144, 80, 0.42);
+  color: var(--gold);
+  outline: none;
+}
+.fs-bookmark-toggle:active {
+  opacity: 1;
+}
+.fs-bookmark-toggle.is-active {
+  opacity: 0.88;
+  color: var(--gold-hi);
+  background: rgba(192, 144, 80, 0.14);
+  border-color: rgba(192, 144, 80, 0.38);
+}
+
 /* ════════════════ SHOW ALL TRANSLATIONS MODE ════════════════ */
 
 /* Position above the word — uses absolute so layout/pagination never shifts */
@@ -3884,13 +3929,15 @@ html[data-theme="boox"] .reader-layout .bottombar {
   transition: none;
 }
 
-html[data-theme="boox"] .ui-toggle-btn {
+html[data-theme="boox"] .ui-toggle-btn,
+html[data-theme="boox"] .fs-bookmark-toggle {
   background: rgba(0, 0, 0, 0.08);
   border: 2px solid #000000;
   opacity: 0.5;
 }
 
-html[data-theme="boox"] .ui-toggle-btn.translations-active {
+html[data-theme="boox"] .ui-toggle-btn.translations-active,
+html[data-theme="boox"] .fs-bookmark-toggle.is-active {
   background: rgba(0, 0, 0, 0.18);
   opacity: 0.85;
 }

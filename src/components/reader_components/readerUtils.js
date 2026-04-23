@@ -122,13 +122,16 @@ export function getBookmarkPageIndex(bookmark, totalPages) {
   );
 }
 
-export function formatBookmarkPage(bookmark) {
-  if (
-    Number.isFinite(bookmark?.page) &&
-    Number.isFinite(bookmark?.totalPages) &&
-    bookmark.totalPages > 0
-  ) {
-    return `${bookmark.page + 1}/${bookmark.totalPages}`;
-  }
-  return `${Math.round(((bookmark?.progress ?? 0) + Number.EPSILON) * 100)}%`;
+export function getProgressPercent(progress) {
+  const value = Number(progress);
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round((value + Number.EPSILON) * 100)));
+}
+
+export function getBookmarkProgressPercent(bookmark) {
+  return getProgressPercent(bookmark?.progress ?? 0);
+}
+
+export function formatBookmarkProgress(bookmark) {
+  return `${getBookmarkProgressPercent(bookmark)}%`;
 }
