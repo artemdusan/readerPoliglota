@@ -8,6 +8,7 @@ import {
 } from "../sync/cfAuth";
 import { syncAll } from "../sync/cfSync";
 import { getSyncActivity, subscribeSyncActivity } from "../sync/syncActivity";
+import { getWorkerUrl } from "../config/workerUrl";
 
 const SYNC_INTERVAL_OPTIONS = [
   { value: 5, label: "Co 5 minut" },
@@ -135,6 +136,16 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                 <p className="settings-inline-note">
                   Ostatni sync: {formatLastSync(lastSync)}
                 </p>
+
+                <a
+                  href={`${getWorkerUrl()}/admin`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-ghost"
+                  style={{ alignSelf: "flex-start", textDecoration: "none" }}
+                >
+                  Dashboard →
+                </a>
 
                 {isSyncing && syncProgress && (
                   <div className="settings-sync-progress">
