@@ -42,10 +42,32 @@ function scheduleStartupSync(intervalMinutes) {
     });
 }
 
+const LAST_POS_KEY = 'vocabapp:lastPosition';
+
+function loadLastPosition() {
+  try {
+    const raw = localStorage.getItem(LAST_POS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastPosition(bookId) {
+  if (bookId) {
+    localStorage.setItem(LAST_POS_KEY, JSON.stringify({ bookId }));
+  } else {
+    localStorage.removeItem(LAST_POS_KEY);
+  }
+}
+
 export default function App() {
   const { settings, updateSetting, updateLanguage, loaded } = useSettings();
-  const [view, setView] = useState('library');          // 'library' | 'reader'
-  const [currentBookId, setCurrentBookId] = useState(null);
+  const [view, setView] = useState(() => {
+    const pos = loadLastPosition();
+    return pos?.bookId ? 'reader' : 'library';
+  });
+  const [currentBookId, setCurrentBookId] = useState(() => loadLastPosition()?.bookId ?? null);
   const [showSettings, setShowSettings] = useState(false);
   const [cfConnected, setCfConnected] = useState(() => isLoggedIn());
 
@@ -104,11 +126,13 @@ export default function App() {
   }, []);
 
   const openBook = useCallback((bookId) => {
+    saveLastPosition(bookId);
     setCurrentBookId(bookId);
     setView('reader');
   }, []);
 
   const goToLibrary = useCallback(() => {
+    saveLastPosition(null);
     // Pop the history entry we pushed when entering reader
     if (history.state?.appView === 'reader') {
       history.back(); // fires popstate which updates state; also update directly below for safety
