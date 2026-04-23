@@ -305,7 +305,6 @@ export default function Library({
       const bookId = await saveBook(draft, draft.chapters);
       uploadBook(bookId);
       await loadBooks();
-      onOpenBook(bookId);
     } catch (err) {
       setAddError(err.message || "Nie udało się zapisać książki.");
     } finally {
