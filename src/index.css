@@ -3004,6 +3004,19 @@ html[data-theme="light"] .book-status-badge.is-archived {
   display: none;
 }
 
+/* ════════════════ FULLSCREEN PAGE INDICATOR ════════════════ */
+
+.fs-page-indicator {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  color: var(--text-muted, #888);
+  pointer-events: none;
+  user-select: none;
+}
+
 /* ════════════════ UI TOGGLE BUTTON ════════════════ */
 
 .ui-toggle-btn {

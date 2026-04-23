@@ -2508,13 +2508,18 @@ export default function Reader({
       </div>
 
       {distractionFree && (
-        <button
-          className={`ui-toggle-btn${showAllTranslations ? " translations-active" : ""}`}
-          onClick={toggleDistractionFree}
-          aria-label="Pokaż/ukryj UI"
-        >
-          ≡
-        </button>
+        <>
+          <button
+            className={`ui-toggle-btn${showAllTranslations ? " translations-active" : ""}`}
+            onClick={toggleDistractionFree}
+            aria-label="Pokaż/ukryj UI"
+          >
+            ≡
+          </button>
+          <div className="fs-page-indicator">
+            Strona {currentPage + 1}/{totalPages}
+          </div>
+        </>
       )}
 
     </div>
