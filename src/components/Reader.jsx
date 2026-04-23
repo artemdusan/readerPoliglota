@@ -1508,7 +1508,7 @@ export default function Reader({
     const el = body.querySelector(`[data-word-id="${wordId}"]`);
     if (!el) return;
     el.classList.add("tts-active");
-    openTooltip(el, true);
+    if (!showAllTranslations) openTooltip(el, true);
     const scrollEl = chScrollRef.current;
     if (scrollEl) {
       const pw = scrollEl.clientWidth;
@@ -1885,7 +1885,7 @@ export default function Reader({
     utt.onerror = () => {
       clearWordHighlight();
     };
-    if (!options.skipTooltip) {
+    if (!options.skipTooltip && !showAllTranslations) {
       const el = chapterBodyRef.current?.querySelector(`[data-word-id="${wordId}"]`);
       if (el) openTooltip(el, true);
     }
