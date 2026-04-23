@@ -15,7 +15,6 @@ import BookMetadataDialog from "./BookMetadataDialog";
 import ImportDialog from "./ImportDialog";
 import { version } from "../../package.json";
 import { getUsername, isLoggedIn, onAuthChange } from "../sync/cfAuth";
-import { getWorkerUrl } from "../config/workerUrl";
 import { syncAll, uploadBook, deleteRemoteBook, syncBookStatus } from "../sync/cfSync";
 import { getSyncActivity, subscribeSyncActivity } from "../sync/syncActivity";
 
@@ -453,18 +452,7 @@ export default function Library({
             >
               {THEME_NEXT_ICON[currentTheme] ?? <BsMoon />}
             </button>
-            {cfConnected && (
-              <a
-                className="lib-topbar-btn"
-                href={`${getWorkerUrl()}/admin`}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Dashboard"
-              >
-                ⚙
-              </a>
-            )}
-            <button
+<button
               className="lib-topbar-btn"
               onClick={onOpenSettings}
               title="Ustawienia"
