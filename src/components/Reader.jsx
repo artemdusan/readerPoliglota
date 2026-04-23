@@ -2129,6 +2129,24 @@ export default function Reader({
     });
   }
 
+  useEffect(() => {
+    if (distractionFree) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    }
+  }, [distractionFree]);
+
+  useEffect(() => {
+    function onFullscreenChange() {
+      if (!document.fullscreenElement) {
+        setDistractionFree(false);
+      }
+    }
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
   function handleAddTranslation() {
     requestGenerate();
     setSettingsMenuOpen(false);
