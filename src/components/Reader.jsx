@@ -137,6 +137,29 @@ function isTextEntryElement(element) {
   );
 }
 
+function normalizePositionSnapshot(position) {
+  if (!position) return null;
+  return {
+    chapterIndex: Number(position.chapterIndex) || 0,
+    progress: Math.max(0, Math.min(1, Number(position.progress) || 0)),
+    activeLang:
+      typeof position.activeLang === "string" && position.activeLang
+        ? position.activeLang
+        : null,
+    bookmarks: Array.isArray(position.bookmarks) ? position.bookmarks : [],
+  };
+}
+
+function samePositionSnapshot(a, b) {
+  if (!a || !b) return a === b;
+  return (
+    a.chapterIndex === b.chapterIndex &&
+    Math.abs(a.progress - b.progress) < 0.000001 &&
+    a.activeLang === b.activeLang &&
+    JSON.stringify(a.bookmarks) === JSON.stringify(b.bookmarks)
+  );
+}
+
 /* ═══════════════════════════════════════════
    Helpers
 ═══════════════════════════════════════════ */
@@ -254,6 +277,8 @@ export default function Reader({
   const pendingProgressRef = useRef(null); // progress (0-1) to restore after layout (null = no pending restore)
   const pendingChapterProgressOverrideRef = useRef(null); // one-shot progress override for the next chapter load
   const userChangedLangRef = useRef(false); // true only when user explicitly switched lang
+  const positionDirtyRef = useRef(false); // true after explicit user movement/lang change
+  const lastSavedPositionRef = useRef(null);
   const currentPageRef = useRef(0);
   const totalPagesRef = useRef(1);
   const scrollRetryTokenRef = useRef(0); // incremented each layout to cancel stale retries
@@ -477,6 +502,8 @@ export default function Reader({
       setToc(JSON.parse(b.tocJson || "[]"));
       setChapterCount(b.chapterCount || 0);
       const pos = await getReadingPosition(bookId);
+      lastSavedPositionRef.current = normalizePositionSnapshot(pos);
+      positionDirtyRef.current = false;
       setChapterIdx(pos?.chapterIndex ?? 0);
       setBookmarks(pos?.bookmarks ?? []);
       // Build href → chapterIndex map for TOC badges
@@ -856,8 +883,26 @@ export default function Reader({
 
       clearTimeout(saveTimerRef.current);
 
-      const writePosition = () =>
-        saveReadingPosition(bookId, chapterIndex, progress, activeLang);
+      const nextSnapshot = normalizePositionSnapshot({
+        chapterIndex,
+        progress,
+        activeLang,
+        bookmarks: lastSavedPositionRef.current?.bookmarks ?? bookmarks,
+      });
+
+      if (
+        !positionDirtyRef.current ||
+        samePositionSnapshot(lastSavedPositionRef.current, nextSnapshot)
+      ) {
+        positionDirtyRef.current = false;
+        return Promise.resolve();
+      }
+
+      const writePosition = async () => {
+        await saveReadingPosition(bookId, chapterIndex, progress, activeLang);
+        lastSavedPositionRef.current = nextSnapshot;
+        positionDirtyRef.current = false;
+      };
 
       if (immediate) {
         saveTimerRef.current = null;
@@ -870,7 +915,7 @@ export default function Reader({
       }, 800);
       return Promise.resolve();
     },
-    [bookId, getCurrentProgress],
+    [bookId, bookmarks, getCurrentProgress],
   );
 
   const getElementPage = useCallback((element) => {
@@ -925,6 +970,13 @@ export default function Reader({
         activeLangRef.current,
         { bookmarks: nextBookmarks },
       );
+      lastSavedPositionRef.current = normalizePositionSnapshot({
+        chapterIndex: chapterIdxRef.current,
+        progress: getCurrentProgress(),
+        activeLang: activeLangRef.current,
+        bookmarks: nextBookmarks,
+      });
+      positionDirtyRef.current = false;
 
       if (isLoggedIn()) {
         void syncBook(bookId);
@@ -969,6 +1021,8 @@ export default function Reader({
     function handleSynced() {
       if (!bookId) return;
       getReadingPosition(bookId).then((pos) => {
+        lastSavedPositionRef.current = normalizePositionSnapshot(pos);
+        positionDirtyRef.current = false;
         setBookmarks(pos?.bookmarks ?? []);
       });
     }
@@ -1071,6 +1125,7 @@ export default function Reader({
     activeLangRef.current = activeLang;
     if (!bookId || !userChangedLangRef.current) return;
     userChangedLangRef.current = false;
+    positionDirtyRef.current = true;
     void persistPosition({ immediate: true, activeLang });
   }, [activeLang, bookId, persistPosition]);
 
@@ -1091,6 +1146,7 @@ export default function Reader({
     syncPageViewport(clampedPage);
     setCurrentPage(clampedPage);
     currentPageRef.current = clampedPage;
+    positionDirtyRef.current = true;
     persistPosition();
   }
 
@@ -1273,6 +1329,7 @@ export default function Reader({
     const { progressOverride = null } = options;
     const nextChapterIdx = Math.max(0, Math.min(idx, chapterCount - 1));
     clearPageTurnState();
+    positionDirtyRef.current = true;
     void persistPosition({
       immediate: true,
       chapterIndex: nextChapterIdx,
