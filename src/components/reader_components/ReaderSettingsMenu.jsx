@@ -281,54 +281,20 @@ export default function ReaderSettingsMenu({
         </div>
       </div>
 
-      <div className="settings-menu-row">
+      <div className="settings-menu-row settings-menu-row-switch">
         <span className="settings-menu-label settings-menu-label-with-icon">
           <UiIcon name="translate" />
           <span>Pokaż tłumaczenia</span>
         </span>
-        <div className="theme-segmented theme-segmented--icon" role="radiogroup" aria-label="Tryb tłumaczeń">
-          {[
-            {
-              value: 'off', label: 'Wyłączone',
-              icon: (
-                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                  <line x1="3" y1="3" x2="13" y2="13"/>
-                  <line x1="13" y1="3" x2="3" y2="13"/>
-                </svg>
-              ),
-            },
-            {
-              value: 'above', label: 'Nad słowem',
-              icon: (
-                <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-                  <rect x="3" y="2" width="10" height="2" rx="1" opacity="0.5"/>
-                  <rect x="3" y="7" width="10" height="3" rx="1"/>
-                </svg>
-              ),
-            },
-            {
-              value: 'inline', label: 'Inline',
-              icon: (
-                <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-                  <rect x="1" y="6" width="5" height="2.5" rx="1" opacity="0.6"/>
-                  <rect x="8" y="5" width="7" height="5" rx="1"/>
-                </svg>
-              ),
-            },
-          ].map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              className={`theme-segment${showAllTranslations === opt.value ? ' is-active' : ''}`}
-              role="radio"
-              aria-checked={showAllTranslations === opt.value}
-              onClick={() => onChangeTranslationMode?.(opt.value)}
-              title={opt.label}
-            >
-              {opt.icon}
-            </button>
-          ))}
-        </div>
+        <select
+          className="reader-font-sel"
+          value={showAllTranslations}
+          onChange={(e) => onChangeTranslationMode?.(e.target.value)}
+        >
+          <option value="off">Wyłączone</option>
+          <option value="above">Nad słowem</option>
+          <option value="inline">Inline</option>
+        </select>
       </div>
 
       <div className="settings-menu-divider" />
