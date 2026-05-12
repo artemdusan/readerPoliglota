@@ -232,9 +232,12 @@ export default function Reader({
   const [isFullscreen, setIsFullscreen] = useState(
     () => Boolean(document.fullscreenElement)
   );
-  const [showAllTranslations, setShowAllTranslations] = useState(
-    () => localStorage.getItem('vocabapp:showAllTranslations') === 'true'
-  );
+  const [showAllTranslations, setShowAllTranslations] = useState(() => {
+    const v = localStorage.getItem('vocabapp:showAllTranslations');
+    if (v === 'above' || v === 'inline') return v;
+    if (v === 'true') return 'above'; // backward compat
+    return 'off';
+  });
   const [fs, setFs] = useState(settings.fontSize ?? 19);
   const readerFont = settings.readerFont ?? "garamond";
   const readerFontStack = getReaderFontStack(readerFont);
@@ -1572,7 +1575,7 @@ export default function Reader({
     const el = body.querySelector(`[data-word-id="${wordId}"]`);
     if (!el) return;
     el.classList.add("tts-active");
-    if (!showAllTranslations) openTooltip(el, true);
+    if (showAllTranslations === 'off') openTooltip(el, true);
     const scrollEl = chScrollRef.current;
     if (scrollEl) {
       const pw = scrollEl.clientWidth;
@@ -1949,7 +1952,7 @@ export default function Reader({
     utt.onerror = () => {
       clearWordHighlight();
     };
-    if (!options.skipTooltip && !showAllTranslations) {
+    if (!options.skipTooltip && showAllTranslations === 'off') {
       const el = chapterBodyRef.current?.querySelector(`[data-word-id="${wordId}"]`);
       if (el) openTooltip(el, true);
     }
@@ -2099,7 +2102,7 @@ export default function Reader({
     if (polyMode) {
       const pw = e.target.closest(".pw");
       if (pw) {
-        if (!showAllTranslations) openTooltip(pw);
+        if (showAllTranslations === 'off') openTooltip(pw);
         const wordId = Number.parseInt(pw.dataset.wordId, 10);
         if (tooltipReadOnClick && Number.isInteger(wordId)) {
           playSingleWord(wordId, { skipTooltip: true });
@@ -2382,7 +2385,7 @@ export default function Reader({
   return (
     <div
       className={`reader-layout${distractionFree ? " distraction-free" : ""}`}
-      data-show-all={showAllTranslations ? "true" : undefined}
+      data-show-all={showAllTranslations !== 'off' ? showAllTranslations : undefined}
       style={{ "--fs": `${fs}px`, "--reader-font": readerFontStack }}
     >
       <ReaderSidebar
@@ -2497,9 +2500,13 @@ export default function Reader({
             onToggleTooltipReadOnClick={handleToggleTooltipReadOnClick}
             showAllTranslations={showAllTranslations}
             onToggleShowAllTranslations={() => setShowAllTranslations((v) => {
-              const next = !v;
+              const next = v === 'off' ? 'above' : v === 'above' ? 'inline' : 'off';
               localStorage.setItem('vocabapp:showAllTranslations', next);
               return next;
+            })}
+            onChangeTranslationMode={(mode) => setShowAllTranslations(() => {
+              localStorage.setItem('vocabapp:showAllTranslations', mode);
+              return mode;
             })}
             ttsSourceVoice={ttsSourceVoice}
             ttsTargetVoice={ttsTargetVoice}
@@ -2594,7 +2601,7 @@ export default function Reader({
       {distractionFree && (
         <>
           <button
-            className={`ui-toggle-btn${showAllTranslations ? " translations-active" : ""}`}
+            className={`ui-toggle-btn${showAllTranslations !== 'off' ? " translations-active" : ""}`}
             onClick={toggleDistractionFree}
             aria-label="Pokaż/ukryj UI"
           >

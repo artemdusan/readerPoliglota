@@ -63,6 +63,7 @@ export default function ReaderSettingsMenu({
   onToggleTooltipReadOnClick,
   showAllTranslations,
   onToggleShowAllTranslations,
+  onChangeTranslationMode,
   ttsSourceVoice,
   ttsTargetVoice,
   onSourceVoiceChange,
@@ -280,26 +281,29 @@ export default function ReaderSettingsMenu({
         </div>
       </div>
 
-      <div className="settings-menu-row settings-menu-row-switch">
+      <div className="settings-menu-row">
         <span className="settings-menu-label settings-menu-label-with-icon">
           <UiIcon name="translate" />
           <span>Pokaż tłumaczenia</span>
         </span>
-        <div className="settings-toggle-wrap">
-          <span className="settings-toggle-hint">
-            {showAllTranslations ? "Wł." : "Wył."}
-          </span>
-          <button
-            type="button"
-            className={`settings-toggle${showAllTranslations ? " is-on" : ""}`}
-            aria-pressed={showAllTranslations}
-            onClick={onToggleShowAllTranslations}
-            title={showAllTranslations ? "Wyłącz" : "Włącz"}
-          >
-            <span className="settings-toggle-track">
-              <span className="settings-toggle-thumb" />
-            </span>
-          </button>
+        <div className="theme-segmented" role="radiogroup" aria-label="Tryb tłumaczeń">
+          {[
+            { value: 'off', label: 'Wył.' },
+            { value: 'above', label: 'Nad' },
+            { value: 'inline', label: 'Inline' },
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`theme-segment${showAllTranslations === opt.value ? ' is-active' : ''}`}
+              role="radio"
+              aria-checked={showAllTranslations === opt.value}
+              onClick={() => onChangeTranslationMode?.(opt.value)}
+              title={opt.label}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
 

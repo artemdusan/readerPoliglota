@@ -3095,8 +3095,8 @@ html[data-theme="light"] .book-status-badge.is-archived {
 
 /* ════════════════ SHOW ALL TRANSLATIONS MODE ════════════════ */
 
-/* Position above the word — uses absolute so layout/pagination never shifts */
-.reader-layout[data-show-all="true"] .pw-original {
+/* NAD — Position above the word — uses absolute so layout/pagination never shifts */
+.reader-layout[data-show-all="above"] .pw-original {
   display: block;
   position: absolute;
   left: 0;
@@ -3117,8 +3117,8 @@ html[data-theme="light"] .book-status-badge.is-archived {
   z-index: 2;
   color: inherit;
 }
-/* When word is tapped in show-all mode, normal tooltip takes over */
-.reader-layout[data-show-all="true"] .pw.open .pw-original {
+/* When word is tapped in above mode, normal tooltip takes over */
+.reader-layout[data-show-all="above"] .pw.open .pw-original {
   left: var(--pw-tooltip-left, 50%);
   top: var(--pw-tooltip-top, auto);
   bottom: auto;
@@ -3134,6 +3134,61 @@ html[data-theme="light"] .book-status-badge.is-archived {
   max-width: 55vw;
   padding: 8px 12px;
   pointer-events: none;
+}
+
+/* INLINE — Polish word then Spanish word bold, no background */
+.reader-layout[data-show-all="inline"] .pw {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28em;
+}
+.reader-layout[data-show-all="inline"] .pw-original {
+  display: inline;
+  order: 1;
+  position: static;
+  font-size: inherit;
+  font-style: normal;
+  font-family: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  opacity: 1;
+  color: inherit;
+  background: none;
+  border: none;
+  box-shadow: none;
+  white-space: normal;
+  max-width: none;
+  padding: 0;
+  pointer-events: none;
+  z-index: auto;
+  transform: none;
+}
+.reader-layout[data-show-all="inline"] .pw-target {
+  order: 2;
+  font-weight: bold;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+}
+.reader-layout[data-show-all="inline"] .pw:hover .pw-target {
+  background: none;
+}
+/* Keep .open from triggering tooltip in inline mode */
+.reader-layout[data-show-all="inline"] .pw.open .pw-original {
+  position: static;
+  left: auto;
+  top: auto;
+  bottom: auto;
+  transform: none;
+  background: none;
+  border: none;
+  box-shadow: none;
+  font-size: inherit;
+  opacity: 0.7;
+  white-space: normal;
+  max-width: none;
+  padding: 0;
 }
 
 /* ════════════════ SETTINGS DROPDOWN ════════════════ */
