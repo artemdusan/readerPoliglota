@@ -284,7 +284,7 @@ export default function ReaderSettingsMenu({
       <div className="settings-menu-row settings-menu-row-switch">
         <span className="settings-menu-label settings-menu-label-with-icon">
           <UiIcon name="translate" />
-          <span>Pokaż tłumaczenia</span>
+          <span>👁 tłumaczenia</span>
         </span>
         <select
           className="reader-font-sel"
