@@ -3381,6 +3381,11 @@ html[data-theme="light"] .book-status-badge.is-archived {
 .theme-segmented {
   width: min(218px, 100%);
   min-width: 196px;
+}
+.theme-segmented--icon {
+  width: auto;
+  min-width: auto;
+  grid-template-columns: repeat(3, 30px);
   height: 34px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

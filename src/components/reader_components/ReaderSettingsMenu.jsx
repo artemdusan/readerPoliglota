@@ -286,7 +286,7 @@ export default function ReaderSettingsMenu({
           <UiIcon name="translate" />
           <span>Pokaż tłumaczenia</span>
         </span>
-        <div className="theme-segmented" role="radiogroup" aria-label="Tryb tłumaczeń">
+        <div className="theme-segmented theme-segmented--icon" role="radiogroup" aria-label="Tryb tłumaczeń">
           {[
             {
               value: 'off', label: 'Wyłączone',
