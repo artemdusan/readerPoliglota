@@ -293,7 +293,7 @@ export default function ReaderSettingsMenu({
         >
           <option value="off">Wyłączone</option>
           <option value="above">Nad słowem</option>
-          <option value="inline">Inline</option>
+          <option value="inline">W linii</option>
         </select>
       </div>
 

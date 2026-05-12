@@ -3166,13 +3166,13 @@ html[data-theme="light"] .book-status-badge.is-archived {
 .reader-layout[data-show-all="inline"] .pw-target {
   order: 2;
   font-weight: bold;
-  background: none;
-  border: none;
-  padding: 0;
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
   color: inherit;
 }
 .reader-layout[data-show-all="inline"] .pw:hover .pw-target {
-  background: none;
+  background: none !important;
 }
 /* Keep .open from triggering tooltip in inline mode */
 .reader-layout[data-show-all="inline"] .pw.open .pw-original {
