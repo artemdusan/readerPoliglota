@@ -7,6 +7,7 @@ export default function ReaderSidebar({
   book,
   canTranslateBook,
   onOpenBatchModal,
+  onOpenEpubExport,
   chapterCount,
   tocItems,
   hrefToIndex,
@@ -27,6 +28,11 @@ export default function ReaderSidebar({
             {canTranslateBook && (
               <button className="sb-translate-btn" onClick={onOpenBatchModal} title="Generuj tłumaczenia">
                 <UiIcon name="sparkles" />
+              </button>
+            )}
+            {canTranslateBook && (
+              <button className="sb-translate-btn" onClick={onOpenEpubExport} title="Eksportuj do EPUB">
+                <UiIcon name="download" />
               </button>
             )}
           </div>

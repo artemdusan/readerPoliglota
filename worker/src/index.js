@@ -83,7 +83,7 @@ function getAiConfig(env) {
   return {
     apiKey,
     baseUrl,
-    model: 'grok-4-1-fast-non-reasoning',
+    model: 'grok-4.3',
     label: 'xAI Grok',
   };
 }
@@ -384,6 +384,7 @@ async function handleTranslate(request, env) {
         messages,
         temperature: 0.1,
         max_tokens: Number(maxTokens) > 0 ? Math.min(4096, Number(maxTokens)) : 4096,
+        reasoning: { effort: 'none' },
       }),
       signal: controller.signal,
     });
