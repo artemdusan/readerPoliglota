@@ -11,6 +11,7 @@ import {
   setBookStatus,
 } from "../db";
 import BatchGenModal from "./BatchGenModal";
+import EpubExportDialog from "./EpubExportDialog";
 import BookMetadataDialog from "./BookMetadataDialog";
 import ImportDialog from "./ImportDialog";
 import { version } from "../../package.json";
@@ -115,6 +116,7 @@ export default function Library({
   const [dragging, setDragging] = useState(false);
   const [positions, setPositions] = useState({});
   const [batchBook, setBatchBook] = useState(null);
+  const [epubBook, setEpubBook] = useState(null);
   const [importDraft, setImportDraft] = useState(null);
   const [editingBook, setEditingBook] = useState(null);
   const [ctxBookId, setCtxBookId] = useState(null);
@@ -630,6 +632,14 @@ export default function Library({
                         )}
                         <button
                           onClick={() => {
+                            setEpubBook(book);
+                            setCtxBookId(null);
+                          }}
+                        >
+                          Eksportuj EPUB
+                        </button>
+                        <button
+                          onClick={() => {
                             setEditingBook(book);
                             setCtxBookId(null);
                           }}
@@ -736,6 +746,14 @@ export default function Library({
           settings={settings}
           onUpdateSetting={onUpdateSetting}
           onClose={() => setBatchBook(null)}
+        />
+      )}
+
+      {epubBook && (
+        <EpubExportDialog
+          bookId={epubBook.id}
+          book={epubBook}
+          onClose={() => setEpubBook(null)}
         />
       )}
 

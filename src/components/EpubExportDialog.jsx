@@ -1,20 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getBookChaptersWithCacheStatus, getPolyglotCache } from '../db';
+import { getBookChaptersWithCacheStatus, getChapterStatusMap, getPolyglotCache } from '../db';
 import { parseStoredPolyglot } from '../lib/polyglotParser';
 import { buildEpub } from '../lib/epubBuilder';
 import { LANGUAGES } from '../hooks/useSettings';
 
 const LANG_META = Object.fromEntries(LANGUAGES.map(l => [l.code, l]));
 
-export default function EpubExportDialog({ bookId, book, chapterStatusMap, onClose }) {
-  const availableLangs = useMemo(() => {
-    const codes = new Set();
-    Object.values(chapterStatusMap).forEach(s =>
-      s.translationLangs?.forEach(l => codes.add(l))
-    );
-    return [...codes].map(code => LANG_META[code] || { code, flag: '', name: code, label: code });
-  }, [chapterStatusMap]);
-
+export default function EpubExportDialog({ bookId, book, onClose }) {
+  const [statusMap, setStatusMap] = useState({});
   const [selectedLang, setSelectedLang] = useState('');
   const [chapters, setChapters] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,14 +15,24 @@ export default function EpubExportDialog({ bookId, book, chapterStatusMap, onClo
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
 
-  // Pick first available lang by default
+  // Load which languages exist across all chapters
   useEffect(() => {
-    if (availableLangs.length > 0 && !selectedLang) {
-      setSelectedLang(availableLangs[0].code);
-    }
-  }, [availableLangs, selectedLang]);
+    getChapterStatusMap(bookId).then(map => {
+      setStatusMap(map);
+      // Pick first available language
+      const codes = new Set();
+      Object.values(map).forEach(s => s.translationLangs?.forEach(l => codes.add(l)));
+      if (codes.size > 0) setSelectedLang([...codes][0]);
+    });
+  }, [bookId]);
 
-  // Reload chapter list (with hasPoly flag) when lang selection changes
+  const availableLangs = useMemo(() => {
+    const codes = new Set();
+    Object.values(statusMap).forEach(s => s.translationLangs?.forEach(l => codes.add(l)));
+    return [...codes].map(code => LANG_META[code] || { code, flag: '', name: code, label: code });
+  }, [statusMap]);
+
+  // Reload chapter list with hasPoly flag when language changes
   useEffect(() => {
     setLoading(true);
     getBookChaptersWithCacheStatus(bookId, selectedLang || '\x00').then(chs => {
@@ -41,10 +44,15 @@ export default function EpubExportDialog({ bookId, book, chapterStatusMap, onClo
 
   const toExport = chapters.filter(ch => selected.has(ch.id));
   const allSelected = chapters.length > 0 && selected.size === chapters.length;
+  const translatedChapters = chapters.filter(ch => ch.hasPoly);
   const withPolyCount = toExport.filter(ch => ch.hasPoly).length;
 
   function toggleAll() {
     setSelected(allSelected ? new Set() : new Set(chapters.map(ch => ch.id)));
+  }
+
+  function selectTranslated() {
+    setSelected(new Set(translatedChapters.map(ch => ch.id)));
   }
 
   function toggleChapter(id) {
@@ -66,7 +74,7 @@ export default function EpubExportDialog({ bookId, book, chapterStatusMap, onClo
           if (ch.hasPoly && selectedLang) {
             const entry = await getPolyglotCache(ch.id, selectedLang);
             if (entry) {
-              try { polyHtml = parseStoredPolyglot(entry, ch.html).html; } catch { /* use original */ }
+              try { polyHtml = parseStoredPolyglot(entry, ch.html).html; } catch { /* fallback to original */ }
             }
           }
           return { chapter: ch, polyHtml };
@@ -131,6 +139,16 @@ export default function EpubExportDialog({ bookId, book, chapterStatusMap, onClo
                 Rozdziały ({toExport.length}/{chapters.length})
               </span>
               <div style={{ display: 'flex', gap: 6 }}>
+                {selectedLang && translatedChapters.length > 0 && (
+                  <button
+                    className="ctl"
+                    onClick={selectTranslated}
+                    disabled={exporting || loading}
+                    title="Zaznacz tylko rozdziały z tłumaczeniem"
+                  >
+                    Z tłumaczeniem
+                  </button>
+                )}
                 <button className="ctl" onClick={toggleAll} disabled={exporting || loading}>
                   {allSelected ? 'Żadne' : 'Wszystkie'}
                 </button>
@@ -151,12 +169,9 @@ export default function EpubExportDialog({ bookId, book, chapterStatusMap, onClo
                   />
                   <span className="bgen-ch-num">{i + 1}.</span>
                   <span className="bgen-ch-title">{ch.title || `Rozdział ${i + 1}`}</span>
-                  {selectedLang && (
+                  {selectedLang && ch.hasPoly && (
                     <span className="bgen-ch-status">
-                      <span
-                        className={`bgen-dot ${ch.hasPoly ? 'done' : 'empty'}`}
-                        title={ch.hasPoly ? 'Ma tłumaczenie' : 'Brak tłumaczenia'}
-                      />
+                      <span className="bgen-dot done" title="Ma tłumaczenie" />
                     </span>
                   )}
                 </label>
@@ -166,7 +181,7 @@ export default function EpubExportDialog({ bookId, book, chapterStatusMap, onClo
 
           {!loading && selectedLang && toExport.length > 0 && (
             <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>
-              {withPolyCount} z {toExport.length} wybranych rozdziałów zawiera tłumaczenie inline.
+              {withPolyCount} z {toExport.length} wybranych rozdziałów zawiera tłumaczenie.
               {withPolyCount < toExport.length && ' Pozostałe zostaną wyeksportowane w oryginale.'}
             </div>
           )}
