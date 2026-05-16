@@ -168,8 +168,7 @@ ${chs.map((ch, i) => `      <li><a href="${chFile(i)}">${x(ch.title || `RozdziaÅ
 function buildCss() {
   return `body { font-family: serif; font-size: 1em; line-height: 1.6; margin: 0.5em 1em; }
 p { margin: 0.3em 0; text-indent: 1.2em; }
-h1, h2, h3, h4, h5, h6 { margin: 1em 0 0.4em; text-indent: 0; font-weight: bold; }
-.tr { font-size: 0.8em; font-weight: bold; }`;
+h1, h2, h3, h4, h5, h6 { margin: 1em 0 0.4em; text-indent: 0; font-weight: bold; }`;
 }
 
 // Convert a chapter's HTML to an EPUB XHTML page.
@@ -189,10 +188,9 @@ function chapterToXhtml(html, title, polyHtml) {
       const frag = doc.createDocumentFragment();
       frag.appendChild(doc.createTextNode(orig || tgt));
       if (orig && tgt) {
-        const sp = doc.createElement('span');
-        sp.className = 'tr';
-        sp.textContent = ` ${tgt}`;
-        frag.appendChild(sp);
+        const b = doc.createElement('b');
+        b.textContent = ` ${tgt}`;
+        frag.appendChild(b);
       }
       pw.replaceWith(frag);
     });
@@ -202,13 +200,10 @@ function chapterToXhtml(html, title, polyHtml) {
   // but may appear in polyHtml after applySentencePatchPayloadToHtml)
   doc.body.querySelectorAll('.ch-sentence').forEach(s => s.replaceWith(...s.childNodes));
 
-  // Strip classes (except epub-specific ones), data-* attributes, scripts, and styles
-  const EPUB_KEEP_CLASSES = new Set(['tr']);
+  // Strip classes, data-* attributes, scripts, and styles
   doc.body.querySelectorAll('script, style').forEach(el => el.remove());
   doc.body.querySelectorAll('*').forEach(el => {
-    const keep = [...el.classList].filter(c => EPUB_KEEP_CLASSES.has(c));
-    if (keep.length) el.className = keep.join(' ');
-    else el.removeAttribute('class');
+    el.removeAttribute('class');
     [...el.attributes]
       .filter(a => a.name.startsWith('data-'))
       .forEach(a => el.removeAttribute(a.name));
