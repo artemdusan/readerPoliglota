@@ -169,8 +169,7 @@ function buildCss() {
   return `body { font-family: serif; font-size: 1em; line-height: 1.6; margin: 0.5em 1em; }
 p { margin: 0.3em 0; text-indent: 1.2em; }
 h1, h2, h3, h4, h5, h6 { margin: 1em 0 0.4em; text-indent: 0; font-weight: bold; }
-ruby { display: inline; }
-rt { font-size: 0.65em; }`;
+.tr { font-size: 0.8em; font-weight: bold; }`;
 }
 
 // Convert a chapter's HTML to an EPUB XHTML page.
@@ -181,22 +180,21 @@ function chapterToXhtml(html, title, polyHtml) {
   const doc = new DOMParser().parseFromString(src || '<p> </p>', 'text/html');
 
   if (polyHtml) {
-    // Convert .pw spans → <ruby>original<rp>(</rp><rt>translation</rt><rp>)</rp></ruby>
+    // Convert .pw spans → inline: original <span class="tr">translation</span>
+    // class="tr" is preserved through the stripping step below (see EPUB_KEEP_CLASSES)
     doc.body.querySelectorAll('.pw').forEach(pw => {
       const orig = pw.querySelector('.pw-original')?.textContent?.trim() || '';
       const tgt  = pw.querySelector('.pw-target')?.textContent?.trim()  || '';
       if (!orig && !tgt) { pw.replaceWith(doc.createTextNode('')); return; }
-      const ruby = doc.createElement('ruby');
-      ruby.textContent = orig || tgt;
+      const frag = doc.createDocumentFragment();
+      frag.appendChild(doc.createTextNode(orig || tgt));
       if (orig && tgt) {
-        const rpO = doc.createElement('rp'); rpO.textContent = '(';
-        const rt  = doc.createElement('rt'); rt.textContent  = tgt;
-        const rpC = doc.createElement('rp'); rpC.textContent = ')';
-        ruby.appendChild(rpO);
-        ruby.appendChild(rt);
-        ruby.appendChild(rpC);
+        const sp = doc.createElement('span');
+        sp.className = 'tr';
+        sp.textContent = ` ${tgt}`;
+        frag.appendChild(sp);
       }
-      pw.replaceWith(ruby);
+      pw.replaceWith(frag);
     });
   }
 
@@ -204,10 +202,13 @@ function chapterToXhtml(html, title, polyHtml) {
   // but may appear in polyHtml after applySentencePatchPayloadToHtml)
   doc.body.querySelectorAll('.ch-sentence').forEach(s => s.replaceWith(...s.childNodes));
 
-  // Strip classes, data-* attributes, scripts, and styles
+  // Strip classes (except epub-specific ones), data-* attributes, scripts, and styles
+  const EPUB_KEEP_CLASSES = new Set(['tr']);
   doc.body.querySelectorAll('script, style').forEach(el => el.remove());
   doc.body.querySelectorAll('*').forEach(el => {
-    el.removeAttribute('class');
+    const keep = [...el.classList].filter(c => EPUB_KEEP_CLASSES.has(c));
+    if (keep.length) el.className = keep.join(' ');
+    else el.removeAttribute('class');
     [...el.attributes]
       .filter(a => a.name.startsWith('data-'))
       .forEach(a => el.removeAttribute(a.name));

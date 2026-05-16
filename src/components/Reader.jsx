@@ -27,7 +27,6 @@ import { parseStoredPolyglot } from "../lib/polyglotParser";
 import { annotateParagraphsInHtml } from "../lib/sentenceWrapper";
 import { SentenceTtsPlayer } from "../lib/ttsFragments";
 import BatchGenModal from "./BatchGenModal";
-import EpubExportDialog from "./EpubExportDialog";
 import ReaderSidebar from "./reader_components/ReaderSidebar";
 import ReaderTopbar from "./reader_components/ReaderTopbar";
 import ReaderSearchPanel from "./reader_components/ReaderSearchPanel";
@@ -181,7 +180,6 @@ export default function Reader({
   const [toc, setToc] = useState([]);
   const [chapterCount, setChapterCount] = useState(0);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
-  const [epubModalOpen, setEpubModalOpen] = useState(false);
 
   // Chapter state
   const [chapterIdx, setChapterIdx] = useState(null); // null until reading position loaded
@@ -2198,11 +2196,6 @@ export default function Reader({
     setSidebarOpen(false);
   }
 
-  function handleOpenEpubExport() {
-    setEpubModalOpen(true);
-    setSidebarOpen(false);
-  }
-
   function toggleDistractionFree() {
     setDistractionFree((v) => {
       if (!v) setSidebarOpen(false);
@@ -2409,7 +2402,6 @@ export default function Reader({
         book={book}
         canTranslateBook={Boolean(book && settings)}
         onOpenBatchModal={handleOpenBatchModal}
-        onOpenEpubExport={handleOpenEpubExport}
         chapterCount={chapterCount}
         tocItems={tocItems}
         hrefToIndex={hrefToIndex}
@@ -2537,15 +2529,6 @@ export default function Reader({
             settings={settings}
             onUpdateSetting={onUpdateSetting}
             onClose={() => setBatchModalOpen(false)}
-          />
-        )}
-
-        {epubModalOpen && book && (
-          <EpubExportDialog
-            bookId={book.id}
-            book={book}
-            chapterStatusMap={chapterStatusMap}
-            onClose={() => setEpubModalOpen(false)}
           />
         )}
 
