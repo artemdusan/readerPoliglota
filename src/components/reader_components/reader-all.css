@@ -1900,6 +1900,14 @@ html:root .page-slider::-moz-range-thumb {
   transition: background 0.1s;
 }
 
+/* Anchor flash — brief highlight after version switch to show where to read */
+.anchor-flash {
+  background: rgba(192, 144, 80, 0.22);
+  border-radius: 2px;
+  outline: 2px solid rgba(192, 144, 80, 0.45);
+  transition: background 0.15s, outline 1s;
+}
+
 /* ════════════════ HYBRID TTS ════════════════ */
 
 /* Active inline word pronunciation highlight */

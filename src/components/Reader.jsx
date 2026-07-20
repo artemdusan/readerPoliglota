@@ -234,6 +234,8 @@ export default function Reader({
   const flippingRef = useRef(false);
   const pageTurnTimerRef = useRef(null);
   const pageFlashTimerRef = useRef(null);
+  const anchorFlashTimeoutRef = useRef(null);
+  const pendingAnchorSentenceIdRef = useRef(null); // { sid, pid } — sentence-level anchor, pid as fallback
   const desiredLangRef = useRef(null); // lang to carry over when changing chapter
   const originalTtsPlayerRef = useRef(null);
   const ttsAutoStartRef = useRef(null); // 'original' | 'hybrid' | null
@@ -663,10 +665,60 @@ export default function Reader({
 
         let finalPage;
         let anchorHandled = false;
-        // Anchor restore — keep the reader on the same paragraph across a
+        // Anchor restore — keep the reader on the same sentence across a
         // version switch or bookmark jump, where progress fractions drift
         // because the two texts differ in length.
-        if (pendingAnchorPidRef.current !== null) {
+        // Sentence-level first (finer-grained), then paragraph as fallback.
+        if (pendingAnchorSentenceIdRef.current !== null) {
+          const { sid } = pendingAnchorSentenceIdRef.current;
+          const el = chapterBodyRef.current?.querySelector(
+            `.ch-sentence[data-sentence-id="${sid}"]`,
+          );
+          if (el) {
+            const cRect = container.getBoundingClientRect();
+            const elRect = el.getBoundingClientRect();
+            const absLeft = elRect.left - cRect.left + container.scrollLeft;
+            const targetPage = Math.max(
+              0,
+              Math.min(total - 1, Math.floor(absLeft / pw)),
+            );
+            pendingAnchorSentenceIdRef.current = null;
+            pendingAnchorPidRef.current = null;
+            pendingProgressRef.current = null;
+            setCurrentPage(targetPage);
+            currentPageRef.current = targetPage;
+            inner.style.transition = "";
+            syncPageViewport(targetPage, pw);
+            finalPage = targetPage;
+            anchorHandled = true;
+            // Brief highlight so the user sees where to resume reading.
+            clearTimeout(anchorFlashTimeoutRef.current);
+            requestAnimationFrame(() => {
+              el.classList.add("anchor-flash");
+              anchorFlashTimeoutRef.current = setTimeout(() => {
+                el.classList.remove("anchor-flash");
+              }, 1000);
+            });
+          } else if (total <= 1) {
+            // Content not fully laid out yet — retry after the frame budget.
+            const token = ++scrollRetryTokenRef.current;
+            setTimeout(() => {
+              if (
+                scrollRetryTokenRef.current === token &&
+                pendingAnchorSentenceIdRef.current !== null
+              ) {
+                setLayoutKey((k) => k + 1);
+              }
+            }, 250);
+          } else {
+            // Laid out but the sentence is gone — fall back to paragraph.
+            pendingAnchorSentenceIdRef.current = null;
+          }
+        }
+
+        if (anchorHandled) {
+          // finalPage already set by the sentence-anchor branch
+        } else if (pendingAnchorPidRef.current !== null) {
           const pid = pendingAnchorPidRef.current;
           const el = chapterBodyRef.current?.querySelector(
             `[data-pid="${pid}"]`,
@@ -687,6 +739,15 @@ export default function Reader({
             syncPageViewport(targetPage, pw);
             finalPage = targetPage;
             anchorHandled = true;
+            // Brief highlight on the anchor paragraph so the user sees
+            // where to resume reading after the version switch.
+            clearTimeout(anchorFlashTimeoutRef.current);
+            requestAnimationFrame(() => {
+              el.classList.add("anchor-flash");
+              anchorFlashTimeoutRef.current = setTimeout(() => {
+                el.classList.remove("anchor-flash");
+              }, 1000);
+            });
           } else if (total <= 1) {
             // Content not fully laid out yet — retry after the frame budget.
             const token = ++scrollRetryTokenRef.current;
@@ -942,6 +1003,38 @@ export default function Reader({
     }
     return null;
   }, [getElementPage]);
+
+  // First sentence (.ch-sentence) shown on the current page — a finer-grained
+  // anchor than the paragraph, critical on small screens where one paragraph can
+  // span several pages.
+  const getFirstVisibleSentenceId = useCallback(() => {
+    const body = chapterBodyRef.current;
+    if (!body) return null;
+    const page = currentPageRef.current;
+    let bestEl = null;
+    let bestTop = Infinity;
+    for (const el of body.querySelectorAll(".ch-sentence")) {
+      if (getElementPage(el) === page) {
+        const top = el.getBoundingClientRect().top;
+        if (top < bestTop) {
+          bestTop = top;
+          bestEl = el;
+        }
+      }
+    }
+    if (bestEl) {
+      return {
+        sid: bestEl.dataset.sentenceId,
+        pid: Number.parseInt(
+          bestEl.closest("[data-pid]")?.dataset?.pid,
+          10,
+        ),
+      };
+    }
+    // Fall back to paragraph-level anchor if no sentence starts on this page.
+    const pid = getFirstVisiblePid();
+    return pid != null ? { sid: null, pid } : null;
+  }, [getElementPage, getFirstVisiblePid]);
 
   const getPagePreview = useCallback(
     (page = currentPageRef.current) => {
@@ -1385,12 +1478,16 @@ export default function Reader({
 
   function switchToLang(lang) {
     if (lang === activeLang) return;
+    clearTimeout(anchorFlashTimeoutRef.current);
     clearPageTurnState();
     userChangedLangRef.current = true;
-    // Anchor on the paragraph currently at the top of the page so the reader
-    // stays on the same sentence after the new version re-flows. Progress is
-    // kept only as a fallback if the anchor can't be located.
-    pendingAnchorPidRef.current = getFirstVisiblePid();
+    // Anchor on the first visible sentence so the reader stays on the same
+    // spot after the new version re-flows. Sentence-level is more precise than
+    // paragraph-level on small screens where one paragraph can span many pages.
+    // Paragraph pid is kept as a fallback if the sentence can't be located.
+    const anchor = getFirstVisibleSentenceId();
+    pendingAnchorSentenceIdRef.current = anchor;
+    pendingAnchorPidRef.current = anchor?.pid ?? null;
     pendingProgressRef.current = getCurrentProgress();
     // Force ch-columns to remount on mode switch to bust stale GPU compositing layer.
     // will-change:transform promotes ch-columns to its own GPU layer; after a DOM
