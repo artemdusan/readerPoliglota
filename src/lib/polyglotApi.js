@@ -12,7 +12,7 @@ const GLOBAL_REQUESTS_PER_MINUTE = 6000;
 const GLOBAL_REQUEST_INTERVAL_MS = Math.ceil(
   60_000 / GLOBAL_REQUESTS_PER_MINUTE,
 );
-export const DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST = 8;
+export const DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST = 4;
 const MAX_POLYGLOT_SENTENCES_PER_REQUEST = 12;
 const MAX_SENTENCES_IN_FLIGHT = 96;
 export const POLYGLOT_MODEL_ID = "deepseek-v4-flash";
@@ -82,7 +82,12 @@ Zasady:
 - "target" = jedno tlumaczenie na ${targetLangName}
 - dodaj element do changes tylko gdy zaznaczasz przynajmniej jedno slowo
 
-Odpowiedz WYLACZNIE czystym JSON. Twoja odpowiedz musi zaczynac sie od { i konczyc }. Zadnego markdownu, komentarzy ani dodatkowego tekstu.
+Jesli nie znajdziesz zadnych slow do zaznaczenia, zwroc:
+{"changes":[]}
+
+ZWROC DOKLADNIE TEN SCHEMAT. Twoja odpowiedz musi zaczynac sie od znakow:
+{"changes":[
+Nie dodawaj markdown. Nie dodawaj \`\`\`json. Nie dodawaj wyjasnien. Nie dodawaj zadnych innych pol.
 
 Przyklad: {"changes":[{"id":"s1","words":[{"original":"dom","target":"house"}]}]}`;
 }
@@ -782,6 +787,10 @@ function buildSentencePatchRequest(
           })),
         }),
       },
+      {
+        role: "assistant",
+        content: '{"changes":[',
+      },
     ],
   };
 }
@@ -796,25 +805,29 @@ async function generateSentenceBatch(sentences, options, pricing, batchIdx) {
     onActivity: options.onActivity,
   });
 
+  console.log(`[PolyglotRaw ${batchIdx + 1}]`, text);
+
   const cost = estimateBatchCost(pricing, promptTokens, completionTokens);
   const elapsedMs = Date.now() - startedAt;
 
+  // API z prefillingiem zwraca tylko wygenerowane tokeny po {"changes":[
+  // próbuj surowy tekst, potem z prefiksem
+  const PREFILL_PREFIX = '{"changes":[';
+  let changes;
   try {
-    return {
-      changes: parseSentencePatchResponse(text, sentences),
-      cost,
-      elapsedMs,
-    };
-  } catch (error) {
-    console.warn(
-      `[Polyglot] patch ${batchIdx + 1} pomijam odpowiedz (${error.message})`,
-    );
-    return {
-      changes: [],
-      cost,
-      elapsedMs,
-    };
+    changes = parseSentencePatchResponse(text, sentences);
+  } catch {
+    try {
+      changes = parseSentencePatchResponse(PREFILL_PREFIX + text, sentences);
+    } catch (error) {
+      console.warn(
+        `[Polyglot] patch ${batchIdx + 1} pomijam odpowiedz (${error.message})`,
+      );
+      changes = [];
+    }
   }
+
+  return { changes, cost, elapsedMs };
 }
 
 async function runSentencePatchBatches(batches, options, pricing, onProgress) {

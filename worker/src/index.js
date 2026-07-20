@@ -382,7 +382,8 @@ async function handleTranslate(request, env) {
       body: JSON.stringify({
         model: ai.model,
         messages,
-        temperature: 0.1,
+        temperature: 0,
+        top_p: 0.1,
         max_tokens: Number(maxTokens) > 0 ? Math.min(4096, Number(maxTokens)) : 4096,
         response_format: { type: 'json_object' },
       }),
@@ -411,12 +412,16 @@ async function handleTranslate(request, env) {
     return err('Nieprawidlowa odpowiedz z API (nie JSON)', 502);
   }
 
-  const content = extractAssistantContent(data?.choices?.[0]?.message?.content);
+  const msg = data?.choices?.[0]?.message;
+  const content = extractAssistantContent(msg?.content)
+    || (typeof msg?.reasoning_content === 'string' ? msg.reasoning_content.trim() : '');
+
   if (!content) {
     const debug = JSON.stringify({
       finishReason: data?.choices?.[0]?.finish_reason,
       hasChoices: Array.isArray(data?.choices),
-      messageKeys: data?.choices?.[0]?.message ? Object.keys(data.choices[0].message) : 'brak',
+      messageKeys: msg ? Object.keys(msg) : 'brak',
+      usage: data?.usage,
     });
     return err(`API zwrocilo pusta odpowiedz (${debug})`, 502);
   }
