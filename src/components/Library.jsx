@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { BsGear, BsArrowRepeat, BsPlus } from "react-icons/bs";
 import { EpubParser } from "../lib/epubParser";
-import { formatTransfer, formatLastSync, formatRelativeSync, formatPolishCount } from "../utils/formatUtils";
+import { formatTransfer, formatLastSync, formatRelativeSync } from "../utils/formatUtils";
 import {
   getActiveBooks,
   saveBook,
