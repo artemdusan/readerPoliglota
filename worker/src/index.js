@@ -386,6 +386,7 @@ async function handleTranslate(request, env) {
         top_p: 0.1,
         max_tokens: Number(maxTokens) > 0 ? Math.min(4096, Number(maxTokens)) : 4096,
         response_format: { type: 'json_object' },
+        thinking: { type: 'disabled' },
       }),
       signal: controller.signal,
     });
