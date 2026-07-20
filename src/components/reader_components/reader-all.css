@@ -1569,25 +1569,6 @@ html:root .key-hint-dismiss {
 }
 
 /* Reading progress bar */
-.reading-progress {
-  height: 3px;
-  background: var(--border-soft);
-  flex-shrink: 0;
-}
-.reading-progress-fill {
-  height: 100%;
-  background: var(--gold);
-  transition: width 0.15s ease;
-  min-width: 0;
-}
-html:root .reading-progress {
-  height: 4px;
-}
-html:root .reading-progress-fill {
-  background: #000000;
-  transition: none;
-}
-
 /* Chapter scroll — always page mode */
 .ch-scroll {
   position: relative;

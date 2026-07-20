@@ -2529,18 +2529,6 @@ export default function Reader({
           />
         )}
 
-        {/* Chapter progress bar — hidden in distraction-free mode */}
-        {!distractionFree && (
-          <div className="reading-progress">
-            <div
-              className="reading-progress-fill"
-              style={{
-                width: `${totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0}%`,
-              }}
-            />
-          </div>
-        )}
-
         <ReaderChapterContent
           scrollRef={chScrollRef}
           innerRef={chInnerRef}
