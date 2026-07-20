@@ -2154,20 +2154,6 @@ export default function Reader({
         return;
       }
     }
-
-    // Tap zones for page turning: left 25% → prev, center 50% → toggle distraction-free, right 25% → next
-    const container = chScrollRef.current;
-    if (container) {
-      const xRatio = (e.clientX - container.getBoundingClientRect().left) / container.clientWidth;
-      if (xRatio < 0.25) {
-        prevPageRef.current?.();
-      } else if (xRatio > 0.75) {
-        nextPageRef.current?.();
-      } else {
-        setDistractionFree((v) => !v);
-      }
-    }
-
   }
 
   /* ── TOC navigation ── */
@@ -2246,10 +2232,6 @@ export default function Reader({
     }
     document.documentElement.requestFullscreen?.().catch(() => {});
   }
-
-  useEffect(() => {
-    document.documentElement.requestFullscreen?.().catch(() => {});
-  }, []);
 
   useEffect(() => {
     function onFullscreenChange() {
