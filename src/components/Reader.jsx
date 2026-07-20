@@ -190,10 +190,13 @@ export default function Reader({
   );
   const [showAllTranslations, setShowAllTranslations] = useState(() => {
     const v = localStorage.getItem('vocabapp:showAllTranslations');
-    if (v === 'above' || v === 'inline') return v;
-    if (v === 'true') return 'above'; // backward compat
-    return 'off';
+    return v === 'inline' ? 'inline' : 'off';
   });
+  function handleShowAllTranslationsChange(mode) {
+    const next = mode === 'inline' ? 'inline' : 'off';
+    localStorage.setItem('vocabapp:showAllTranslations', next);
+    setShowAllTranslations(next);
+  }
   // Sync local UI state to zustand store (Phase 2 — hooks will use store natively)
   useEffect(() => {
     useReaderStore.setState({
@@ -205,8 +208,7 @@ export default function Reader({
   }, [searchOpen, bookmarkMenuOpen, isFullscreen, showAllTranslations]);
 
   const [fs, setFs] = useState(settings.fontSize ?? 19);
-  const readerFont = settings.readerFont ?? "garamond";
-  const readerFontStack = getReaderFontStack(readerFont);
+  const readerFontStack = getReaderFontStack("garamond");
   const orderedCachedLangs = useMemo(
     () =>
       [...cachedLangs].sort(
@@ -1413,11 +1415,6 @@ export default function Reader({
     });
   }
 
-  function changeReaderFont(nextFont) {
-    if (!nextFont || nextFont === readerFont) return;
-    void onUpdateSetting?.("readerFont", nextFont);
-  }
-
   function openSearchPanel() {
     setSearchOpen(true);
     setBookmarkMenuOpen(false);
@@ -2479,10 +2476,15 @@ export default function Reader({
             isTtsPaused={activeTtsPaused}
             hasTtsAvailable={hasTtsAvailable}
             fontSize={fs}
-            readerFont={readerFont}
             onChangeFontSize={changeFontSize}
             onSetFontSize={setReaderFontSize}
-            onChangeReaderFont={changeReaderFont}
+            searchOpen={searchOpen}
+            isFullscreen={isFullscreen}
+            onToolSearch={handleSettingsSearchToolClick}
+            onToolBookmarks={handleSettingsBookmarksToolClick}
+            onToggleFullscreen={toggleFullscreen}
+            showAllTranslations={showAllTranslations}
+            onChangeShowAllTranslations={handleShowAllTranslationsChange}
             showAddTranslation={!polyMode && Boolean(chapter?.html)}
             showRegenerateTranslation={
               polyMode &&
@@ -2527,15 +2529,17 @@ export default function Reader({
           />
         )}
 
-        {/* Chapter progress bar — always visible, even in distraction-free mode */}
-        <div className="reading-progress">
-          <div
-            className="reading-progress-fill"
-            style={{
-              width: `${totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0}%`,
-            }}
-          />
-        </div>
+        {/* Chapter progress bar — hidden in distraction-free mode */}
+        {!distractionFree && (
+          <div className="reading-progress">
+            <div
+              className="reading-progress-fill"
+              style={{
+                width: `${totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0}%`,
+              }}
+            />
+          </div>
+        )}
 
         <ReaderChapterContent
           scrollRef={chScrollRef}
