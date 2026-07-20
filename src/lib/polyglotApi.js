@@ -8,6 +8,7 @@ const STALL_TIMEOUT_MS = 150_000;
 const STALL_RETRY_LIMIT = 1;
 const STALL_CHECK_INTERVAL_MS = 10_000;
 const NETWORK_RETRY_LIMIT = 1;
+const PARSE_RETRY_LIMIT = 1;
 const GLOBAL_REQUESTS_PER_MINUTE = 6000;
 const GLOBAL_REQUEST_INTERVAL_MS = Math.ceil(
   60_000 / GLOBAL_REQUESTS_PER_MINUTE,
@@ -798,36 +799,56 @@ function buildSentencePatchRequest(
 async function generateSentenceBatch(sentences, options, pricing, batchIdx) {
   const request = buildSentencePatchRequest(sentences, options);
   const startedAt = Date.now();
-  const { text, promptTokens, completionTokens } = await processBatchWithRetry({
-    ...request,
-    batchIdx,
-    signal: options.signal,
-    onActivity: options.onActivity,
-  });
-
-  console.log(`[PolyglotRaw ${batchIdx + 1}]`, text);
-
-  const cost = estimateBatchCost(pricing, promptTokens, completionTokens);
-  const elapsedMs = Date.now() - startedAt;
-
-  // API z prefillingiem zwraca tylko wygenerowane tokeny po {"changes":[
-  // próbuj surowy tekst, potem z prefiksem
   const PREFILL_PREFIX = '{"changes":[';
-  let changes;
-  try {
-    changes = parseSentencePatchResponse(text, sentences);
-  } catch {
+
+  let lastText, lastPromptTokens, lastCompletionTokens;
+
+  for (let attempt = 0; attempt <= PARSE_RETRY_LIMIT; attempt++) {
+    const { text, promptTokens, completionTokens } = await processBatchWithRetry({
+      ...request,
+      batchIdx,
+      signal: options.signal,
+      onActivity: options.onActivity,
+    });
+    lastText = text;
+    lastPromptTokens = promptTokens;
+    lastCompletionTokens = completionTokens;
+
+    console.log(`[PolyglotRaw ${batchIdx + 1}]`, text);
+
+    // próbuj surowy tekst, potem z prefiksem (prefilling)
     try {
-      changes = parseSentencePatchResponse(PREFILL_PREFIX + text, sentences);
-    } catch (error) {
-      console.warn(
-        `[Polyglot] patch ${batchIdx + 1} pomijam odpowiedz (${error.message})`,
-      );
-      changes = [];
+      return {
+        changes: parseSentencePatchResponse(text, sentences),
+        cost: estimateBatchCost(pricing, promptTokens, completionTokens),
+        elapsedMs: Date.now() - startedAt,
+      };
+    } catch {
+      try {
+        return {
+          changes: parseSentencePatchResponse(PREFILL_PREFIX + text, sentences),
+          cost: estimateBatchCost(pricing, promptTokens, completionTokens),
+          elapsedMs: Date.now() - startedAt,
+        };
+      } catch (parseError) {
+        if (attempt < PARSE_RETRY_LIMIT && !options.signal?.aborted) {
+          console.warn(
+            `[Polyglot] patch ${batchIdx + 1} JSON parse failed, retrying (${attempt + 1}/${PARSE_RETRY_LIMIT}): ${parseError.message}`,
+          );
+          continue;
+        }
+        console.warn(
+          `[Polyglot] patch ${batchIdx + 1} pomijam odpowiedz (${parseError.message})`,
+        );
+      }
     }
   }
 
-  return { changes, cost, elapsedMs };
+  return {
+    changes: [],
+    cost: estimateBatchCost(pricing, lastPromptTokens, lastCompletionTokens),
+    elapsedMs: Date.now() - startedAt,
+  };
 }
 
 async function runSentencePatchBatches(batches, options, pricing, onProgress) {
