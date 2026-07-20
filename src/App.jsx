@@ -71,9 +71,8 @@ export default function App() {
 
   useEffect(() => onAuthChange(setCfConnected), []);
 
-  // Pin the single BOOX theme once on mount.
+  // Pin the theme-color meta once on mount.
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", "boox");
     document
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute('content', THEME_COLOR);

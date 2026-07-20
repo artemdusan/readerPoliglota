@@ -1,208 +1,140 @@
-/* ── Reader chrome ── */
-html[data-theme="light"] .reader-search-strip {
-  background: var(--bg-side);
-  border-bottom-color: var(--border-soft);
-}
-html[data-theme="light"] .reader-search-input {
-  background: var(--bg);
-  border-color: var(--border-soft);
-  color: var(--txt-1);
-}
-html[data-theme="light"] .reader-search-result {
-  background: var(--panel);
-  border-color: var(--border-soft);
-  color: var(--txt-2);
-}
-html[data-theme="light"] .reader-search-empty {
-  background: var(--panel);
-}
-html[data-theme="light"] .tb-ver-select {
-  background-color: rgba(0, 0, 0, 0.04);
-  border-color: var(--border-soft);
-  color: var(--txt-1);
-}
-html[data-theme="light"] .tb-ver-select option {
-  background: var(--bg);
-  color: var(--txt-1);
-}
-html[data-theme="light"] .missing-lang-banner {
-  background: rgba(122, 80, 32, 0.08);
-  border-bottom-color: rgba(122, 80, 32, 0.2);
-}
-html[data-theme="light"] .nav-btn {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.1);
-  color: var(--txt-2);
-}
-html[data-theme="light"] .nav-btn:hover:not(:disabled) {
-  background: rgba(122, 80, 32, 0.08);
-  border-color: rgba(122, 80, 32, 0.3);
-  color: var(--gold);
-}
-html[data-theme="light"] .tts-bar-btn {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.12);
-  color: var(--txt-2);
-}
-html[data-theme="light"] .tts-bar-btn:hover:not(:disabled) {
-  background: rgba(122, 80, 32, 0.09);
-  border-color: rgba(122, 80, 32, 0.35);
-  color: var(--gold);
-}
-
-html[data-theme="light"] .settings-toggle.is-on .settings-toggle-track {
-  background: var(--gold);
-}
-
 /* BOOX Carta: monochrome paper surfaces with solid fills for low ghosting */
-html[data-theme="boox"] *,
-html[data-theme="boox"] *::before,
-html[data-theme="boox"] *::after {
+html:root *,
+html:root *::before,
+html:root *::after {
   text-shadow: none !important;
 }
-html[data-theme="boox"] .reader-layout *,
-html[data-theme="boox"] .reader-layout *::before,
-html[data-theme="boox"] .reader-layout *::after {
+html:root .reader-layout *,
+html:root .reader-layout *::before,
+html:root .reader-layout *::after {
   transition-duration: 0.01ms !important;
   animation-duration: 0.01ms !important;
 }
-html[data-theme="boox"] .ch-body {
+html:root .ch-body {
   color: var(--txt-1);
   -webkit-font-smoothing: auto;
   text-rendering: optimizeLegibility;
 }
-html[data-theme="boox"] .ch-body strong {
+html:root .ch-body strong {
   color: #000;
 }
-html[data-theme="boox"] .ch-body blockquote {
+html:root .ch-body blockquote {
   color: var(--txt-2);
 }
-html[data-theme="boox"] .ch-body img {
+html:root .ch-body img {
   opacity: 1;
 }
-html[data-theme="boox"] .pw-original {
+html:root .pw-original {
   background: var(--panel);
   border-color: var(--gold);
   color: var(--txt-1);
   box-shadow: none;
 }
-html[data-theme="boox"] .pw-target {
+html:root .pw-target {
   color: var(--gold-hi);
   background: var(--gold-dim);
   border-bottom-color: var(--border);
 }
-html[data-theme="boox"] .pw:hover .pw-target,
-html[data-theme="boox"] .pw.open .pw-target {
+html:root .pw:hover .pw-target,
+html:root .pw.open .pw-target {
   background: var(--bg-hover);
 }
-html[data-theme="boox"] .lib-layout,
-html[data-theme="boox"] .reader-layout,
-html[data-theme="boox"] .reader-main,
-html[data-theme="boox"] .ch-scroll,
-html[data-theme="boox"] .loading-screen {
+html:root .lib-layout,
+html:root .reader-layout,
+html:root .reader-main,
+html:root .ch-scroll,
+html:root .loading-screen {
   background: var(--bg);
 }
-html[data-theme="boox"] .lib-topbar,
-html[data-theme="boox"] .topbar,
-html[data-theme="boox"] .bottombar,
-html[data-theme="boox"] .reader-search-strip {
+html:root .lib-topbar,
+html:root .topbar,
+html:root .bottombar,
+html:root .reader-search-strip {
   background: var(--bg-side);
   border-color: var(--border-soft);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-html[data-theme="boox"] .sidebar,
-html[data-theme="boox"] .settings-menu,
-html[data-theme="boox"] .bookmark-menu,
-html[data-theme="boox"] .book-ctx-menu,
-html[data-theme="boox"] .modal {
+html:root .sidebar,
+html:root .settings-menu,
+html:root .bookmark-menu,
+html:root .book-ctx-menu,
+html:root .modal {
   background: var(--panel);
   border-color: var(--border);
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-html[data-theme="boox"] .settings-tool,
-html[data-theme="boox"] .ctl,
-html[data-theme="boox"] .nav-btn,
-html[data-theme="boox"] .tts-bar-btn,
-html[data-theme="boox"] .bookmark-save-btn,
-html[data-theme="boox"] .bookmark-item-main,
-html[data-theme="boox"] .bookmark-item-remove,
-html[data-theme="boox"] .reader-search-input,
-html[data-theme="boox"] .reader-search-result,
-html[data-theme="boox"] .tb-ver-select,
-html[data-theme="boox"] .tts-voice-sel,
-html[data-theme="boox"] .reader-font-sel,
-html[data-theme="boox"] .form-select,
-html[data-theme="boox"] .lib-search {
+html:root .settings-tool,
+html:root .ctl,
+html:root .nav-btn,
+html:root .tts-bar-btn,
+html:root .bookmark-save-btn,
+html:root .bookmark-item-main,
+html:root .bookmark-item-remove,
+html:root .reader-search-input,
+html:root .reader-search-result,
+html:root .tb-ver-select,
+html:root .tts-voice-sel,
+html:root .reader-font-sel,
+html:root .form-select,
+html:root .lib-search {
   background: var(--panel);
   border-color: var(--border-soft);
   color: var(--txt-1);
 }
-html[data-theme="boox"] .settings-tool:hover:not(:disabled),
-html[data-theme="boox"] .ctl:hover,
-html[data-theme="boox"] .nav-btn:hover:not(:disabled),
-html[data-theme="boox"] .tts-bar-btn:hover:not(:disabled),
-html[data-theme="boox"] .reader-search-result:hover {
+html:root .settings-tool:hover:not(:disabled),
+html:root .ctl:hover,
+html:root .nav-btn:hover:not(:disabled),
+html:root .tts-bar-btn:hover:not(:disabled),
+html:root .reader-search-result:hover {
   background: var(--gold-dim);
   border-color: var(--gold);
   color: var(--gold-hi);
 }
-html[data-theme="boox"] .settings-tool-active,
-html[data-theme="boox"] .toc-entry.active,
-html[data-theme="boox"] .lib-tab.is-active {
+html:root .settings-tool-active,
+html:root .toc-entry.active,
+html:root .lib-tab.is-active {
   background: var(--gold-dim);
   border-color: var(--gold);
   color: var(--gold-hi);
   box-shadow: none;
 }
-html[data-theme="boox"] .book-card {
+html:root .book-card {
   background: var(--panel);
   border-color: var(--border-soft);
   box-shadow: none;
 }
-html[data-theme="boox"] .book-card::before {
+html:root .book-card::before {
   opacity: 0;
 }
-html[data-theme="boox"] .book-card:hover,
-html[data-theme="boox"] .book-card.has-open-menu {
+html:root .book-card:hover,
+html:root .book-card.has-open-menu {
   border-color: var(--border);
   box-shadow: none;
 }
-html[data-theme="boox"] .book-cover {
+html:root .book-cover {
   background: var(--bg-hover);
   box-shadow: none;
 }
-html[data-theme="boox"] .book-progress-bar,
-html[data-theme="boox"] .settings-toggle-track,
-html[data-theme="boox"] .lib-tabs {
+html:root .book-progress-bar,
+html:root .settings-toggle-track,
+html:root .lib-tabs {
   background: var(--bg-hover);
 }
-html[data-theme="boox"] .settings-toggle.is-on .settings-toggle-track {
+html:root .settings-toggle.is-on .settings-toggle-track {
   background: var(--gold);
 }
-html[data-theme="boox"] .theme-segmented {
-  background: var(--bg-hover);
-  border-color: var(--border);
-}
-html[data-theme="boox"] .theme-segment {
-  color: var(--txt-2);
-}
-html[data-theme="boox"] .theme-segment.is-active {
-  background: var(--panel);
-  color: var(--gold-hi);
-  box-shadow: inset 0 0 0 1px var(--gold);
-}
-html[data-theme="boox"] [data-pid].paragraph-active,
-html[data-theme="boox"] .tts-active {
+html:root [data-pid].paragraph-active,
+html:root .tts-active {
   background: var(--gold-dim) !important;
   outline-color: var(--border);
 }
-html[data-theme="boox"] .form-select option,
-html[data-theme="boox"] .tts-voice-sel option,
-html[data-theme="boox"] .reader-font-sel option,
-html[data-theme="boox"] .tb-ver-select option {
+html:root .form-select option,
+html:root .tts-voice-sel option,
+html:root .reader-font-sel option,
+html:root .tb-ver-select option {
   background: var(--panel);
   color: var(--txt-1);
 }
@@ -641,7 +573,6 @@ body,
     linear-gradient(180deg, #110f0c 0%, #0d0c0a 100%);
 }
 
-.lib-header,
 .lib-content {
   width: min(1240px, calc(100% - 64px));
 }
@@ -1047,9 +978,6 @@ body,
   color: var(--gold);
 }
 
-.sb-cover {
-  display: none;
-}
 .cover-ph {
   display: none;
 }
@@ -1629,12 +1557,12 @@ body,
   font-size: 12px;
   font-family: "DM Sans", sans-serif;
 }
-html[data-theme="boox"] .key-hint-banner {
+html:root .key-hint-banner {
   background: var(--gold-dim);
   border-bottom: 2px solid #000000;
   color: #000000;
 }
-html[data-theme="boox"] .key-hint-dismiss {
+html:root .key-hint-dismiss {
   border: 2px solid #000000;
   background: var(--panel);
   color: #000000;
@@ -1652,10 +1580,10 @@ html[data-theme="boox"] .key-hint-dismiss {
   transition: width 0.15s ease;
   min-width: 0;
 }
-html[data-theme="boox"] .reading-progress {
+html:root .reading-progress {
   height: 4px;
 }
-html[data-theme="boox"] .reading-progress-fill {
+html:root .reading-progress-fill {
   background: #000000;
   transition: none;
 }
@@ -1806,13 +1734,13 @@ html[data-theme="boox"] .reading-progress-fill {
 }
 
 /* BOOX: stronger flash for e-ink visibility */
-html[data-theme="boox"] .page-turn-flash.flash-next::after,
-html[data-theme="boox"] .page-turn-flash.flash-prev::after {
+html:root .page-turn-flash.flash-next::after,
+html:root .page-turn-flash.flash-prev::after {
   width: 6px;
   background: #000000;
 }
-html[data-theme="boox"] .page-turn-flash.flash-next,
-html[data-theme="boox"] .page-turn-flash.flash-prev {
+html:root .page-turn-flash.flash-next,
+html:root .page-turn-flash.flash-prev {
   transition: none;
 }
 
@@ -1901,11 +1829,11 @@ html[data-theme="boox"] .page-turn-flash.flash-prev {
   cursor: default;
   opacity: 0.4;
 }
-html[data-theme="boox"] .page-slider::-webkit-slider-thumb {
+html:root .page-slider::-webkit-slider-thumb {
   background: #000000;
   border: 2px solid #ffffff;
 }
-html[data-theme="boox"] .page-slider::-moz-range-thumb {
+html:root .page-slider::-moz-range-thumb {
   background: #000000;
   border: 2px solid #ffffff;
 }
@@ -2244,14 +2172,6 @@ html[data-theme="boox"] .page-slider::-moz-range-thumb {
   .nav-btn span {
     display: none;
   }
-  .lib-header {
-    width: calc(100% - 36px);
-    padding: 14px 0;
-  }
-  .lib-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
   .lib-body {
     padding: 24px 18px 100px;
   }
@@ -2469,10 +2389,6 @@ html[data-theme="boox"] .page-slider::-moz-range-thumb {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
 }
 
-html[data-theme="light"] .lib-tab.is-active {
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
-}
-
 .lib-tab-count {
   display: inline-flex;
   align-items: center;
@@ -2522,10 +2438,6 @@ html[data-theme="light"] .lib-tab.is-active {
   color: var(--txt-3);
 }
 
-html[data-theme="light"] .lib-search {
-  background: #fff;
-}
-
 .lib-empty-tab {
   padding: 60px 20px;
   text-align: center;
@@ -2552,16 +2464,6 @@ html[data-theme="light"] .lib-search {
 .book-status-badge.is-archived {
   background: rgba(160, 160, 160, 0.15);
   color: var(--txt-3);
-}
-
-html[data-theme="light"] .book-status-badge.is-read {
-  background: rgba(60, 160, 100, 0.14);
-  color: #2d8a52;
-}
-
-html[data-theme="light"] .book-status-badge.is-archived {
-  background: rgba(120, 120, 120, 0.12);
-  color: #666;
 }
 
 /* ════════════════ BATCH GEN MODAL ════════════════ */
@@ -3166,10 +3068,6 @@ html[data-theme="light"] .book-status-badge.is-archived {
 .settings-menu-row-compact {
   min-height: 38px;
 }
-.settings-menu-row-select {
-  gap: 10px;
-  align-items: stretch;
-}
 .settings-menu-section-label {
   padding: 8px 14px 4px;
   font-size: 10px;
@@ -3194,26 +3092,11 @@ html[data-theme="light"] .book-status-badge.is-archived {
   height: 14px;
   color: var(--gold);
 }
-.settings-menu-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.settings-menu-copy.settings-menu-copy-compact {
-  flex: 0 0 112px;
-}
-.settings-menu-subtle {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--txt-2);
-}
 .settings-menu-ctrl {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.settings-menu-row-theme,
 .settings-menu-row-font {
   align-items: center;
 }
@@ -3253,62 +3136,6 @@ html[data-theme="light"] .book-status-badge.is-archived {
 .reader-font-sel option {
   background: #161412;
   color: var(--txt-1);
-}
-.theme-segmented {
-  width: min(218px, 100%);
-  min-width: 196px;
-  height: 34px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: stretch;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--border-soft);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
-}
-.theme-segment {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--txt-2);
-  font-family: "DM Sans", sans-serif;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  text-transform: uppercase;
-  transition:
-    background 0.16s ease,
-    color 0.16s ease,
-    box-shadow 0.16s ease;
-}
-.theme-segment .ui-icon {
-  width: 13px;
-  height: 13px;
-}
-.theme-segment span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.theme-segment:hover {
-  color: var(--txt-1);
-}
-.theme-segment.is-active {
-  background: rgba(192, 144, 80, 0.16);
-  color: var(--gold-hi);
-  box-shadow: inset 0 0 0 1px rgba(192, 144, 80, 0.35);
-}
-.settings-menu-select-wrap {
-  flex: 1;
-  min-width: 0;
 }
 .settings-menu-divider {
   height: 1px;
@@ -3397,16 +3224,10 @@ html[data-theme="light"] .book-status-badge.is-archived {
   .settings-menu-toolbar {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  .settings-menu-row.settings-menu-row-select {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .settings-menu-row-theme,
   .settings-menu-row-font {
     align-items: stretch;
     flex-direction: column;
   }
-  .theme-segmented,
   .reader-font-sel {
     width: 100%;
     min-width: 0;
@@ -3435,12 +3256,6 @@ html[data-theme="light"] .book-status-badge.is-archived {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.settings-auth-switch {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 2px;
 }
 
 .settings-inline-note {
@@ -3525,7 +3340,6 @@ html[data-theme="light"] .book-status-badge.is-archived {
 }
 
 @media (max-width: 900px) {
-  .lib-header,
   .lib-content {
     width: calc(100% - 36px);
   }
@@ -3590,14 +3404,14 @@ html[data-theme="light"] .book-status-badge.is-archived {
 }
 
 /* Final BOOX overrides: solid, monochrome UI for Carta E Ink panels. */
-html[data-theme="boox"] {
+html:root {
   scrollbar-color: var(--border) var(--bg-side);
   -webkit-tap-highlight-color: var(--gold-dim);
 }
 
-html[data-theme="boox"] *,
-html[data-theme="boox"] *::before,
-html[data-theme="boox"] *::after {
+html:root *,
+html:root *::before,
+html:root *::after {
   animation: none !important;
   background-image: none !important;
   box-shadow: none !important;
@@ -3607,138 +3421,136 @@ html[data-theme="boox"] *::after {
   -webkit-backdrop-filter: none !important;
 }
 
-html[data-theme="boox"] ::selection {
+html:root ::selection {
   background: #000000;
   color: #ffffff;
 }
 
-html[data-theme="boox"] body,
-html[data-theme="boox"] #root,
-html[data-theme="boox"] .lib-layout,
-html[data-theme="boox"] .reader-layout,
-html[data-theme="boox"] .reader-main,
-html[data-theme="boox"] .ch-scroll,
-html[data-theme="boox"] .loading-screen {
+html:root body,
+html:root #root,
+html:root .lib-layout,
+html:root .reader-layout,
+html:root .reader-main,
+html:root .ch-scroll,
+html:root .loading-screen {
   background: var(--bg);
   color: var(--txt-1);
 }
 
-html[data-theme="boox"] .lib-topbar,
-html[data-theme="boox"] .topbar,
-html[data-theme="boox"] .bottombar,
-html[data-theme="boox"] .reader-search-strip,
-html[data-theme="boox"] .missing-lang-banner {
+html:root .lib-topbar,
+html:root .topbar,
+html:root .bottombar,
+html:root .reader-search-strip,
+html:root .missing-lang-banner {
   background: var(--bg-side);
   border-color: var(--border);
 }
 
-html[data-theme="boox"] .lib-topbar {
+html:root .lib-topbar {
   border-bottom-width: 2px;
 }
 
-html[data-theme="boox"] .topbar,
-html[data-theme="boox"] .reader-search-strip,
-html[data-theme="boox"] .missing-lang-banner {
+html:root .topbar,
+html:root .reader-search-strip,
+html:root .missing-lang-banner {
   border-bottom-width: 2px;
 }
 
-html[data-theme="boox"] .bottombar {
+html:root .bottombar {
   border-top-width: 2px;
 }
 
-html[data-theme="boox"] .sidebar {
+html:root .sidebar {
   background: var(--panel);
   border-right: 2px solid var(--border);
 }
 
-html[data-theme="boox"] .settings-menu,
-html[data-theme="boox"] .bookmark-menu,
-html[data-theme="boox"] .book-ctx-menu,
-html[data-theme="boox"] .modal,
-html[data-theme="boox"] .bgen-setup-card,
-html[data-theme="boox"] .bgen-chapter-list,
-html[data-theme="boox"] .dropzone {
+html:root .settings-menu,
+html:root .bookmark-menu,
+html:root .book-ctx-menu,
+html:root .modal,
+html:root .bgen-setup-card,
+html:root .bgen-chapter-list,
+html:root .dropzone {
   background: var(--panel);
   border: 2px solid var(--border);
   border-radius: 6px;
 }
 
-html[data-theme="boox"] .modal-overlay {
+html:root .modal-overlay {
   background: var(--bg);
 }
 
-html[data-theme="boox"] .book-card {
+html:root .book-card {
   background: var(--panel);
   border: 2px solid var(--border);
   border-radius: 6px;
   transform: none;
 }
 
-html[data-theme="boox"] .book-card:hover,
-html[data-theme="boox"] .book-card.has-open-menu {
+html:root .book-card:hover,
+html:root .book-card.has-open-menu {
   border-color: #000000;
   transform: none;
 }
 
-html[data-theme="boox"] .book-card::before {
+html:root .book-card::before {
   display: none;
 }
 
-html[data-theme="boox"] .book-cover,
-html[data-theme="boox"] .import-cover {
+html:root .book-cover,
+html:root .import-cover {
   background: var(--bg-side);
   border: 2px solid var(--border);
   border-radius: 4px;
 }
 
-html[data-theme="boox"] .settings-tool,
-html[data-theme="boox"] .ctl,
-html[data-theme="boox"] .nav-btn,
-html[data-theme="boox"] .tts-bar-btn,
-html[data-theme="boox"] .lib-topbar-btn,
-html[data-theme="boox"] .lib-fab,
-html[data-theme="boox"] .book-menu-btn,
-html[data-theme="boox"] .bookmark-save-btn,
-html[data-theme="boox"] .bookmark-item-main,
-html[data-theme="boox"] .bookmark-item-remove,
-html[data-theme="boox"] .reader-search-input,
-html[data-theme="boox"] .reader-search-result,
-html[data-theme="boox"] .tb-ver-select,
-html[data-theme="boox"] .tts-voice-sel,
-html[data-theme="boox"] .reader-font-sel,
-html[data-theme="boox"] .form-input,
-html[data-theme="boox"] .form-select,
-html[data-theme="boox"] .lib-search,
-html[data-theme="boox"] .modal-close,
-html[data-theme="boox"] .book-ctx-menu button,
-html[data-theme="boox"] .theme-segment,
-html[data-theme="boox"] .lib-tab,
-html[data-theme="boox"] .bgen-ch-row,
-html[data-theme="boox"] .reader-search-empty {
+html:root .settings-tool,
+html:root .ctl,
+html:root .nav-btn,
+html:root .tts-bar-btn,
+html:root .lib-topbar-btn,
+html:root .lib-fab,
+html:root .book-menu-btn,
+html:root .bookmark-save-btn,
+html:root .bookmark-item-main,
+html:root .bookmark-item-remove,
+html:root .reader-search-input,
+html:root .reader-search-result,
+html:root .tb-ver-select,
+html:root .tts-voice-sel,
+html:root .reader-font-sel,
+html:root .form-input,
+html:root .form-select,
+html:root .lib-search,
+html:root .modal-close,
+html:root .book-ctx-menu button,
+html:root .lib-tab,
+html:root .bgen-ch-row,
+html:root .reader-search-empty {
   background: var(--panel);
   border: 2px solid var(--border-soft);
   border-radius: 6px;
   color: var(--txt-1);
 }
 
-html[data-theme="boox"] .settings-tool:hover:not(:disabled),
-html[data-theme="boox"] .ctl:hover,
-html[data-theme="boox"] .nav-btn:hover:not(:disabled),
-html[data-theme="boox"] .tts-bar-btn:hover:not(:disabled),
-html[data-theme="boox"] .lib-topbar-btn:hover,
-html[data-theme="boox"] .lib-fab:hover,
-html[data-theme="boox"] .book-menu-btn:hover,
-html[data-theme="boox"] .reader-search-result:hover,
-html[data-theme="boox"] .modal-close:hover,
-html[data-theme="boox"] .book-ctx-menu button:hover,
-html[data-theme="boox"] .bgen-ch-row:hover,
-html[data-theme="boox"] .theme-segment:hover,
-html[data-theme="boox"] .lib-tab:hover,
-html[data-theme="boox"] .lib-search:focus,
-html[data-theme="boox"] .form-input:focus,
-html[data-theme="boox"] .form-select:focus,
-html[data-theme="boox"] .reader-font-sel:hover,
-html[data-theme="boox"] .reader-font-sel:focus {
+html:root .settings-tool:hover:not(:disabled),
+html:root .ctl:hover,
+html:root .nav-btn:hover:not(:disabled),
+html:root .tts-bar-btn:hover:not(:disabled),
+html:root .lib-topbar-btn:hover,
+html:root .lib-fab:hover,
+html:root .book-menu-btn:hover,
+html:root .reader-search-result:hover,
+html:root .modal-close:hover,
+html:root .book-ctx-menu button:hover,
+html:root .bgen-ch-row:hover,
+html:root .lib-tab:hover,
+html:root .lib-search:focus,
+html:root .form-input:focus,
+html:root .form-select:focus,
+html:root .reader-font-sel:hover,
+html:root .reader-font-sel:focus {
   background: var(--gold-dim);
   border-color: #000000;
   color: #000000;
@@ -3746,20 +3558,18 @@ html[data-theme="boox"] .reader-font-sel:focus {
   transform: none;
 }
 
-html[data-theme="boox"] .settings-tool-active,
-html[data-theme="boox"] .ctl-active,
-html[data-theme="boox"] .tts-bar-btn.tts-bar-play.active,
-html[data-theme="boox"] .toc-entry.active,
-html[data-theme="boox"] .theme-segment.is-active,
-html[data-theme="boox"] .lib-tab.is-active,
-html[data-theme="boox"] .book-ctx-menu .book-ctx-primary {
+html:root .settings-tool-active,
+html:root .ctl-active,
+html:root .tts-bar-btn.tts-bar-play.active,
+html:root .toc-entry.active,
+html:root .lib-tab.is-active,
+html:root .book-ctx-menu .book-ctx-primary {
   background: #000000;
   border-color: #000000;
   color: #ffffff;
 }
 
-html[data-theme="boox"] .theme-segmented,
-html[data-theme="boox"] .lib-tabs {
+html:root .lib-tabs {
   background: var(--bg-side);
   border: 2px solid var(--border);
   border-radius: 6px;
@@ -3767,113 +3577,108 @@ html[data-theme="boox"] .lib-tabs {
   padding: 4px;
 }
 
-html[data-theme="boox"] .theme-segmented {
-  height: 44px;
-}
-
-html[data-theme="boox"] .settings-toggle-track {
+html:root .settings-toggle-track {
   background: var(--panel);
   border: 2px solid var(--border);
   border-radius: 999px;
 }
 
-html[data-theme="boox"] .settings-toggle.is-on .settings-toggle-track {
+html:root .settings-toggle.is-on .settings-toggle-track {
   background: #000000;
 }
 
-html[data-theme="boox"] .settings-toggle-thumb {
+html:root .settings-toggle-thumb {
   background: #ffffff;
   border: 1px solid #000000;
 }
 
-html[data-theme="boox"] .lib-topbar-progress,
-html[data-theme="boox"] .book-progress-bar,
-html[data-theme="boox"] .poly-progress-bar,
-html[data-theme="boox"] .bgen-progress,
-html[data-theme="boox"] .settings-sync-progress-track {
+html:root .lib-topbar-progress,
+html:root .book-progress-bar,
+html:root .poly-progress-bar,
+html:root .bgen-progress,
+html:root .settings-sync-progress-track {
   background: var(--bg-side);
   border: 1px solid var(--border);
   border-radius: 2px;
   min-height: 6px;
 }
 
-html[data-theme="boox"] .lib-topbar-progress-fill,
-html[data-theme="boox"] .book-progress-fill,
-html[data-theme="boox"] .poly-progress-fill,
-html[data-theme="boox"] .bgen-progress-fill,
-html[data-theme="boox"] .settings-sync-progress-fill {
+html:root .lib-topbar-progress-fill,
+html:root .book-progress-fill,
+html:root .poly-progress-fill,
+html:root .settings-sync-progress-fill {
   background: #000000;
   border-radius: 1px;
 }
 
-html[data-theme="boox"] .pw-target,
-html[data-theme="boox"] .ch-body.tts-ready .pw:hover,
-html[data-theme="boox"] [data-pid].paragraph-active,
-html[data-theme="boox"] .tts-active {
+html:root .pw-target,
+html:root .ch-body.tts-ready .pw:hover,
+html:root [data-pid].paragraph-active,
+html:root .tts-active {
   background: var(--gold-dim) !important;
   outline-color: var(--border);
 }
 
-html[data-theme="boox"] .pw-original {
+html:root .pw-original {
   background: var(--panel);
   border: 2px solid #000000;
   color: var(--txt-1);
 }
 
-html[data-theme="boox"] .lib-toast,
-html[data-theme="boox"] .tts-error-toast,
-html[data-theme="boox"] .lib-error-banner,
-html[data-theme="boox"] .poly-error {
+html:root .lib-toast,
+html:root .tts-error-toast,
+html:root .lib-error-banner,
+html:root .poly-error {
   background: var(--panel);
   border: 2px solid #000000;
   border-radius: 6px;
   color: #000000;
 }
 
-html[data-theme="boox"] .lib-topbar-dot {
+html:root .lib-topbar-dot {
   border: 2px solid #000000;
 }
 
-html[data-theme="boox"] .book-status-badge,
-html[data-theme="boox"] .book-status-badge.is-read,
-html[data-theme="boox"] .book-status-badge.is-archived {
+html:root .book-status-badge,
+html:root .book-status-badge.is-read,
+html:root .book-status-badge.is-archived {
   background: var(--gold-dim);
   border: 1px solid var(--border);
   color: #000000;
 }
 
-html[data-theme="boox"] .bgen-ch-header,
-html[data-theme="boox"] .bgen-estimate,
-html[data-theme="boox"] .bgen-estimate-item,
-html[data-theme="boox"] .bgen-progress {
+html:root .bgen-ch-header,
+html:root .bgen-estimate,
+html:root .bgen-estimate-item,
+html:root .bgen-progress {
   background: var(--bg-side);
   border-color: var(--border);
 }
 
-html[data-theme="boox"] .bgen-ch-row.has-error {
+html:root .bgen-ch-row.has-error {
   background: var(--gold-dim);
   border-color: #000000;
 }
 
-html[data-theme="boox"] .reader-layout .topbar,
-html[data-theme="boox"] .reader-layout .bottombar {
+html:root .reader-layout .topbar,
+html:root .reader-layout .bottombar {
   transition: none;
 }
 
-html[data-theme="boox"] .ui-toggle-btn,
-html[data-theme="boox"] .fs-bookmark-toggle {
+html:root .ui-toggle-btn,
+html:root .fs-bookmark-toggle {
   background: rgba(0, 0, 0, 0.08);
   border: 2px solid #000000;
   opacity: 0.5;
 }
 
-html[data-theme="boox"] .ui-toggle-btn.translations-active,
-html[data-theme="boox"] .fs-bookmark-toggle.is-active {
+html:root .ui-toggle-btn.translations-active,
+html:root .fs-bookmark-toggle.is-active {
   background: rgba(0, 0, 0, 0.18);
   opacity: 0.85;
 }
 
-html[data-theme="boox"] .import-cover-hint {
+html:root .import-cover-hint {
   background: #000000;
   color: #ffffff;
 }
@@ -3885,138 +3690,138 @@ html[data-theme="boox"] .import-cover-hint {
    hairline borders, no gradients or glows. */
 
 /* Unified topbar controls — hairline paper buttons, same feel as reader .ctl */
-html[data-theme="boox"] .lib-topbar {
+html:root .lib-topbar {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-html[data-theme="boox"] .lib-topbar-btn {
+html:root .lib-topbar-btn {
   color: var(--txt-2);
   border-radius: 12px;
 }
-html[data-theme="boox"] .lib-topbar-btn:hover {
+html:root .lib-topbar-btn:hover {
   background: var(--bg-hover);
   color: var(--txt-1);
 }
-html[data-theme="boox"] .lib-topbar-dot.is-idle,
-html[data-theme="boox"] .lib-topbar-dot.is-syncing,
-html[data-theme="boox"] .lib-topbar-dot.is-error {
+html:root .lib-topbar-dot.is-idle,
+html:root .lib-topbar-dot.is-syncing,
+html:root .lib-topbar-dot.is-error {
   box-shadow: none;
 }
-html[data-theme="boox"] .lib-topbar-dot.is-idle { background: var(--txt-1); }
-html[data-theme="boox"] .lib-topbar-dot.is-syncing { background: var(--txt-2); }
-html[data-theme="boox"] .lib-topbar-dot.is-error { background: var(--txt-1); }
-html[data-theme="boox"] .lib-topbar-progress-fill { background: var(--gold); }
+html:root .lib-topbar-dot.is-idle { background: var(--txt-1); }
+html:root .lib-topbar-dot.is-syncing { background: var(--txt-2); }
+html:root .lib-topbar-dot.is-error { background: var(--txt-1); }
+html:root .lib-topbar-progress-fill { background: var(--gold); }
 
 /* Book cards — flat monochrome */
-html[data-theme="boox"] .book-author { color: var(--txt-2); }
-html[data-theme="boox"] .book-progress-pct { color: var(--txt-1); }
-html[data-theme="boox"] .book-progress-pct.is-idle { color: var(--txt-3); }
-html[data-theme="boox"] .book-progress-block { border-top-color: var(--border-soft); }
-html[data-theme="boox"] .book-progress-fill {
+html:root .book-author { color: var(--txt-2); }
+html:root .book-progress-pct { color: var(--txt-1); }
+html:root .book-progress-pct.is-idle { color: var(--txt-3); }
+html:root .book-progress-block { border-top-color: var(--border-soft); }
+html:root .book-progress-fill {
   background: var(--gold);
   box-shadow: none;
 }
-html[data-theme="boox"] .book-menu-btn {
+html:root .book-menu-btn {
   background: var(--panel);
   border-color: var(--border-soft);
   color: var(--txt-2);
   backdrop-filter: none;
 }
-html[data-theme="boox"] .book-menu-btn:hover {
+html:root .book-menu-btn:hover {
   background: var(--bg-hover);
   color: var(--txt-1);
 }
-html[data-theme="boox"] .book-card:hover {
+html:root .book-card:hover {
   transform: none;
   border-color: var(--border);
 }
 
 /* FAB — solid ink square, paper glyph */
-html[data-theme="boox"] .lib-fab {
+html:root .lib-fab {
   background: var(--gold);
   color: var(--bg);
   border: 1px solid var(--border);
   box-shadow: none;
 }
-html[data-theme="boox"] .lib-fab:hover {
+html:root .lib-fab:hover {
   background: var(--gold-hi);
   box-shadow: none;
   transform: none;
 }
-html[data-theme="boox"] .lib-fab-spin {
+html:root .lib-fab-spin {
   border-color: rgba(255, 255, 255, 0.35);
   border-top-color: var(--bg);
 }
 
 /* Primary / ghost / gold buttons — flat ink */
-html[data-theme="boox"] .btn-primary {
+html:root .btn-primary {
   background: var(--gold);
   color: var(--bg);
   border-color: var(--gold);
 }
-html[data-theme="boox"] .btn-primary:hover:not(:disabled) {
+html:root .btn-primary:hover:not(:disabled) {
   background: var(--gold-hi);
   color: var(--bg);
   border-color: var(--gold-hi);
 }
-html[data-theme="boox"] .btn-ghost:hover {
+html:root .btn-ghost:hover {
   border-color: var(--gold);
   background: var(--bg-hover);
   color: var(--txt-1);
 }
-html[data-theme="boox"] .ctl.ctl-gold {
+html:root .ctl.ctl-gold {
   background: var(--gold);
   color: var(--bg);
   border-color: var(--gold);
 }
-html[data-theme="boox"] .ctl.ctl-gold:hover {
+html:root .ctl.ctl-gold:hover {
   background: var(--gold-hi);
   border-color: var(--gold-hi);
   color: var(--bg);
 }
-html[data-theme="boox"] .ctl.ctl-active {
+html:root .ctl.ctl-active {
   background: var(--bg-hover);
   color: var(--txt-1);
   border-color: var(--gold);
 }
 
 /* Dropzone — paper card */
-html[data-theme="boox"] .dropzone {
+html:root .dropzone {
   background: var(--panel);
   border-color: var(--border);
   box-shadow: none;
 }
-html[data-theme="boox"] .dropzone:hover,
-html[data-theme="boox"] .dropzone.over {
+html:root .dropzone:hover,
+html:root .dropzone.over {
   border-color: var(--gold);
   background: var(--bg-hover);
 }
-html[data-theme="boox"] .dropzone-glyph { opacity: 0.55; }
+html:root .dropzone-glyph { opacity: 0.55; }
 
 /* Toast — paper */
-html[data-theme="boox"] .lib-toast {
+html:root .lib-toast {
   box-shadow: none;
   border: 1px solid var(--border);
 }
-html[data-theme="boox"] .lib-toast.is-success,
-html[data-theme="boox"] .lib-toast.is-error {
+html:root .lib-toast.is-success,
+html:root .lib-toast.is-error {
   background: var(--panel);
   color: var(--txt-1);
 }
 
 /* Reader chrome — flat monochrome */
-html[data-theme="boox"] .tb-ver-select:hover,
-html[data-theme="boox"] .tb-ver-select:focus {
+html:root .tb-ver-select:hover,
+html:root .tb-ver-select:focus {
   border-color: var(--gold);
   background-color: var(--bg-hover);
 }
-html[data-theme="boox"] .fs-bookmark-toggle:hover,
-html[data-theme="boox"] .fs-bookmark-toggle:focus-visible {
+html:root .fs-bookmark-toggle:hover,
+html:root .fs-bookmark-toggle:focus-visible {
   border-color: var(--border);
   color: var(--txt-1);
   background: rgba(0, 0, 0, 0.16);
 }
-html[data-theme="boox"] .fs-bookmark-toggle.is-active {
+html:root .fs-bookmark-toggle.is-active {
   color: var(--txt-1);
   background: rgba(0, 0, 0, 0.18);
   border-color: var(--border);
