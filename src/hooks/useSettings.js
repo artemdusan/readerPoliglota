@@ -32,7 +32,7 @@ const DEFAULTS = {
   polyglotSentencesPerRequest: DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST,
   fontSize: 30,
   readerFont: "garamond",
-  theme: "auto",
+  theme: "boox",
   syncIntervalMinutes: 30,
   tooltipReadOnClick: true,
   ttsMode: "mixed",

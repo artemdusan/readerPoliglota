@@ -1,7 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './base.css';
-import './library-shared.css';
 import './components/reader_components/reader-all.css';
 import App from './App';
 

@@ -1274,8 +1274,6 @@ export default function Reader({
     document.documentElement.style.setProperty("--fs", fs + "px");
   }, [fs]);
 
-  const theme = settings.theme ?? "dark";
-
   /* ── Close settings menu on outside click ── */
   useEffect(() => {
     if (!settingsMenuOpen) return;
@@ -2503,8 +2501,6 @@ export default function Reader({
             showTargetVoiceSelect={polyMode}
             showVoiceNote={showVoiceNote}
             voiceLoadState={voiceLoadState}
-            theme={theme}
-            onChangeTheme={(nextTheme) => onUpdateSetting?.("theme", nextTheme)}
             tooltipReadOnClick={tooltipReadOnClick}
             onToggleTooltipReadOnClick={handleToggleTooltipReadOnClick}
             ttsSourceVoice={ttsSourceVoice}

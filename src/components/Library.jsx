@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { BsSun, BsMoon, BsGear, BsArrowRepeat, BsPlus, BsBook } from "react-icons/bs";
+import { BsGear, BsArrowRepeat, BsPlus } from "react-icons/bs";
 import { EpubParser } from "../lib/epubParser";
 import { formatTransfer, formatLastSync, formatRelativeSync, formatPolishCount } from "../utils/formatUtils";
 import {
@@ -363,20 +363,6 @@ export default function Library({
         ? `Ostatni sync: ${formatLastSync(lastSync)} (${formatRelativeSync(lastSync, syncNow)})`
         : "Jeszcze nie wykonano pierwszej synchronizacji.";
 
-  const currentTheme = settings?.theme ?? "dark";
-
-  const THEME_CYCLE = { dark: "light", light: "boox", boox: "dark" };
-  const THEME_NEXT_LABEL = { dark: "Tryb jasny", light: "BOOX", boox: "Tryb ciemny" };
-  const THEME_NEXT_ICON = {
-    dark: <BsSun />,
-    light: <BsBook />,
-    boox: <BsMoon />,
-  };
-
-  function handleThemeToggle() {
-    onUpdateSetting("theme", THEME_CYCLE[currentTheme] ?? "dark");
-  }
-
   return (
     <div className="lib-layout">
       <header className="lib-topbar">
@@ -396,13 +382,6 @@ export default function Library({
 
           <div className="lib-topbar-actions">
             <button
-              className="lib-topbar-btn"
-              onClick={handleThemeToggle}
-              title={THEME_NEXT_LABEL[currentTheme] ?? "Motyw"}
-            >
-              {THEME_NEXT_ICON[currentTheme] ?? <BsMoon />}
-            </button>
-<button
               className="lib-topbar-btn"
               onClick={onOpenSettings}
               title="Ustawienia"

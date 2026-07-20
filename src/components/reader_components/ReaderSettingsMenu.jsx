@@ -8,13 +8,6 @@ import {
 } from "./readerUtils";
 import { useReaderStore } from "../../stores/readerStore";
 
-const THEME_OPTIONS = [
-  { value: "auto", label: "Auto", icon: "contrast" },
-  { value: "dark", label: "Ciemny", icon: "moon" },
-  { value: "light", label: "Jasny", icon: "sun" },
-  { value: "boox", label: "BOOX", icon: "book" },
-];
-
 function getVoiceNoteText(voiceLoadState) {
   if (voiceLoadState === "unsupported") {
     return "Ta przeglądarka nie udostępnia listy głosów Web Speech.";
@@ -53,8 +46,6 @@ export default function ReaderSettingsMenu({
   showTargetVoiceSelect,
   showVoiceNote,
   voiceLoadState,
-  theme,
-  onChangeTheme,
   tooltipReadOnClick,
   onToggleTooltipReadOnClick,
   ttsSourceVoice,
@@ -181,33 +172,6 @@ export default function ReaderSettingsMenu({
             </option>
           ))}
         </select>
-      </div>
-
-      <div className="settings-menu-row settings-menu-row-theme">
-        <span className="settings-menu-label settings-menu-label-with-icon">
-          <UiIcon
-            name={
-              theme === "light" ? "sun" : theme === "boox" ? "book" : "moon"
-            }
-          />
-          <span>Motyw</span>
-        </span>
-        <div className="theme-segmented" role="radiogroup" aria-label="Motyw">
-          {THEME_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={`theme-segment${theme === option.value ? " is-active" : ""}`}
-              role="radio"
-              aria-checked={theme === option.value}
-              onClick={() => onChangeTheme?.(option.value)}
-              title={option.label}
-            >
-              <UiIcon name={option.icon} />
-              <span>{option.label}</span>
-            </button>
-          ))}
-        </div>
       </div>
 
       {(showAddTranslation || showRegenerateTranslation) && (
