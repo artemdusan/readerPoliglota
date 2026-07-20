@@ -20,13 +20,10 @@ export default function ReaderChapterContent({
   polyState,
   confirmLang,
   languages,
-  batchOptions,
   estimatedSentenceCount,
   estimatedBatchCount,
   estimatedSecs,
   estimatedCost,
-  sentencesPerRequest,
-  onSentencesPerRequestChange,
   onConfirmLangChange,
   onStartGeneration,
   onCancelConfirm,
@@ -95,26 +92,6 @@ export default function ReaderChapterContent({
                       </select>
                     </div>
 
-                    <div className="poly-confirm-field">
-                      <span className="poly-confirm-field-label">
-                        Paczka AI
-                      </span>
-                      <select
-                        className="form-select"
-                        value={sentencesPerRequest ?? 4}
-                        onChange={(event) =>
-                          onSentencesPerRequestChange?.(
-                            Number(event.target.value),
-                          )
-                        }
-                      >
-                        {batchOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label} na zapytanie
-                          </option>
-                        ))}
-                      </select>
-                    </div>
                   </div>
 
                   <p className="poly-confirm-hint">

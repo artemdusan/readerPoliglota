@@ -8,10 +8,10 @@ import {
   POLYGLOT_MODEL_ID,
 } from "../lib/polyglotApi";
 import { triggerSync } from "../sync/cfSync";
-import { LANGUAGES, POLYGLOT_BATCH_OPTIONS } from "../hooks/useSettings";
+import { LANGUAGES } from "../hooks/useSettings";
 import { useWakeLock } from "../hooks/useWakeLock";
 
-const MAX_PARALLEL_BATCH_REQUESTS = 24;
+const MAX_PARALLEL_BATCH_REQUESTS = 96;
 
 function getBatchChapterConcurrency(requestConcurrency, chapterCount) {
   const perChapterRequests = Math.max(1, Number(requestConcurrency) || 1);
@@ -40,7 +40,6 @@ export default function BatchGenModal({
   bookId,
   book,
   settings,
-  onUpdateSetting,
   onClose,
 }) {
   const [selectedLang, setSelectedLang] = useState(() => {
@@ -85,13 +84,10 @@ export default function BatchGenModal({
           chapter.id,
           estimatePolyglotGeneration(
             { html: chapter.html },
-            {
-              sentencesPerRequest: settings.polyglotSentencesPerRequest,
-            },
           ),
         ]),
       ),
-    [toGenerate, settings.polyglotSentencesPerRequest],
+    [toGenerate],
   );
 
   const {
@@ -228,7 +224,6 @@ export default function BatchGenModal({
             targetLangName: selectedLang.name,
             sourceLangName: book?.lang || "",
             model: POLYGLOT_MODEL_ID,
-            sentencesPerRequest: settings.polyglotSentencesPerRequest,
             onRescue: ({ retryAttempt, maxRetries }) => {
               setRescueNote(
                 `${chapterLabel}: brak postępu, ponawiam próbę (${retryAttempt}/${maxRetries})...`,
@@ -354,26 +349,6 @@ export default function BatchGenModal({
                   </select>
                 </div>
 
-                <div className="bgen-setup-card">
-                  <span className="bgen-setup-label">Paczka AI</span>
-                  <select
-                    className="form-select"
-                    value={settings.polyglotSentencesPerRequest ?? 4}
-                    onChange={(e) =>
-                      onUpdateSetting?.(
-                        "polyglotSentencesPerRequest",
-                        Number(e.target.value),
-                      )
-                    }
-                    disabled={generating}
-                  >
-                    {POLYGLOT_BATCH_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label} na zapytanie
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
 
               <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>

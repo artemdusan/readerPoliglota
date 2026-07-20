@@ -668,7 +668,6 @@ export default function Library({
           bookId={batchBook.id}
           book={batchBook}
           settings={settings}
-          onUpdateSetting={onUpdateSetting}
           onClose={() => setBatchBook(null)}
         />
       )}

@@ -12,7 +12,7 @@ import {
   saveChapterLang,
   getChapterStatusMap,
 } from "../db";
-import { LANGUAGES, POLYGLOT_BATCH_OPTIONS } from "../hooks/useSettings";
+import { LANGUAGES } from "../hooks/useSettings";
 import { useWakeLock } from "../hooks/useWakeLock";
 import {
   generatePolyglot,
@@ -1633,7 +1633,6 @@ export default function Reader({
           targetLangName: langObj.name,
           sourceLangName: book?.lang || "",
           model: POLYGLOT_MODEL_ID,
-          sentencesPerRequest: settings.polyglotSentencesPerRequest,
           signal: controller.signal,
           onRescue: ({ retryAttempt, maxRetries }) => {
             setPolyRescueNote(
@@ -2270,11 +2269,8 @@ export default function Reader({
     () =>
       estimatePolyglotGeneration(
         { html: chapter?.html },
-        {
-          sentencesPerRequest: settings.polyglotSentencesPerRequest,
-        },
       ),
-    [chapter?.html, settings.polyglotSentencesPerRequest],
+    [chapter?.html],
   );
   const estimatedSentenceCount = generationEstimate.sentenceCount;
   const estimatedBatchCount = generationEstimate.generationBatches;
@@ -2531,7 +2527,6 @@ export default function Reader({
             bookId={book.id}
             book={book}
             settings={settings}
-            onUpdateSetting={onUpdateSetting}
             onClose={() => setBatchModalOpen(false)}
           />
         )}
@@ -2555,15 +2550,10 @@ export default function Reader({
           polyState={polyState}
           confirmLang={confirmLang}
           languages={LANGUAGES}
-          batchOptions={POLYGLOT_BATCH_OPTIONS}
           estimatedSentenceCount={estimatedSentenceCount}
           estimatedBatchCount={estimatedBatchCount}
           estimatedSecs={estimatedSecs}
           estimatedCost={estimatedCost}
-          sentencesPerRequest={settings.polyglotSentencesPerRequest}
-          onSentencesPerRequestChange={(value) =>
-            onUpdateSetting?.("polyglotSentencesPerRequest", value)
-          }
           onConfirmLangChange={handleConfirmLangChange}
           onStartGeneration={startGeneration}
           onCancelConfirm={resetTranslationSelection}
