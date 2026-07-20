@@ -20,6 +20,7 @@ import {
   RiArrowUpSLine,
   RiDeleteBinLine,
   RiDownload2Line,
+  RiContrastLine,
 } from "react-icons/ri";
 
 const ICON_MAP = {
@@ -44,6 +45,7 @@ const ICON_MAP = {
   "chevron-up":   RiArrowUpSLine,
   delete:         RiDeleteBinLine,
   download:       RiDownload2Line,
+  contrast:       RiContrastLine,
 };
 
 export function UiIcon({ name, className = "", title }) {

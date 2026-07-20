@@ -14,7 +14,18 @@ const THEME_COLORS = {
   dark: '#17110d',
   light: '#f5f0e8',
   boox: '#faf7ef',
+  auto: '#17110d', // fallback; resolved dynamically
 };
+
+function resolveAutoTheme() {
+  if (typeof window === 'undefined') return 'dark';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function getEffectiveTheme(storedTheme) {
+  const theme = storedTheme ?? 'dark';
+  return theme === 'auto' ? resolveAutoTheme() : theme;
+}
 
 function shouldRunStartupSync(intervalMinutes) {
   const minutes = Number(intervalMinutes ?? 30);
@@ -74,11 +85,33 @@ export default function App() {
   useEffect(() => onAuthChange(setCfConnected), []);
 
   useEffect(() => {
-    const theme = settings.theme ?? "dark";
-    document.documentElement.setAttribute("data-theme", theme);
+    const storedTheme = settings.theme ?? "dark";
+    const effectiveTheme = getEffectiveTheme(storedTheme);
+    // Set both the logical theme (auto/dark/light/boox) and the effective one
+    // The CSS uses [data-theme="auto"] for prefers-color-scheme overrides;
+    // the effective theme resolves to dark/light for the meta tag
+    document.documentElement.setAttribute("data-theme", storedTheme);
+    const metaColor = THEME_COLORS[effectiveTheme] ?? THEME_COLORS.dark;
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', THEME_COLORS[theme] ?? THEME_COLORS.dark);
+      ?.setAttribute('content', metaColor);
+  }, [settings.theme]);
+
+  // Listen for system color-scheme changes when theme is "auto"
+  useEffect(() => {
+    if (settings.theme !== 'auto') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => {
+      // Re-trigger the theme effect by forcing a DOM update
+      const effectiveTheme = resolveAutoTheme();
+      document.documentElement.setAttribute('data-theme', 'auto');
+      const metaColor = THEME_COLORS[effectiveTheme] ?? THEME_COLORS.dark;
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', metaColor);
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, [settings.theme]);
 
   // Load CF JWT from Dexie into memory on startup

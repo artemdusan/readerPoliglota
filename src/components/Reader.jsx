@@ -229,6 +229,16 @@ export default function Reader({
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [distractionFree, setDistractionFree] = useState(false);
+  const [pageFlash, setPageFlash] = useState(null); // "next" | "prev" | null
+  const [keyHintVisible, setKeyHintVisible] = useState(
+    () => !localStorage.getItem("vocabapp:keyHintDismissed"),
+  );
+
+  function dismissKeyHint() {
+    localStorage.setItem("vocabapp:keyHintDismissed", "1");
+    setKeyHintVisible(false);
+  }
+
   const [isFullscreen, setIsFullscreen] = useState(
     () => Boolean(document.fullscreenElement)
   );
@@ -288,6 +298,7 @@ export default function Reader({
   const prevSearchLayoutModeRef = useRef(searchLayoutMode);
   const flippingRef = useRef(false);
   const pageTurnTimerRef = useRef(null);
+  const pageFlashTimerRef = useRef(null);
   const desiredLangRef = useRef(null); // lang to carry over when changing chapter
   const originalTtsPlayerRef = useRef(null);
   const ttsAutoStartRef = useRef(null); // 'original' | 'hybrid' | null
@@ -303,6 +314,8 @@ export default function Reader({
   const keyPageTurnAtRef = useRef(0);
   toggleFullscreenRef.current = toggleFullscreen;
   const centerTapHandledRef = useRef(false);
+  const distractionFreeRef = useRef(false);
+  useEffect(() => { distractionFreeRef.current = distractionFree; }, [distractionFree]);
 
   useWakeLock(Boolean(bookId));
 
@@ -1151,6 +1164,14 @@ export default function Reader({
 
     clearPageTurnState();
     if (pauseTts) pauseTtsForManualPageTurn();
+
+    // Brief edge flash for page turn feedback (especially e-ink)
+    const dir = clampedPage > currentPageRef.current ? "next" : clampedPage < currentPageRef.current ? "prev" : null;
+    if (dir) {
+      if (pageFlashTimerRef.current) clearTimeout(pageFlashTimerRef.current);
+      setPageFlash(dir);
+      pageFlashTimerRef.current = setTimeout(() => setPageFlash(null), 250);
+    }
 
     inner.style.transition = "";
     syncPageViewport(clampedPage);
@@ -2095,6 +2116,14 @@ export default function Reader({
   ───────────────────────────────────────── */
 
   function handleContentClick(e) {
+    // In distraction-free mode, tapping non-interactive content exits it
+    if (distractionFreeRef.current) {
+      if (!e.target.closest(".pw") && !e.target.closest("a[href]") && !e.target.closest("[data-pid]")) {
+        setDistractionFree(false);
+        return;
+      }
+    }
+
     const anchor = e.target.closest("a[href]");
     if (anchor) {
       const target = resolveEpubHref(anchor.getAttribute("href") || "");
@@ -2432,7 +2461,19 @@ export default function Reader({
           onToggleSidebar={() => setSidebarOpen((open) => !open)}
           onToggleSettings={handleToggleSettingsMenu}
           onHideBars={() => setDistractionFree(true)}
+          fontSize={fs}
+          onFontSizeDown={() => changeFontSize(-2)}
+          onFontSizeUp={() => changeFontSize(2)}
         />
+
+        {keyHintVisible && (
+          <div className="key-hint-banner" onClick={dismissKeyHint}>
+            <span>Użyj przycisków głośności lub strzałek do zmiany stron</span>
+            <button className="key-hint-dismiss" onClick={(e) => { e.stopPropagation(); dismissKeyHint(); }}>
+              OK
+            </button>
+          </div>
+        )}
 
         {searchOpen && (
           <ReaderSearchPanel
@@ -2541,6 +2582,16 @@ export default function Reader({
           />
         )}
 
+        {/* Chapter progress bar — always visible, even in distraction-free mode */}
+        <div className="reading-progress">
+          <div
+            className="reading-progress-fill"
+            style={{
+              width: `${totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0}%`,
+            }}
+          />
+        </div>
+
         <ReaderChapterContent
           scrollRef={chScrollRef}
           innerRef={chInnerRef}
@@ -2639,6 +2690,9 @@ export default function Reader({
           </button>
         </>
       )}
+
+      {/* Page turn flash indicator (especially for e-ink) */}
+      <div className={`page-turn-flash${pageFlash ? ` flash-${pageFlash}` : ''}`} />
 
     </div>
   );

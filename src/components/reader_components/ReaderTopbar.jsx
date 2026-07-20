@@ -11,6 +11,9 @@ export default function ReaderTopbar({
   onToggleSidebar,
   onToggleSettings,
   onHideBars,
+  fontSize,
+  onFontSizeDown,
+  onFontSizeUp,
 }) {
   return (
     <div className="topbar">
@@ -40,6 +43,24 @@ export default function ReaderTopbar({
       </div>
 
       <div className="tb-controls">
+        <button
+          className="ctl ctl-icon"
+          onClick={onFontSizeDown}
+          disabled={fontSize <= 13}
+          title="Zmniejsz czcionkę"
+          aria-label="Zmniejsz czcionkę"
+        >
+          A−
+        </button>
+        <button
+          className="ctl ctl-icon"
+          onClick={onFontSizeUp}
+          disabled={fontSize >= 99}
+          title="Powiększ czcionkę"
+          aria-label="Powiększ czcionkę"
+        >
+          A+
+        </button>
         <button
           className="ctl ctl-icon"
           onClick={onHideBars}

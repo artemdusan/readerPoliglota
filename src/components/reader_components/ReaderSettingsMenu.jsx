@@ -8,6 +8,7 @@ import {
 } from "./readerUtils";
 
 const THEME_OPTIONS = [
+  { value: "auto", label: "Auto", icon: "contrast" },
   { value: "dark", label: "Ciemny", icon: "moon" },
   { value: "light", label: "Jasny", icon: "sun" },
   { value: "boox", label: "BOOX", icon: "book" },
