@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSettings } from './hooks/useSettings';
 import Library from './components/Library';
 import Reader  from './components/Reader';
+import ErrorBoundary from './components/ErrorBoundary';
 import Settings from './components/Settings';
 import { initCfAuth, isLoggedIn, onAuthChange } from './sync/cfAuth';
 import { syncAll } from './sync/cfSync';
@@ -194,13 +195,15 @@ export default function App() {
         />
       )}
       {view === 'reader' && (
-        <Reader
-          bookId={currentBookId}
-          settings={settings}
-          onUpdateSetting={updateSetting}
-          onBack={goToLibrary}
-          onOpenSettings={() => setShowSettings(true)}
-        />
+        <ErrorBoundary>
+          <Reader
+            bookId={currentBookId}
+            settings={settings}
+            onUpdateSetting={updateSetting}
+            onBack={goToLibrary}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+        </ErrorBoundary>
       )}
       {showSettings && (
         <Settings

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useReaderStore } from "../stores/readerStore";
 import {
   db,
   getBook,
@@ -53,6 +54,7 @@ import {
   getBookmarkProgressPercent,
   formatBookmarkProgress,
 } from "./reader_components/readerUtils";
+import { getPageTurnDirection, isTextEntryElement } from "./reader_components/keyboardNav";
 
 const LANGUAGE_META = Object.fromEntries(
   LANGUAGES.map((lang) => [lang.code, lang]),
@@ -77,64 +79,6 @@ function getLanguageDisplayLabel(code, meta = null) {
   const display = POLISH_LANGUAGE_NAMES?.of(normalized);
   if (display) return capitalizeLabel(display);
   return normalized.toUpperCase();
-}
-
-const NEXT_PAGE_KEY_NAMES = new Set([
-  "ArrowRight",
-  "PageDown",
-  "VolumeDown",
-  "AudioVolumeDown",
-  "BrowserForward",
-  "MediaTrackNext",
-]);
-const PREV_PAGE_KEY_NAMES = new Set([
-  "ArrowLeft",
-  "PageUp",
-  "VolumeUp",
-  "AudioVolumeUp",
-  "BrowserBack",
-  "MediaTrackPrevious",
-]);
-const NEXT_PAGE_CODES = new Set(["ArrowRight", "PageDown", "VolumeDown", "Space"]);
-const PREV_PAGE_CODES = new Set(["ArrowLeft", "PageUp", "VolumeUp"]);
-const NEXT_PAGE_KEY_CODES = new Set([32, 34, 39, 93, 167, 174, 25]);
-const PREV_PAGE_KEY_CODES = new Set([33, 37, 92, 166, 175, 24]);
-
-function getPageTurnDirection(event) {
-  const key = event.key;
-  const code = event.code;
-  const keyCode = event.keyCode ?? event.which;
-
-  if (key === " " || key === "Spacebar" || code === "Space") {
-    return event.shiftKey ? -1 : 1;
-  }
-  if (
-    NEXT_PAGE_KEY_NAMES.has(key) ||
-    NEXT_PAGE_CODES.has(code) ||
-    NEXT_PAGE_KEY_CODES.has(keyCode)
-  ) {
-    return 1;
-  }
-  if (
-    PREV_PAGE_KEY_NAMES.has(key) ||
-    PREV_PAGE_CODES.has(code) ||
-    PREV_PAGE_KEY_CODES.has(keyCode)
-  ) {
-    return -1;
-  }
-  return 0;
-}
-
-function isTextEntryElement(element) {
-  if (!element) return false;
-  const tag = element.tagName;
-  if (element.isContentEditable || tag === "TEXTAREA" || tag === "SELECT") {
-    return true;
-  }
-  if (tag !== "INPUT") return false;
-  return !["button", "checkbox", "radio", "range", "submit"].includes(
-    element.type,
-  );
 }
 
 function normalizePositionSnapshot(position) {
@@ -248,6 +192,16 @@ export default function Reader({
     if (v === 'true') return 'above'; // backward compat
     return 'off';
   });
+  // Sync local UI state to zustand store (Phase 2 — hooks will use store natively)
+  useEffect(() => {
+    useReaderStore.setState({
+      searchOpen,
+      bookmarkMenuOpen,
+      isFullscreen,
+      showAllTranslations,
+    });
+  }, [searchOpen, bookmarkMenuOpen, isFullscreen, showAllTranslations]);
+
   const [fs, setFs] = useState(settings.fontSize ?? 19);
   const readerFont = settings.readerFont ?? "garamond";
   const readerFontStack = getReaderFontStack(readerFont);
@@ -2161,6 +2115,19 @@ export default function Reader({
       }
     }
 
+    // Tap zones for page turning: left 25% → prev, center 50% → toggle distraction-free, right 25% → next
+    const container = chScrollRef.current;
+    if (container) {
+      const xRatio = (e.clientX - container.getBoundingClientRect().left) / container.clientWidth;
+      if (xRatio < 0.25) {
+        prevPageRef.current?.();
+      } else if (xRatio > 0.75) {
+        nextPageRef.current?.();
+      } else {
+        setDistractionFree((v) => !v);
+      }
+    }
+
   }
 
   /* ── TOC navigation ── */
@@ -2505,17 +2472,11 @@ export default function Reader({
           <ReaderSettingsMenu
             menuRef={settingsMenuRef}
             bookmarkToggleRef={bookmarkToggleRef}
-            searchOpen={searchOpen}
-            bookmarkMenuOpen={bookmarkMenuOpen}
             hasCurrentPageBookmarks={hasCurrentPageBookmark}
             isTtsActive={activeTtsPlaying && !activeTtsPaused}
-            onSearchToolClick={handleSettingsSearchToolClick}
-            onBookmarksToolClick={handleSettingsBookmarksToolClick}
             onToggleTts={
               activeTtsMode === "hybrid" ? toggleHybridTts : toggleOriginalTts
             }
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={toggleFullscreen}
             ttsButtonTitle={ttsButtonTitle}
             ttsButtonLabel={ttsButtonLabel}
             isTtsPlaying={activeTtsPlaying}
@@ -2546,16 +2507,6 @@ export default function Reader({
             onChangeTheme={(nextTheme) => onUpdateSetting?.("theme", nextTheme)}
             tooltipReadOnClick={tooltipReadOnClick}
             onToggleTooltipReadOnClick={handleToggleTooltipReadOnClick}
-            showAllTranslations={showAllTranslations}
-            onToggleShowAllTranslations={() => setShowAllTranslations((v) => {
-              const next = v === 'off' ? 'above' : v === 'above' ? 'inline' : 'off';
-              localStorage.setItem('vocabapp:showAllTranslations', next);
-              return next;
-            })}
-            onChangeTranslationMode={(mode) => setShowAllTranslations(() => {
-              localStorage.setItem('vocabapp:showAllTranslations', mode);
-              return mode;
-            })}
             ttsSourceVoice={ttsSourceVoice}
             ttsTargetVoice={ttsTargetVoice}
             onSourceVoiceChange={handleSourceVoiceChange}

@@ -1,0 +1,134 @@
+/* ── Library ── */
+html[data-theme="light"] .lib-layout {
+  background: var(--bg);
+}
+html[data-theme="light"] .lib-topbar {
+  background: rgba(245, 240, 232, 0.88);
+}
+html[data-theme="light"] .lib-topbar-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+html[data-theme="light"] .lib-fab {
+  box-shadow:
+    0 6px 22px rgba(122, 80, 32, 0.32),
+    0 2px 8px rgba(0, 0, 0, 0.14);
+}
+html[data-theme="light"] .lib-toast.is-success {
+  background: rgba(240, 250, 242, 0.97);
+  color: #2d6e40;
+  border-color: rgba(60, 140, 80, 0.28);
+}
+html[data-theme="light"] .lib-toast.is-error {
+  background: rgba(255, 245, 244, 0.97);
+  color: #8b2a1a;
+  border-color: rgba(184, 90, 70, 0.28);
+}
+html[data-theme="light"] .book-card {
+  background: #fdf8f0;
+  border-color: var(--border-soft);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+html[data-theme="light"] .book-card::before {
+  opacity: 0;
+}
+html[data-theme="light"] .book-card:hover {
+  border-color: var(--border);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.13);
+}
+html[data-theme="light"] .book-cover {
+  background: var(--bg-hover);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+html[data-theme="light"] .book-progress-block {
+  border-top-color: var(--border-soft);
+}
+html[data-theme="light"] .book-progress-bar {
+  background: rgba(0, 0, 0, 0.1);
+}
+html[data-theme="light"] .book-ctx-menu {
+  background: var(--bg);
+  border-color: var(--border);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+}
+html[data-theme="light"] .book-ctx-menu button {
+  color: var(--txt-1);
+}
+html[data-theme="light"] .book-ctx-menu button:hover {
+  background: var(--bg-hover);
+}
+html[data-theme="light"] .book-ctx-menu .book-ctx-primary {
+  color: var(--gold);
+  background: rgba(122, 80, 32, 0.08);
+}
+html[data-theme="light"] .book-menu-btn {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: var(--border);
+  color: var(--txt-2);
+}
+html[data-theme="light"] .dropzone {
+  background: var(--panel);
+  border-color: var(--border);
+}
+
+/* ── Modals ── */
+html[data-theme="light"] .modal {
+  background: var(--bg);
+  border-color: var(--border);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+}
+html[data-theme="light"] .modal-head {
+  border-bottom-color: var(--border-soft);
+}
+html[data-theme="light"] .modal-foot {
+  border-top-color: var(--border-soft);
+}
+html[data-theme="light"] .bgen-setup-card {
+  background: var(--panel);
+  border-color: var(--border-soft);
+}
+html[data-theme="light"] .bgen-chapter-list {
+  border-color: var(--border);
+}
+html[data-theme="light"] .bgen-ch-header {
+  background: var(--panel);
+  border-bottom-color: var(--border-soft);
+}
+html[data-theme="light"] .bgen-ch-row {
+  border-bottom-color: var(--border-soft);
+  color: var(--txt-1);
+}
+html[data-theme="light"] .bgen-ch-row:hover {
+  background: var(--bg-hover);
+}
+html[data-theme="light"] .bgen-estimate-item {
+  background: var(--panel);
+}
+html[data-theme="light"] .bgen-estimate {
+  background: var(--border-soft);
+  color: var(--txt-2);
+}
+html[data-theme="light"] .form-select option,
+html[data-theme="light"] .tts-voice-sel option,
+html[data-theme="light"] .reader-font-sel option {
+  background: var(--bg);
+  color: var(--txt-1);
+}
+
+/* ── Bookmark menu ── */
+html[data-theme="light"] .bookmark-menu {
+  background: var(--bg);
+  border-color: var(--border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14);
+}
+html[data-theme="light"] .bookmark-save-btn,
+html[data-theme="light"] .bookmark-item-main {
+  background: var(--panel);
+  border-color: var(--border-soft);
+  color: var(--txt-1);
+}
+html[data-theme="light"] .bookmark-item-remove {
+  background: var(--panel);
+  border-color: var(--border-soft);
+  color: var(--txt-3);
+}
+

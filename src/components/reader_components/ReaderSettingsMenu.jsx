@@ -6,6 +6,7 @@ import {
   READER_FONT_OPTIONS,
   getVoiceId,
 } from "./readerUtils";
+import { useReaderStore } from "../../stores/readerStore";
 
 const THEME_OPTIONS = [
   { value: "auto", label: "Auto", icon: "contrast" },
@@ -27,15 +28,9 @@ function getVoiceNoteText(voiceLoadState) {
 export default function ReaderSettingsMenu({
   menuRef,
   bookmarkToggleRef,
-  searchOpen,
-  bookmarkMenuOpen,
   hasCurrentPageBookmarks,
   isTtsActive,
-  onSearchToolClick,
-  onBookmarksToolClick,
   onToggleTts,
-  isFullscreen,
-  onToggleFullscreen,
   ttsButtonTitle,
   ttsButtonLabel,
   isTtsPlaying,
@@ -62,14 +57,20 @@ export default function ReaderSettingsMenu({
   onChangeTheme,
   tooltipReadOnClick,
   onToggleTooltipReadOnClick,
-  showAllTranslations,
-  onToggleShowAllTranslations,
-  onChangeTranslationMode,
   ttsSourceVoice,
   ttsTargetVoice,
   onSourceVoiceChange,
   onTargetVoiceChange,
 }) {
+  const searchOpen = useReaderStore((s) => s.searchOpen);
+  const bookmarkMenuOpen = useReaderStore((s) => s.bookmarkMenuOpen);
+  const isFullscreen = useReaderStore((s) => s.isFullscreen);
+  const showAllTranslations = useReaderStore((s) => s.showAllTranslations);
+  const toggleSearch = useReaderStore((s) => s.toggleSearch);
+  const toggleBookmarkMenu = useReaderStore((s) => s.toggleBookmarkMenu);
+  const toggleFullscreen = useReaderStore((s) => s.toggleFullscreen);
+  const setShowAllTranslations = useReaderStore((s) => s.setShowAllTranslations);
+
   const [fsInput, setFsInput] = useState(String(fontSize));
   useEffect(() => {
     setFsInput(String(fontSize));
@@ -80,7 +81,7 @@ export default function ReaderSettingsMenu({
       <div className="settings-menu-toolbar">
         <button
           className={`settings-tool${searchOpen ? " settings-tool-active" : ""}`}
-          onClick={onSearchToolClick}
+          onClick={toggleSearch}
           title="Szukaj w rozdziale"
         >
           <span className="settings-tool-icon">
@@ -92,7 +93,7 @@ export default function ReaderSettingsMenu({
         <button
           ref={bookmarkToggleRef}
           className={`settings-tool`}
-          onClick={onBookmarksToolClick}
+          onClick={toggleBookmarkMenu}
           title="Zakładki"
         >
           <span className="settings-tool-icon">
@@ -118,7 +119,7 @@ export default function ReaderSettingsMenu({
 
         <button
           className={`settings-tool`}
-          onClick={onToggleFullscreen}
+          onClick={toggleFullscreen}
           title={isFullscreen ? "Wyjdź z pełnego ekranu" : "Peły ekran"}
         >
           <span className="settings-tool-icon">
@@ -290,7 +291,7 @@ export default function ReaderSettingsMenu({
         <select
           className="reader-font-sel"
           value={showAllTranslations}
-          onChange={(e) => onChangeTranslationMode?.(e.target.value)}
+          onChange={(e) => setShowAllTranslations(e.target.value)}
         >
           <option value="off">Wyłączone</option>
           <option value="above">Nad słowem</option>

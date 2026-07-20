@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { BsSun, BsMoon, BsGear, BsArrowRepeat, BsPlus, BsBook } from "react-icons/bs";
 import { EpubParser } from "../lib/epubParser";
+import { formatTransfer, formatLastSync, formatRelativeSync, formatPolishCount } from "../utils/formatUtils";
 import {
   getActiveBooks,
   saveBook,
@@ -34,59 +35,6 @@ function hasDraggedFiles(event) {
   return Array.isArray(types)
     ? types.includes("Files")
     : Array.from(types || []).includes("Files");
-}
-
-function formatLastSync(ts) {
-  if (!ts) return "Jeszcze nie synchronizowano";
-  return new Date(ts).toLocaleString("pl-PL", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
-}
-
-function formatRelativeSync(ts, now) {
-  if (!ts) return "";
-
-  const diffMs = Math.max(0, now - ts);
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-
-  if (diffMs < minute) return "przed chwilą";
-
-  if (diffMs < hour) {
-    const minutes = Math.floor(diffMs / minute);
-    return `${minutes} min temu`;
-  }
-
-  if (diffMs < day) {
-    const hours = Math.floor(diffMs / hour);
-    return `${hours} godz. temu`;
-  }
-
-  const days = Math.floor(diffMs / day);
-  return `${days} dni temu`;
-}
-
-function formatTransfer(bytes, fallbackMB = 0) {
-  if (typeof bytes === "number" && Number.isFinite(bytes)) {
-    if (bytes < 1_048_576) {
-      return `${Math.max(0.01, bytes / 1024).toFixed(2)} KB`;
-    }
-    return `${(bytes / 1_048_576).toFixed(2)} MB`;
-  }
-  return `${fallbackMB} MB`;
-}
-
-function formatPolishCount(count, forms) {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-
-  if (count === 1) return `1 ${forms[0]}`;
-  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) {
-    return `${count} ${forms[1]}`;
-  }
-  return `${count} ${forms[2]}`;
 }
 
 function getSyncCardTone(cfConnected, phase) {
@@ -646,31 +594,28 @@ export default function Library({
                         >
                           Edytuj
                         </button>
-                        {(!book.status || book.status === 'active') && (
-                          <button onClick={(e) => handleStatusChange(e, book.id, 'read')}>
-                            ✓ Oznacz jako przeczytaną
-                          </button>
-                        )}
-                        {(!book.status || book.status === 'active') && (
-                          <button onClick={(e) => handleStatusChange(e, book.id, 'archived')}>
-                            ⬛ Archiwizuj
-                          </button>
-                        )}
-                        {(book.status === 'read' || book.status === 'archived') && (
-                          <button onClick={(e) => handleStatusChange(e, book.id, 'active')}>
-                            ↩ Przywróć do biblioteki
-                          </button>
-                        )}
-                        {book.status === 'read' && (
-                          <button onClick={(e) => handleStatusChange(e, book.id, 'archived')}>
-                            ⬛ Archiwizuj
-                          </button>
-                        )}
-                        {book.status === 'archived' && (
-                          <button onClick={(e) => handleStatusChange(e, book.id, 'read')}>
-                            ✓ Przenieś do przeczytanych
-                          </button>
-                        )}
+                        {(() => {
+                          const status = book.status || 'active';
+                          const actions = {
+                            active: [
+                              { label: '✓ Oznacz jako przeczytaną', status: 'read' },
+                              { label: '⬛ Archiwizuj', status: 'archived' },
+                            ],
+                            read: [
+                              { label: '↩ Przywróć do biblioteki', status: 'active' },
+                              { label: '⬛ Archiwizuj', status: 'archived' },
+                            ],
+                            archived: [
+                              { label: '↩ Przywróć do biblioteki', status: 'active' },
+                              { label: '✓ Przenieś do przeczytanych', status: 'read' },
+                            ],
+                          };
+                          return (actions[status] || []).map((a) => (
+                            <button key={a.status} onClick={(e) => handleStatusChange(e, book.id, a.status)}>
+                              {a.label}
+                            </button>
+                          ));
+                        })()}
                         <button
                           className="book-ctx-delete"
                           onClick={(e) => {

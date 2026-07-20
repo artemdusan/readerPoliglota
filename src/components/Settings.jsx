@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatTransfer, formatLastSync } from "../utils/formatUtils";
 import {
   getUsername,
   isLoggedIn,
@@ -19,24 +20,6 @@ const SYNC_INTERVAL_OPTIONS = [
   { value: 360, label: "Co 6 godzin" },
   { value: 720, label: "Co 12 godzin" },
 ];
-
-function formatTransfer(bytes, fallbackMB = 0) {
-  if (typeof bytes === "number" && Number.isFinite(bytes)) {
-    if (bytes < 1_048_576) {
-      return `${Math.max(0.01, bytes / 1024).toFixed(2)} KB`;
-    }
-    return `${(bytes / 1_048_576).toFixed(2)} MB`;
-  }
-  return `${fallbackMB} MB`;
-}
-
-function formatLastSync(ts) {
-  if (!ts) return "Jeszcze nie synchronizowano";
-  return new Date(ts).toLocaleString("pl-PL", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
-}
 
 export default function Settings({ settings, onUpdateSetting, onClose }) {
   const [cfConnected, setCfConnected] = useState(() => isLoggedIn());
