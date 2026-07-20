@@ -412,7 +412,14 @@ async function handleTranslate(request, env) {
   }
 
   const content = extractAssistantContent(data?.choices?.[0]?.message?.content);
-  if (!content) return err('API zwrocilo pusta odpowiedz', 502);
+  if (!content) {
+    const debug = JSON.stringify({
+      finishReason: data?.choices?.[0]?.finish_reason,
+      hasChoices: Array.isArray(data?.choices),
+      messageKeys: data?.choices?.[0]?.message ? Object.keys(data.choices[0].message) : 'brak',
+    });
+    return err(`API zwrocilo pusta odpowiedz (${debug})`, 502);
+  }
 
   return json({ content, usage: data.usage });
 }
