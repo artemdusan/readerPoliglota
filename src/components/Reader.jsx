@@ -172,7 +172,9 @@ export default function Reader({
   const [bookmarkMenuOpen, setBookmarkMenuOpen] = useState(false);
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
-  const [distractionFree, setDistractionFree] = useState(false);
+  // Open clean: reader starts distraction-free (pure text). A center tap
+  // reveals the top/bottom chrome; tapping again hides it.
+  const [distractionFree, setDistractionFree] = useState(true);
   const [pageFlash, setPageFlash] = useState(null); // "next" | "prev" | null
   const [keyHintVisible, setKeyHintVisible] = useState(
     () => !localStorage.getItem("vocabapp:keyHintDismissed"),
@@ -2425,10 +2427,6 @@ export default function Reader({
           settingsToggleRef={settingsToggleRef}
           onToggleSidebar={() => setSidebarOpen((open) => !open)}
           onToggleSettings={handleToggleSettingsMenu}
-          onHideBars={() => setDistractionFree(true)}
-          fontSize={fs}
-          onFontSizeDown={() => changeFontSize(-2)}
-          onFontSizeUp={() => changeFontSize(2)}
         />
 
         {keyHintVisible && (

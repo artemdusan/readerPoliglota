@@ -3877,3 +3877,147 @@ html[data-theme="boox"] .import-cover-hint {
   background: #000000;
   color: #ffffff;
 }
+
+/* ════════════════ SINGLE-THEME (BOOX) UI REFINEMENTS ════════════════
+   The app ships one theme: BOOX monochrome paper (e-ink first). These rules
+   flatten the remaining dark/gold leaks from the legacy multi-theme base
+   rules so the whole UI reads as calm, high-contrast paper — one ink accent,
+   hairline borders, no gradients or glows. */
+
+/* Unified topbar controls — hairline paper buttons, same feel as reader .ctl */
+html[data-theme="boox"] .lib-topbar {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+html[data-theme="boox"] .lib-topbar-btn {
+  color: var(--txt-2);
+  border-radius: 12px;
+}
+html[data-theme="boox"] .lib-topbar-btn:hover {
+  background: var(--bg-hover);
+  color: var(--txt-1);
+}
+html[data-theme="boox"] .lib-topbar-dot.is-idle,
+html[data-theme="boox"] .lib-topbar-dot.is-syncing,
+html[data-theme="boox"] .lib-topbar-dot.is-error {
+  box-shadow: none;
+}
+html[data-theme="boox"] .lib-topbar-dot.is-idle { background: var(--txt-1); }
+html[data-theme="boox"] .lib-topbar-dot.is-syncing { background: var(--txt-2); }
+html[data-theme="boox"] .lib-topbar-dot.is-error { background: var(--txt-1); }
+html[data-theme="boox"] .lib-topbar-progress-fill { background: var(--gold); }
+
+/* Book cards — flat monochrome */
+html[data-theme="boox"] .book-author { color: var(--txt-2); }
+html[data-theme="boox"] .book-progress-pct { color: var(--txt-1); }
+html[data-theme="boox"] .book-progress-pct.is-idle { color: var(--txt-3); }
+html[data-theme="boox"] .book-progress-block { border-top-color: var(--border-soft); }
+html[data-theme="boox"] .book-progress-fill {
+  background: var(--gold);
+  box-shadow: none;
+}
+html[data-theme="boox"] .book-menu-btn {
+  background: var(--panel);
+  border-color: var(--border-soft);
+  color: var(--txt-2);
+  backdrop-filter: none;
+}
+html[data-theme="boox"] .book-menu-btn:hover {
+  background: var(--bg-hover);
+  color: var(--txt-1);
+}
+html[data-theme="boox"] .book-card:hover {
+  transform: none;
+  border-color: var(--border);
+}
+
+/* FAB — solid ink square, paper glyph */
+html[data-theme="boox"] .lib-fab {
+  background: var(--gold);
+  color: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+html[data-theme="boox"] .lib-fab:hover {
+  background: var(--gold-hi);
+  box-shadow: none;
+  transform: none;
+}
+html[data-theme="boox"] .lib-fab-spin {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: var(--bg);
+}
+
+/* Primary / ghost / gold buttons — flat ink */
+html[data-theme="boox"] .btn-primary {
+  background: var(--gold);
+  color: var(--bg);
+  border-color: var(--gold);
+}
+html[data-theme="boox"] .btn-primary:hover:not(:disabled) {
+  background: var(--gold-hi);
+  color: var(--bg);
+  border-color: var(--gold-hi);
+}
+html[data-theme="boox"] .btn-ghost:hover {
+  border-color: var(--gold);
+  background: var(--bg-hover);
+  color: var(--txt-1);
+}
+html[data-theme="boox"] .ctl.ctl-gold {
+  background: var(--gold);
+  color: var(--bg);
+  border-color: var(--gold);
+}
+html[data-theme="boox"] .ctl.ctl-gold:hover {
+  background: var(--gold-hi);
+  border-color: var(--gold-hi);
+  color: var(--bg);
+}
+html[data-theme="boox"] .ctl.ctl-active {
+  background: var(--bg-hover);
+  color: var(--txt-1);
+  border-color: var(--gold);
+}
+
+/* Dropzone — paper card */
+html[data-theme="boox"] .dropzone {
+  background: var(--panel);
+  border-color: var(--border);
+  box-shadow: none;
+}
+html[data-theme="boox"] .dropzone:hover,
+html[data-theme="boox"] .dropzone.over {
+  border-color: var(--gold);
+  background: var(--bg-hover);
+}
+html[data-theme="boox"] .dropzone-glyph { opacity: 0.55; }
+
+/* Toast — paper */
+html[data-theme="boox"] .lib-toast {
+  box-shadow: none;
+  border: 1px solid var(--border);
+}
+html[data-theme="boox"] .lib-toast.is-success,
+html[data-theme="boox"] .lib-toast.is-error {
+  background: var(--panel);
+  color: var(--txt-1);
+}
+
+/* Reader chrome — flat monochrome */
+html[data-theme="boox"] .tb-ver-select:hover,
+html[data-theme="boox"] .tb-ver-select:focus {
+  border-color: var(--gold);
+  background-color: var(--bg-hover);
+}
+html[data-theme="boox"] .fs-bookmark-toggle:hover,
+html[data-theme="boox"] .fs-bookmark-toggle:focus-visible {
+  border-color: var(--border);
+  color: var(--txt-1);
+  background: rgba(0, 0, 0, 0.16);
+}
+html[data-theme="boox"] .fs-bookmark-toggle.is-active {
+  color: var(--txt-1);
+  background: rgba(0, 0, 0, 0.18);
+  border-color: var(--border);
+}
