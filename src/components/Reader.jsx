@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useReaderStore } from "../stores/readerStore";
 import {
   db,
   getBook,
@@ -46,7 +45,6 @@ import {
   getVoiceId,
   findVoiceById,
   getVoicesForLang,
-  resetTooltipPosition,
   normalizeInlineText,
   buildSearchSnippet,
   getBookmarkPageIndex,
@@ -188,25 +186,6 @@ export default function Reader({
   const [isFullscreen, setIsFullscreen] = useState(
     () => Boolean(document.fullscreenElement)
   );
-  const [showAllTranslations, setShowAllTranslations] = useState(() => {
-    const v = localStorage.getItem('vocabapp:showAllTranslations');
-    return v === 'inline' ? 'inline' : 'off';
-  });
-  function handleShowAllTranslationsChange(mode) {
-    const next = mode === 'inline' ? 'inline' : 'off';
-    localStorage.setItem('vocabapp:showAllTranslations', next);
-    setShowAllTranslations(next);
-  }
-  // Sync local UI state to zustand store (Phase 2 — hooks will use store natively)
-  useEffect(() => {
-    useReaderStore.setState({
-      searchOpen,
-      bookmarkMenuOpen,
-      isFullscreen,
-      showAllTranslations,
-    });
-  }, [searchOpen, bookmarkMenuOpen, isFullscreen, showAllTranslations]);
-
   const [fs, setFs] = useState(settings.fontSize ?? 19);
   const readerFontStack = getReaderFontStack("garamond");
   const orderedCachedLangs = useMemo(
@@ -218,8 +197,6 @@ export default function Reader({
       ),
     [cachedLangs],
   );
-  const tooltipReadOnClick = settings.tooltipReadOnClick !== false;
-
   // Page state
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -241,12 +218,12 @@ export default function Reader({
   const saveTimerRef = useRef(null);
   const genTokenRef = useRef(0);
   const genAbortRef = useRef(null);
-  const tooltipTimerRef = useRef(null);
-  const openPwRef = useRef(null);
   const activeLangRef = useRef(null);
   const chapterIdxRef = useRef(null);
   const pendingProgressRef = useRef(null); // progress (0-1) to restore after layout (null = no pending restore)
+  const pendingAnchorPidRef = useRef(null); // paragraph id to restore after layout (takes precedence over progress)
   const pendingChapterProgressOverrideRef = useRef(null); // one-shot progress override for the next chapter load
+  const pendingChapterAnchorPidRef = useRef(null); // one-shot paragraph anchor for the next chapter load
   const userChangedLangRef = useRef(false); // true only when user explicitly switched lang
   const positionDirtyRef = useRef(false); // true after explicit user movement/lang change
   const lastSavedPositionRef = useRef(null);
@@ -506,9 +483,6 @@ export default function Reader({
     setSearchQuery("");
     setSearchMatches([]);
     setActiveSearchIdx(0);
-    clearTimeout(tooltipTimerRef.current);
-    resetTooltipPosition(openPwRef.current);
-    openPwRef.current = null;
     setCurrentPage(0);
     currentPageRef.current = 0;
     totalPagesRef.current = 1;
@@ -534,6 +508,8 @@ export default function Reader({
       const pos = await getReadingPosition(bookId);
       const progressOverride = pendingChapterProgressOverrideRef.current;
       pendingChapterProgressOverrideRef.current = null;
+      pendingAnchorPidRef.current = pendingChapterAnchorPidRef.current;
+      pendingChapterAnchorPidRef.current = null;
       pendingProgressRef.current =
         progressOverride ??
         (pos && pos.chapterIndex === chapterIdx ? (pos.progress ?? 0) : 0);
@@ -686,7 +662,51 @@ export default function Reader({
         setTotalPages(total);
 
         let finalPage;
-        if (pendingProgressRef.current !== null) {
+        let anchorHandled = false;
+        // Anchor restore — keep the reader on the same paragraph across a
+        // version switch or bookmark jump, where progress fractions drift
+        // because the two texts differ in length.
+        if (pendingAnchorPidRef.current !== null) {
+          const pid = pendingAnchorPidRef.current;
+          const el = chapterBodyRef.current?.querySelector(
+            `[data-pid="${pid}"]`,
+          );
+          if (el) {
+            const cRect = container.getBoundingClientRect();
+            const elRect = el.getBoundingClientRect();
+            const absLeft = elRect.left - cRect.left + container.scrollLeft;
+            const targetPage = Math.max(
+              0,
+              Math.min(total - 1, Math.floor(absLeft / pw)),
+            );
+            pendingAnchorPidRef.current = null;
+            pendingProgressRef.current = null;
+            setCurrentPage(targetPage);
+            currentPageRef.current = targetPage;
+            inner.style.transition = "";
+            syncPageViewport(targetPage, pw);
+            finalPage = targetPage;
+            anchorHandled = true;
+          } else if (total <= 1) {
+            // Content not fully laid out yet — retry after the frame budget.
+            const token = ++scrollRetryTokenRef.current;
+            setTimeout(() => {
+              if (
+                scrollRetryTokenRef.current === token &&
+                pendingAnchorPidRef.current !== null
+              ) {
+                setLayoutKey((k) => k + 1);
+              }
+            }, 250);
+          } else {
+            // Laid out but the paragraph is gone — fall back to progress.
+            pendingAnchorPidRef.current = null;
+          }
+        }
+
+        if (anchorHandled) {
+          // finalPage already set by the anchor branch
+        } else if (pendingProgressRef.current !== null) {
           // Initial load or chapter navigation — restore saved progress (device-independent)
           const restoreProgress = pendingProgressRef.current;
           const targetPage = Math.min(
@@ -838,13 +858,6 @@ export default function Reader({
     return () => window.cancelAnimationFrame(rafId);
   }, [searchLayoutMode, queuePaginationRelayout]);
 
-  useEffect(() => {
-    const rafId = window.requestAnimationFrame(() => {
-      queuePaginationRelayout();
-    });
-    return () => window.cancelAnimationFrame(rafId);
-  }, [showAllTranslations, queuePaginationRelayout]);
-
   const getCurrentProgress = useCallback(
     () => currentPageRef.current / Math.max(1, totalPagesRef.current - 1),
     [],
@@ -914,6 +927,21 @@ export default function Reader({
       Math.min(totalPagesRef.current - 1, Math.floor(absoluteLeft / pw)),
     );
   }, []);
+
+  // First paragraph (data-pid) shown on the current page — a stable anchor
+  // that survives version switches and bookmark jumps.
+  const getFirstVisiblePid = useCallback(() => {
+    const body = chapterBodyRef.current;
+    if (!body) return null;
+    const page = currentPageRef.current;
+    for (const el of body.querySelectorAll("[data-pid]")) {
+      if (getElementPage(el) === page) {
+        const pid = Number.parseInt(el.dataset.pid, 10);
+        if (Number.isInteger(pid)) return pid;
+      }
+    }
+    return null;
+  }, [getElementPage]);
 
   const getPagePreview = useCallback(
     (page = currentPageRef.current) => {
@@ -1230,6 +1258,7 @@ export default function Reader({
       chapterIndex: chapterIdx,
       chapterTitle: chapterLabel,
       progress: currentProgress,
+      pid: getFirstVisiblePid(),
       preview: getPagePreview(page),
       createdAt: currentProgressBookmark?.createdAt ?? now,
       updatedAt: now,
@@ -1260,12 +1289,21 @@ export default function Reader({
   function jumpToBookmark(bookmark) {
     if (!bookmark) return;
 
+    const hasPid = Number.isInteger(bookmark.pid);
+
     if (bookmark.chapterIndex === chapterIdx) {
-      goToPage(getBookmarkPageIndex(bookmark, totalPagesRef.current), {
-        pauseTts: true,
-      });
+      // Prefer the paragraph anchor so the jump lands on the same sentence
+      // regardless of which version is active; fall back to progress.
+      const anchorEl = hasPid
+        ? chapterBodyRef.current?.querySelector(`[data-pid="${bookmark.pid}"]`)
+        : null;
+      const targetPage = anchorEl
+        ? getElementPage(anchorEl)
+        : getBookmarkPageIndex(bookmark, totalPagesRef.current);
+      goToPage(targetPage, { pauseTts: true });
       void persistPosition({ immediate: true, progress: bookmark.progress });
     } else {
+      if (hasPid) pendingChapterAnchorPidRef.current = bookmark.pid;
       navigate(bookmark.chapterIndex, { progressOverride: bookmark.progress });
     }
 
@@ -1349,6 +1387,10 @@ export default function Reader({
     if (lang === activeLang) return;
     clearPageTurnState();
     userChangedLangRef.current = true;
+    // Anchor on the paragraph currently at the top of the page so the reader
+    // stays on the same sentence after the new version re-flows. Progress is
+    // kept only as a fallback if the anchor can't be located.
+    pendingAnchorPidRef.current = getFirstVisiblePid();
     pendingProgressRef.current = getCurrentProgress();
     // Force ch-columns to remount on mode switch to bust stale GPU compositing layer.
     // will-change:transform promotes ch-columns to its own GPU layer; after a DOM
@@ -1554,7 +1596,6 @@ export default function Reader({
     const el = body.querySelector(`[data-word-id="${wordId}"]`);
     if (!el) return;
     el.classList.add("tts-active");
-    if (showAllTranslations === 'off') openTooltip(el, true);
     const scrollEl = chScrollRef.current;
     if (scrollEl) {
       const pw = scrollEl.clientWidth;
@@ -1914,7 +1955,7 @@ export default function Reader({
     switchToLang(nextLang);
   }
 
-  function playSingleWord(wordId, options = {}) {
+  function playSingleWord(wordId) {
     stopOriginalTts();
     stopHybridTts();
     const word = polyWordFragments[wordId];
@@ -1931,102 +1972,8 @@ export default function Reader({
     utt.onerror = () => {
       clearWordHighlight();
     };
-    if (!options.skipTooltip && showAllTranslations === 'off') {
-      const el = chapterBodyRef.current?.querySelector(`[data-word-id="${wordId}"]`);
-      if (el) openTooltip(el, true);
-    }
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utt);
-  }
-
-  /* ─────────────────────────────────────────
-     TOOLTIP — auto-close after 2s
-  ───────────────────────────────────────── */
-
-  function openTooltip(pw, force = false) {
-    if (openPwRef.current && openPwRef.current !== pw) {
-      openPwRef.current.classList.remove("open");
-      resetTooltipPosition(openPwRef.current);
-    }
-    clearTimeout(tooltipTimerRef.current);
-
-    if (!force && pw.classList.contains("open") && openPwRef.current === pw) {
-      pw.classList.remove("open");
-      resetTooltipPosition(pw);
-      openPwRef.current = null;
-      return;
-    }
-
-    pw.classList.add("open");
-    positionTooltip(pw);
-    openPwRef.current = pw;
-    tooltipTimerRef.current = setTimeout(() => {
-      pw.classList.remove("open");
-      resetTooltipPosition(pw);
-      if (openPwRef.current === pw) openPwRef.current = null;
-    }, 2000);
-  }
-
-  function positionTooltip(pw) {
-    const tooltip = pw?.querySelector(".pw-original");
-    const scrollEl = chScrollRef.current;
-    if (!tooltip || !scrollEl) return;
-
-    resetTooltipPosition(pw);
-    pw.dataset.tooltipPending = "true";
-
-    const applyPosition = () => {
-      if (!pw.isConnected || !pw.classList.contains("open")) return true;
-
-      const viewportRect = scrollEl.getBoundingClientRect();
-      const pwRect = pw.getBoundingClientRect();
-      const tooltipRect = tooltip.getBoundingClientRect();
-      if (!tooltipRect.width || !tooltipRect.height) return false;
-
-      const viewportPadding = 10;
-      const gap = 7;
-      const centerX = pwRect.left + pwRect.width / 2;
-      const minLeft = viewportRect.left + viewportPadding;
-      const maxLeft = viewportRect.right - viewportPadding - tooltipRect.width;
-      const preferredLeft = centerX - tooltipRect.width / 2;
-      const clampedLeft =
-        maxLeft >= minLeft
-          ? Math.min(Math.max(preferredLeft, minLeft), maxLeft)
-          : minLeft;
-
-      const fitsAbove =
-        pwRect.top - gap - tooltipRect.height >=
-        viewportRect.top + viewportPadding;
-      const preferredTop = fitsAbove
-        ? pwRect.top - gap - tooltipRect.height
-        : pwRect.bottom + gap;
-      const minTop = viewportRect.top + viewportPadding;
-      const maxTop = viewportRect.bottom - viewportPadding - tooltipRect.height;
-      const clampedTop =
-        maxTop >= minTop
-          ? Math.min(Math.max(preferredTop, minTop), maxTop)
-          : minTop;
-
-      const arrowLeft = Math.min(
-        Math.max(centerX - clampedLeft, 10),
-        tooltipRect.width - 10,
-      );
-
-      pw.style.setProperty("--pw-tooltip-left", `${clampedLeft - pwRect.left}px`);
-      pw.style.setProperty("--pw-tooltip-top", `${clampedTop - pwRect.top}px`);
-      pw.style.setProperty("--pw-tooltip-arrow-left", `${arrowLeft}px`);
-      pw.dataset.tooltipPlacement =
-        clampedTop >= pwRect.bottom ? "bottom" : "top";
-      delete pw.dataset.tooltipPending;
-      return true;
-    };
-
-    if (applyPosition()) return;
-
-    window.requestAnimationFrame(() => {
-      if (applyPosition()) return;
-      delete pw.dataset.tooltipPending;
-    });
   }
 
   /* ─────────────────────────────────────────
@@ -2089,10 +2036,9 @@ export default function Reader({
     if (polyMode) {
       const pw = e.target.closest(".pw");
       if (pw) {
-        if (showAllTranslations === 'off') openTooltip(pw);
         const wordId = Number.parseInt(pw.dataset.wordId, 10);
-        if (tooltipReadOnClick && Number.isInteger(wordId)) {
-          playSingleWord(wordId, { skipTooltip: true });
+        if (Number.isInteger(wordId)) {
+          playSingleWord(wordId);
         }
         return;
       }
@@ -2233,10 +2179,6 @@ export default function Reader({
   function handleTargetVoiceChange(nextVoiceId) {
     setTtsTargetVoice(nextVoiceId);
     localStorage.setItem(`tts-voice-tgt-${targetLangCode}`, nextVoiceId);
-  }
-
-  function handleToggleTooltipReadOnClick() {
-    void onUpdateSetting?.("tooltipReadOnClick", !tooltipReadOnClick);
   }
 
   function handleMissingLangGenerate() {
@@ -2385,7 +2327,6 @@ export default function Reader({
   return (
     <div
       className={`reader-layout${distractionFree ? " distraction-free" : ""}`}
-      data-show-all={showAllTranslations !== 'off' ? showAllTranslations : undefined}
       style={{ "--fs": `${fs}px`, "--reader-font": readerFontStack }}
     >
       <ReaderSidebar
@@ -2483,8 +2424,6 @@ export default function Reader({
             onToolSearch={handleSettingsSearchToolClick}
             onToolBookmarks={handleSettingsBookmarksToolClick}
             onToggleFullscreen={toggleFullscreen}
-            showAllTranslations={showAllTranslations}
-            onChangeShowAllTranslations={handleShowAllTranslationsChange}
             showAddTranslation={!polyMode && Boolean(chapter?.html)}
             showRegenerateTranslation={
               polyMode &&
@@ -2501,8 +2440,6 @@ export default function Reader({
             showTargetVoiceSelect={polyMode}
             showVoiceNote={showVoiceNote}
             voiceLoadState={voiceLoadState}
-            tooltipReadOnClick={tooltipReadOnClick}
-            onToggleTooltipReadOnClick={handleToggleTooltipReadOnClick}
             ttsSourceVoice={ttsSourceVoice}
             ttsTargetVoice={ttsTargetVoice}
             onSourceVoiceChange={handleSourceVoiceChange}
@@ -2596,7 +2533,7 @@ export default function Reader({
       {distractionFree && (
         <>
           <button
-            className={`ui-toggle-btn${showAllTranslations !== 'off' ? " translations-active" : ""}`}
+            className="ui-toggle-btn"
             onClick={toggleDistractionFree}
             aria-label="Pokaż/ukryj UI"
           >

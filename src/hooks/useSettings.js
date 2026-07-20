@@ -31,10 +31,8 @@ const DEFAULTS = {
   polyglotModel: DEFAULT_POLYGLOT_MODEL,
   polyglotSentencesPerRequest: DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST,
   fontSize: 30,
-  readerFont: "garamond",
   theme: "boox",
   syncIntervalMinutes: 30,
-  tooltipReadOnClick: true,
   ttsMode: "mixed",
   ttsVoiceName: "", // SpeechSynthesisVoice.name for pl-PL, '' = auto
   ttsVoiceNameForeign: "", // SpeechSynthesisVoice.name for target lang, '' = auto

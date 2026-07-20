@@ -24,21 +24,6 @@ html:root .ch-body blockquote {
 html:root .ch-body img {
   opacity: 1;
 }
-html:root .pw-original {
-  background: var(--panel);
-  border-color: var(--gold);
-  color: var(--txt-1);
-  box-shadow: none;
-}
-html:root .pw-target {
-  color: var(--gold-hi);
-  background: var(--gold-dim);
-  border-bottom-color: var(--border);
-}
-html:root .pw:hover .pw-target,
-html:root .pw.open .pw-target {
-  background: var(--bg-hover);
-}
 html:root .lib-layout,
 html:root .reader-layout,
 html:root .reader-main,
@@ -1821,62 +1806,25 @@ html:root .page-slider::-moz-range-thumb {
 
 /* ════════════════ POLYGLOT WORDS ════════════════ */
 
+/* Inline word pair — source word followed by the bold translation. */
 .pw {
   cursor: pointer;
-  display: inline;
-  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28em;
   vertical-align: baseline;
 }
-
-.pw-target {
-  font-style: normal;
-  font-weight: inherit;
-  color: var(--gold);
-  background: var(--gold-dim);
-  border-radius: 3px;
-  padding: 1px 5px 2px;
-  border-bottom: 1px solid rgba(192, 144, 80, 0.3);
-  transition:
-    background 0.12s,
-    border-color 0.12s;
-}
-.pw:hover .pw-target {
-  background: rgba(192, 144, 80, 0.22);
-}
-
-/* Tooltip popup */
 .pw-original {
-  display: none;
-  position: absolute;
-  left: var(--pw-tooltip-left, 50%);
-  top: var(--pw-tooltip-top, auto);
-  background: #1c1916;
-  border: 1px solid rgba(192, 144, 80, 0.45);
-  border-radius: 5px;
-  padding: 5px 12px;
-  font-size: 0.82em;
+  order: 1;
+  font: inherit;
+  color: inherit;
+  opacity: 1;
+}
+.pw-target {
+  order: 2;
   font-style: normal;
-  font-family: "DM Sans", sans-serif;
-  color: var(--txt-1);
-  white-space: normal;
-  text-align: center;
-  max-width: min(32ch, calc(100vw - 32px));
-  z-index: 30;
-  pointer-events: none;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
-  line-height: 1.5;
-  letter-spacing: 0.01em;
-}
-[data-tooltip-pending] .pw-original {
-  opacity: 0;
-}
-
-.pw.open .pw-original {
-  display: block;
-}
-.pw.open .pw-target {
-  background: rgba(192, 144, 80, 0.22);
-  border-bottom-color: rgba(192, 144, 80, 0.5);
+  font-weight: bold;
+  color: inherit;
 }
 
 /* ════════════════ POLYGLOT LOADING ════════════════ */
@@ -2802,10 +2750,6 @@ html:root .page-slider::-moz-range-thumb {
 .ui-toggle-btn:active {
   opacity: 1;
 }
-.ui-toggle-btn.translations-active {
-  opacity: 0.75;
-  background: rgba(0, 0, 0, 0.2);
-}
 
 .fs-bookmark-toggle {
   position: fixed;
@@ -2850,63 +2794,6 @@ html:root .page-slider::-moz-range-thumb {
   color: var(--gold-hi);
   background: rgba(192, 144, 80, 0.14);
   border-color: rgba(192, 144, 80, 0.38);
-}
-
-/* ════════════════ SHOW ALL TRANSLATIONS MODE ════════════════ */
-
-/* INLINE — Polish word then Spanish word bold, no background */
-.reader-layout[data-show-all="inline"] .pw {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.28em;
-}
-.reader-layout[data-show-all="inline"] .pw-original {
-  display: inline;
-  order: 1;
-  position: static;
-  font-size: inherit;
-  font-style: normal;
-  font-family: inherit;
-  letter-spacing: inherit;
-  line-height: inherit;
-  opacity: 1;
-  color: inherit;
-  background: none;
-  border: none;
-  box-shadow: none;
-  white-space: normal;
-  max-width: none;
-  padding: 0;
-  pointer-events: none;
-  z-index: auto;
-  transform: none;
-}
-.reader-layout[data-show-all="inline"] .pw-target {
-  order: 2;
-  font-weight: bold;
-  background: none !important;
-  border: none !important;
-  padding: 0 !important;
-  color: inherit;
-}
-.reader-layout[data-show-all="inline"] .pw:hover .pw-target {
-  background: none !important;
-}
-/* Keep .open from triggering tooltip in inline mode */
-.reader-layout[data-show-all="inline"] .pw.open .pw-original {
-  position: static;
-  left: auto;
-  top: auto;
-  bottom: auto;
-  transform: none;
-  background: none;
-  border: none;
-  box-shadow: none;
-  font-size: inherit;
-  opacity: 0.7;
-  white-space: normal;
-  max-width: none;
-  padding: 0;
 }
 
 /* ════════════════ SETTINGS DROPDOWN ════════════════ */
@@ -3551,18 +3438,11 @@ html:root .settings-sync-progress-fill {
   border-radius: 1px;
 }
 
-html:root .pw-target,
 html:root .ch-body.tts-ready .pw:hover,
 html:root [data-pid].paragraph-active,
 html:root .tts-active {
   background: var(--gold-dim) !important;
   outline-color: var(--border);
-}
-
-html:root .pw-original {
-  background: var(--panel);
-  border: 2px solid #000000;
-  color: var(--txt-1);
 }
 
 html:root .lib-toast,
@@ -3612,7 +3492,6 @@ html:root .fs-bookmark-toggle {
   opacity: 0.5;
 }
 
-html:root .ui-toggle-btn.translations-active,
 html:root .fs-bookmark-toggle.is-active {
   background: rgba(0, 0, 0, 0.18);
   opacity: 0.85;

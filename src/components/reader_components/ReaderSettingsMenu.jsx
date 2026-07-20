@@ -31,8 +31,6 @@ export default function ReaderSettingsMenu({
   onToolSearch,
   onToolBookmarks,
   onToggleFullscreen,
-  showAllTranslations,
-  onChangeShowAllTranslations,
   showAddTranslation,
   showRegenerateTranslation,
   onAddTranslation,
@@ -45,8 +43,6 @@ export default function ReaderSettingsMenu({
   showTargetVoiceSelect,
   showVoiceNote,
   voiceLoadState,
-  tooltipReadOnClick,
-  onToggleTooltipReadOnClick,
   ttsSourceVoice,
   ttsTargetVoice,
   onSourceVoiceChange,
@@ -191,47 +187,6 @@ export default function ReaderSettingsMenu({
           </div>
         </div>
       )}
-
-      <div className="settings-menu-divider" />
-
-      <div className="settings-menu-section-label">Kliknięcie słowa</div>
-      <div className="settings-menu-row settings-menu-row-switch">
-        <span className="settings-menu-label settings-menu-label-with-icon">
-          <UiIcon name="pointer" />
-          <span>Czytaj tooltip</span>
-        </span>
-        <div className="settings-toggle-wrap">
-          <span className="settings-toggle-hint">
-            {tooltipReadOnClick ? "Wł." : "Wył."}
-          </span>
-          <button
-            type="button"
-            className={`settings-toggle${tooltipReadOnClick ? " is-on" : ""}`}
-            aria-pressed={tooltipReadOnClick}
-            onClick={onToggleTooltipReadOnClick}
-            title={tooltipReadOnClick ? "Wyłącz" : "Włącz"}
-          >
-            <span className="settings-toggle-track">
-              <span className="settings-toggle-thumb" />
-            </span>
-          </button>
-        </div>
-      </div>
-
-      <div className="settings-menu-row settings-menu-row-switch">
-        <span className="settings-menu-label settings-menu-label-with-icon">
-          <UiIcon name="translate" />
-          <span>Tłumaczenia</span>
-        </span>
-        <select
-          className="reader-font-sel"
-          value={showAllTranslations}
-          onChange={(e) => onChangeShowAllTranslations(e.target.value)}
-        >
-          <option value="off">Wyłączone</option>
-          <option value="inline">W linii</option>
-        </select>
-      </div>
 
       <div className="settings-menu-divider" />
       <div className="settings-menu-section-label">Głosy TTS</div>
