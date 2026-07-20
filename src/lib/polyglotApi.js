@@ -82,7 +82,7 @@ Zasady:
 - "target" = jedno tlumaczenie na ${targetLangName}
 - dodaj element do changes tylko gdy zaznaczasz przynajmniej jedno slowo
 
-Twoja odpowiedz musi zaczynac sie od { i konczyc }. Zadnego markdownu, komentarzy ani dodatkowego tekstu.
+Odpowiedz WYLACZNIE czystym JSON. Twoja odpowiedz musi zaczynac sie od { i konczyc }. Zadnego markdownu, komentarzy ani dodatkowego tekstu.
 
 Przyklad: {"changes":[{"id":"s1","words":[{"original":"dom","target":"house"}]}]}`;
 }
