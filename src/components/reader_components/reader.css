@@ -1,0 +1,444 @@
+/* Reader — layout czytnika + treść rozdziału (e-ink first, monochrom).
+   Chrome UI (przyciski, menu, modale) jest w Mantine; tu zostaje tylko to,
+   czego biblioteka komponentów nie pokrywa: paginacja kolumnowa, typografia
+   książki, podświetlenia TTS/wyszukiwania i tryb bez rozproszeń. */
+
+html,
+body,
+#root {
+  height: 100%;
+  background: var(--bg);
+  color: var(--txt-1);
+  font-family: "DM Sans", system-ui, sans-serif;
+}
+
+/* BOOX Carta: zero animacji/cieni — mniej ghostingu na e-ink */
+html:root *,
+html:root *::before,
+html:root *::after {
+  animation: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transition: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html:root ::selection {
+  background: #000;
+  color: #fff;
+}
+
+.ui-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  display: block;
+  flex-shrink: 0;
+}
+
+/* ════════ LAYOUT ════════ */
+
+.reader-layout {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+}
+
+.reader-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  min-width: 0;
+  position: relative;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--safe-top) calc(28px + var(--safe-right)) 0 calc(28px + var(--safe-left));
+  height: calc(52px + var(--safe-top));
+  background: var(--bg-side);
+  border-bottom: 2px solid var(--border);
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.tb-chapter {
+  flex: 1;
+  min-width: 0;
+}
+
+.bottombar {
+  min-height: calc(64px + var(--safe-bottom));
+  background: var(--bg-side);
+  border-top: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px calc(40px + var(--safe-right)) calc(6px + var(--safe-bottom)) calc(40px + var(--safe-left));
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.reader-search-strip {
+  padding: 12px 20px 10px;
+  background: var(--bg-side);
+  border-bottom: 2px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Pływające menu pod topbarem (ustawienia / zakładki) */
+.reader-float-menu {
+  position: absolute;
+  top: calc(52px + var(--safe-top) + 8px);
+  right: calc(12px + var(--safe-right));
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100dvh - 140px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  z-index: 1000;
+}
+
+.missing-lang-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: var(--bg-side);
+  border-bottom: 2px solid var(--border);
+  flex-shrink: 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.loading-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: var(--bg);
+}
+
+.loading-msg {
+  font-size: 12px;
+  color: var(--txt-2);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tts-error-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 2px solid #000;
+  color: #000;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 14px;
+  z-index: 9999;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ════════ TREŚĆ ROZDZIAŁU (paginacja kolumnowa) ════════ */
+
+.ch-scroll {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+  background: var(--bg);
+}
+
+.ch-columns {
+  height: 100%;
+  column-gap: 0;
+  will-change: transform;
+}
+
+.ch-inner {
+  max-width: 668px;
+  margin: 0 auto;
+  padding: 24px 0 48px;
+}
+
+.ch-anim {
+  animation: riseup 0.22s ease both;
+}
+
+/* Fade tylko na opacity — translateY tworzyłby zagnieżdżony kontekst
+   kompozycji w .ch-columns (will-change), przez co iOS Safari raportuje
+   błędny scrollWidth podczas animacji i psuje przywracanie pozycji. */
+@keyframes riseup {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ch-body {
+  font-family: var(--reader-font, "EB Garamond", serif);
+  font-size: var(--fs);
+  line-height: 1.9;
+  color: var(--txt-1);
+  -webkit-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+}
+
+.ch-body p {
+  margin-bottom: 0.9em;
+  break-inside: avoid;
+}
+
+.ch-body p:empty {
+  display: none;
+}
+
+.ch-body h1,
+.ch-body h2,
+.ch-body h3,
+.ch-body h4 {
+  font-family: var(--reader-font, "EB Garamond", serif);
+  color: var(--txt-1);
+  margin: 2em 0 0.7em;
+  font-weight: 600;
+  line-height: 1.3;
+  break-inside: avoid;
+}
+
+.ch-body h1 { font-size: 1.5em; }
+.ch-body h2 { font-size: 1.3em; }
+.ch-body h3 { font-size: 1.15em; }
+
+.ch-body strong {
+  font-weight: 600;
+  color: #000;
+}
+
+.ch-body a {
+  color: var(--gold);
+  text-decoration: none;
+}
+
+.ch-body a:hover {
+  text-decoration: underline;
+}
+
+.ch-body blockquote {
+  margin: 1.5em 0;
+  padding: 0.4em 0 0.4em 1.4em;
+  border-left: 2px solid var(--border);
+  color: var(--txt-2);
+  font-style: italic;
+}
+
+.ch-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 2em auto;
+  border-radius: 2px;
+}
+
+.ch-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5em 0;
+  font-size: 0.9em;
+}
+
+.ch-body td {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+}
+
+/* ════════ POLYGLOT — pary słów ════════ */
+
+.pw {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28em;
+  vertical-align: baseline;
+}
+
+.pw-original {
+  order: 1;
+  font: inherit;
+  color: inherit;
+}
+
+.pw-target {
+  order: 2;
+  font-style: normal;
+  font-weight: bold;
+  color: inherit;
+}
+
+.ch-body.tts-ready .pw {
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+/* ════════ PODŚWIETLENIA (TTS / szukaj / kotwice) ════════ */
+
+.ch-body.tts-ready .pw:hover,
+.ch-body.audio-ready [data-pid]:hover,
+[data-pid].paragraph-active,
+.tts-active {
+  background: var(--gold-dim) !important;
+  border-radius: 2px;
+  outline-color: var(--border);
+}
+
+.ch-body.audio-ready [data-pid] {
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.anchor-flash {
+  background: var(--bg-hover);
+  border-radius: 2px;
+  outline: 2px solid var(--border);
+}
+
+.search-hit-block {
+  background: var(--gold-dim);
+  border-radius: 4px;
+}
+
+.search-hit-active {
+  background: var(--bg-hover);
+  outline: 1px solid var(--border);
+}
+
+/* ════════ ZMIANA STRONY (flash dla e-ink) ════════ */
+
+.page-turn-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  opacity: 0;
+}
+
+.page-turn-flash.flash-next,
+.page-turn-flash.flash-prev {
+  opacity: 1;
+}
+
+.page-turn-flash.flash-next::after,
+.page-turn-flash.flash-prev::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: #000;
+}
+
+.page-turn-flash.flash-next::after { right: 0; }
+.page-turn-flash.flash-prev::after { left: 0; }
+
+/* ════════ TRYB BEZ ROZPROSZEŃ ════════ */
+
+.reader-layout.distraction-free .topbar {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.reader-layout.distraction-free .bottombar {
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fs-page-indicator {
+  position: fixed;
+  bottom: calc(16px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 4px 12px;
+  color: var(--txt-2);
+  font-size: 12px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.fs-bookmark-toggle {
+  position: fixed;
+  right: calc(16px + var(--safe-right));
+  bottom: calc(16px + var(--safe-bottom));
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.08);
+  border: 2px solid #000;
+  color: var(--txt-2);
+  z-index: 999;
+  opacity: 0.5;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.fs-bookmark-toggle .ui-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.fs-bookmark-toggle:hover,
+.fs-bookmark-toggle:focus-visible {
+  opacity: 0.9;
+  background: rgba(0, 0, 0, 0.16);
+  border-color: var(--border);
+  color: var(--txt-1);
+  outline: none;
+}
+
+.fs-bookmark-toggle.is-active {
+  opacity: 0.85;
+  background: rgba(0, 0, 0, 0.18);
+  border-color: var(--border);
+  color: var(--txt-1);
+}
+
+/* ════════ MOBILE ════════ */
+
+@media (max-width: 780px) {
+  .topbar {
+    padding: var(--safe-top) calc(14px + var(--safe-right)) 0 calc(14px + var(--safe-left));
+  }
+
+  .reader-search-strip {
+    padding: 10px 14px;
+  }
+
+  .ch-inner {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .bottombar {
+    padding: 6px calc(12px + var(--safe-right)) calc(6px + var(--safe-bottom)) calc(12px + var(--safe-left));
+  }
+}
