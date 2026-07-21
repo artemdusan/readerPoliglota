@@ -30,6 +30,7 @@ export default function ReaderBottomBar({
   onPageSliderChange,
   onPageSliderCommit,
   ttsTransport,
+  onBackToLibrary,
   onToggleSidebar,
   searchOpen,
   onToggleSearch,
@@ -124,6 +125,7 @@ export default function ReaderBottomBar({
       )}
 
       <div className="rbc-tools">
+        <Tool icon="library" label="Biblioteka" title="Biblioteka" onClick={onBackToLibrary} />
         <Tool icon="menu" label="Spis" title="Spis treści" onClick={onToggleSidebar} />
         <Tool
           icon="search"
