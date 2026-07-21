@@ -12,7 +12,7 @@ export default function ReaderSearchPanel({
   const hasQuery = Boolean(searchQuery.trim());
 
   return (
-    <div className="reader-search-strip">
+    <div className="reader-search-panel">
       <Group gap="xs" wrap="nowrap">
         <TextInput
           ref={inputRef}

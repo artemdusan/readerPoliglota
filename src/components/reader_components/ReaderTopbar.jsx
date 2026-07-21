@@ -1,49 +1,49 @@
-import { ActionIcon, NativeSelect } from "@mantine/core";
 import { UiIcon } from "./ReaderIcons";
 
+/* Górne pływające sterowanie: tytuł rozdziału + wybór wersji językowej
+   jako rząd chipów (Oryginał / języki / dodaj tłumaczenie). Bez paska z tłem. */
 export default function ReaderTopbar({
-  chapter,
   chapterLabel,
   activeLang,
   orderedCachedLangs,
   onSwitchLang,
-  settingsMenuOpen,
-  settingsToggleRef,
-  onToggleSidebar,
-  onToggleSettings,
+  canAddTranslation,
+  onAddTranslation,
 }) {
   return (
-    <div className="topbar">
-      <ActionIcon variant="subtle" size="lg" onClick={onToggleSidebar} title="Spis treści">
-        <UiIcon name="menu" />
-      </ActionIcon>
-
-      <div className="tb-chapter">
-        {chapter ? (
-          <NativeSelect
-            variant="unstyled"
-            value={activeLang ?? ""}
-            onChange={(event) => onSwitchLang(event.target.value || null)}
-            data={[
-              { value: "", label: `${chapterLabel} — Oryginał` },
-              ...orderedCachedLangs.map((lang) => ({
-                value: lang.code,
-                label: `${chapterLabel} — ${lang.name}`,
-              })),
-            ]}
-          />
-        ) : null}
+    <div className="reader-top-chrome">
+      <div className="rtc-chapter" title={chapterLabel}>
+        {chapterLabel}
       </div>
-
-      <ActionIcon
-        ref={settingsToggleRef}
-        variant={settingsMenuOpen ? "filled" : "subtle"}
-        size="lg"
-        onClick={onToggleSettings}
-        title="Ustawienia"
-      >
-        <UiIcon name="settings" />
-      </ActionIcon>
+      <div className="rtc-langs" aria-label="Wersja językowa">
+        <button
+          type="button"
+          className={`rtc-chip${activeLang === null ? " is-active" : ""}`}
+          onClick={() => onSwitchLang(null)}
+        >
+          Oryginał
+        </button>
+        {orderedCachedLangs.map((lang) => (
+          <button
+            key={lang.code}
+            type="button"
+            className={`rtc-chip${activeLang === lang.code ? " is-active" : ""}`}
+            onClick={() => onSwitchLang(lang.code)}
+          >
+            {lang.name}
+          </button>
+        ))}
+        {canAddTranslation && (
+          <button
+            type="button"
+            className="rtc-chip rtc-chip-add"
+            onClick={onAddTranslation}
+            title="Dodaj tłumaczenie tego rozdziału"
+          >
+            <UiIcon name="sparkles" /> Tłumacz
+          </button>
+        )}
+      </div>
     </div>
   );
 }

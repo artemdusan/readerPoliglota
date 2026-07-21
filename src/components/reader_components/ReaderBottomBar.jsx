@@ -1,24 +1,25 @@
-import { ActionIcon, Group, Slider, Text } from "@mantine/core";
+import { Slider } from "@mantine/core";
+import { UiIcon } from "./ReaderIcons";
 
-function TtsControls({ onPrev, prevDisabled, onToggle, paused, onStop, onNext, nextDisabled }) {
+function Tool({ icon, glyph, label, onClick, active, disabled, title, btnRef }) {
   return (
-    <Group gap="xs" justify="center" flex={1}>
-      <ActionIcon variant="subtle" size="lg" onClick={onPrev} disabled={prevDisabled} title="Poprzedni fragment">
-        ⏮
-      </ActionIcon>
-      <ActionIcon variant="filled" size="lg" onClick={onToggle} title={paused ? "Wznów" : "Pauza"}>
-        {paused ? "▶" : "⏸"}
-      </ActionIcon>
-      <ActionIcon variant="subtle" size="lg" onClick={onStop} title="Zakończ TTS">
-        ⏹
-      </ActionIcon>
-      <ActionIcon variant="subtle" size="lg" onClick={onNext} disabled={nextDisabled} title="Następny akapit">
-        ⏭
-      </ActionIcon>
-    </Group>
+    <button
+      type="button"
+      ref={btnRef}
+      className={`rbc-tool${active ? " is-active" : ""}`}
+      onClick={onClick}
+      disabled={disabled}
+      title={title || label}
+      aria-label={title || label}
+    >
+      {glyph ? <span className="rbc-tool-glyph">{glyph}</span> : <UiIcon name={icon} />}
+      {label && <span className="rbc-tool-label">{label}</span>}
+    </button>
   );
 }
 
+/* Dolne pływające sterowanie ujawniane ciasteczkiem: nawigacja stron ze
+   sliderem (lub transport TTS podczas odtwarzania) + rząd narzędzi. */
 export default function ReaderBottomBar({
   currentPage,
   totalPages,
@@ -26,64 +27,77 @@ export default function ReaderBottomBar({
   chapterCount,
   onPrevPage,
   onNextPage,
-  originalTtsPlaying,
-  activeSid,
-  onJumpSentence,
-  onToggleOriginalTts,
-  originalTtsPaused,
-  onStopOriginalTts,
-  originalTtsFragments,
-  ttsPlaying,
-  activePolyPid,
-  onJumpPolyParagraph,
-  onToggleHybridTts,
-  ttsPaused,
-  onStopHybridTts,
-  polyTtsParagraphs,
   onPageSliderChange,
   onPageSliderCommit,
+  ttsTransport,
+  onToggleSidebar,
+  searchOpen,
+  onToggleSearch,
+  bookmarkMenuOpen,
+  onToggleBookmarks,
+  bookmarkToggleRef,
+  hasTtsAvailable,
+  isTtsActive,
+  onToggleTts,
+  ttsButtonTitle,
+  onChangeFontSize,
+  settingsMenuOpen,
+  onToggleSettings,
+  settingsToggleRef,
 }) {
-  const pageProgress =
-    totalPages > 1 ? Math.round((currentPage / (totalPages - 1)) * 100) : 0;
-
   return (
-    <div className="bottombar">
-      <ActionIcon
-        variant="subtle"
-        size="xl"
-        onClick={onPrevPage}
-        disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
-      >
-        ❮
-      </ActionIcon>
-
-      {originalTtsPlaying ? (
-        <TtsControls
-          onPrev={() => onJumpSentence(-1)}
-          prevDisabled={activeSid <= 0}
-          onToggle={onToggleOriginalTts}
-          paused={originalTtsPaused}
-          onStop={onStopOriginalTts}
-          onNext={() => onJumpSentence(1)}
-          nextDisabled={activeSid >= originalTtsFragments.length - 1}
-        />
-      ) : ttsPlaying ? (
-        <TtsControls
-          onPrev={() => onJumpPolyParagraph(-1)}
-          prevDisabled={activePolyPid <= 0}
-          onToggle={onToggleHybridTts}
-          paused={ttsPaused}
-          onStop={onStopHybridTts}
-          onNext={() => onJumpPolyParagraph(1)}
-          nextDisabled={activePolyPid >= polyTtsParagraphs.length - 1}
-        />
+    <div className="reader-bottom-chrome">
+      {ttsTransport ? (
+        <div className="rbc-nav rbc-nav-tts">
+          <button
+            type="button"
+            className="rbc-page-btn"
+            onClick={ttsTransport.onPrev}
+            disabled={ttsTransport.prevDisabled}
+            title="Poprzedni fragment"
+          >
+            ⏮
+          </button>
+          <button
+            type="button"
+            className="rbc-page-btn"
+            onClick={ttsTransport.onToggle}
+            title={ttsTransport.paused ? "Wznów" : "Pauza"}
+          >
+            {ttsTransport.paused ? "▶" : "⏸"}
+          </button>
+          <button
+            type="button"
+            className="rbc-page-btn"
+            onClick={ttsTransport.onStop}
+            title="Zakończ TTS"
+          >
+            ⏹
+          </button>
+          <button
+            type="button"
+            className="rbc-page-btn"
+            onClick={ttsTransport.onNext}
+            disabled={ttsTransport.nextDisabled}
+            title="Następny fragment"
+          >
+            ⏭
+          </button>
+        </div>
       ) : (
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Text size="xs" c="dimmed" ta="center">
-            {currentPage + 1}/{totalPages} • {pageProgress}%
-          </Text>
+        <div className="rbc-nav">
+          <button
+            type="button"
+            className="rbc-page-btn"
+            onClick={onPrevPage}
+            disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
+            title="Poprzednia strona"
+          >
+            ❮
+          </button>
           <Slider
-            size="xs"
+            style={{ flex: 1, minWidth: 0 }}
+            size="sm"
             min={0}
             max={Math.max(totalPages - 1, 0)}
             step={1}
@@ -94,19 +108,56 @@ export default function ReaderBottomBar({
             onChange={(value) => onPageSliderChange({ target: { value } })}
             onChangeEnd={(value) => onPageSliderCommit({ target: { value } })}
           />
+          <button
+            type="button"
+            className="rbc-page-btn"
+            onClick={onNextPage}
+            disabled={
+              currentPage >= totalPages - 1 &&
+              (chapterIdx ?? 0) >= chapterCount - 1
+            }
+            title="Następna strona"
+          >
+            ❯
+          </button>
         </div>
       )}
 
-      <ActionIcon
-        variant="subtle"
-        size="xl"
-        onClick={onNextPage}
-        disabled={
-          currentPage >= totalPages - 1 && (chapterIdx ?? 0) >= chapterCount - 1
-        }
-      >
-        ❯
-      </ActionIcon>
+      <div className="rbc-tools">
+        <Tool icon="menu" label="Spis" title="Spis treści" onClick={onToggleSidebar} />
+        <Tool
+          icon="search"
+          label="Szukaj"
+          title="Szukaj w rozdziale"
+          active={searchOpen}
+          onClick={onToggleSearch}
+        />
+        <Tool
+          icon="bookmark"
+          label="Zakładki"
+          active={bookmarkMenuOpen}
+          onClick={onToggleBookmarks}
+          btnRef={bookmarkToggleRef}
+        />
+        <Tool
+          icon={isTtsActive ? "pause" : "play"}
+          label="Słuchaj"
+          title={ttsButtonTitle}
+          active={isTtsActive}
+          disabled={!hasTtsAvailable}
+          onClick={onToggleTts}
+        />
+        <Tool glyph="A−" title="Mniejsza czcionka" onClick={() => onChangeFontSize(-1)} />
+        <Tool glyph="A+" title="Większa czcionka" onClick={() => onChangeFontSize(1)} />
+        <Tool
+          icon="settings"
+          label="Opcje"
+          title="Ustawienia"
+          active={settingsMenuOpen}
+          onClick={onToggleSettings}
+          btnRef={settingsToggleRef}
+        />
+      </div>
     </div>
   );
 }

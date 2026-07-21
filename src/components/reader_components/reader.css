@@ -55,69 +55,223 @@ html:root ::selection {
   overflow: hidden;
   min-width: 0;
   position: relative;
+  /* Stała rezerwa na ciasteczko na dole — paginacja nie zmienia się przy
+     pokazywaniu/ukrywaniu sterowania. */
+  padding: calc(8px + var(--safe-top)) 0 calc(60px + var(--safe-bottom));
 }
 
-.topbar {
+/* ════════ PŁYWAJĄCE STEROWANIE (bez pasków z tłem) ════════ */
+
+/* Góra: tytuł rozdziału + chipy wersji językowych */
+.reader-top-chrome {
+  position: fixed;
+  top: calc(10px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 16px);
+  z-index: 950;
+}
+
+.rtc-chapter {
+  font-size: 12px;
+  color: var(--txt-2);
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 3px 14px;
+  max-width: 80vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rtc-langs {
+  display: flex;
+  gap: 6px;
+  max-width: calc(100vw - 16px);
+  overflow-x: auto;
+  padding: 2px;
+}
+
+.rtc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--txt-1);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  white-space: nowrap;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+
+.rtc-chip.is-active {
+  background: #000;
+  border-color: #000;
+  color: #fff;
+}
+
+.rtc-chip-add {
+  border-style: dashed;
+  color: var(--txt-2);
+}
+
+/* Dół: pigułka nawigacji stron / TTS + rząd narzędzi (nad ciasteczkiem) */
+.reader-bottom-chrome {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(60px + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(560px, calc(100vw - 16px));
+  z-index: 950;
+}
+
+.rbc-nav {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--safe-top) calc(28px + var(--safe-right)) 0 calc(28px + var(--safe-left));
-  height: calc(52px + var(--safe-top));
-  background: var(--bg-side);
-  border-bottom: 2px solid var(--border);
-  flex-shrink: 0;
-  gap: 12px;
+  gap: 10px;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  width: 100%;
 }
 
-.tb-chapter {
+.rbc-nav-tts {
+  justify-content: center;
+}
+
+.rbc-page-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  color: var(--txt-1);
+  font-size: 17px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.rbc-page-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.rbc-tools {
+  display: flex;
+  gap: 2px;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 18px;
+  padding: 4px;
+  width: 100%;
+}
+
+.rbc-tool {
   flex: 1;
   min-width: 0;
-}
-
-.bottombar {
-  min-height: calc(64px + var(--safe-bottom));
-  background: var(--bg-side);
-  border-top: 2px solid var(--border);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px calc(40px + var(--safe-right)) calc(6px + var(--safe-bottom)) calc(40px + var(--safe-left));
-  flex-shrink: 0;
-  gap: 16px;
+  justify-content: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  border-radius: 12px;
+  padding: 6px 2px;
+  font-family: inherit;
+  font-size: 10px;
+  color: var(--txt-2);
+  cursor: pointer;
 }
 
-.reader-search-strip {
-  padding: 12px 20px 10px;
-  background: var(--bg-side);
-  border-bottom: 2px solid var(--border);
-  flex-shrink: 0;
+.rbc-tool .ui-icon {
+  width: 18px;
+  height: 18px;
 }
 
-/* Pływające menu pod topbarem (ustawienia / zakładki) */
+.rbc-tool-glyph {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.rbc-tool-label {
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.rbc-tool.is-active {
+  background: var(--bg-hover);
+  color: var(--txt-1);
+}
+
+.rbc-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Panel wyszukiwania — pływająca karta u góry */
+.reader-search-panel {
+  position: fixed;
+  top: calc(10px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 16px));
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  z-index: 990;
+}
+
+/* Pływające menu (ustawienia / zakładki) — nad dolnym sterowaniem */
 .reader-float-menu {
-  position: absolute;
-  top: calc(52px + var(--safe-top) + 8px);
-  right: calc(12px + var(--safe-right));
+  position: fixed;
+  bottom: calc(178px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
   width: min(360px, calc(100vw - 24px));
-  max-height: calc(100dvh - 140px);
+  max-height: calc(100dvh - 260px);
   overflow-y: auto;
   background: var(--panel);
   border: 2px solid var(--border);
-  border-radius: 6px;
+  border-radius: 12px;
   padding: 12px;
   z-index: 1000;
 }
 
 .missing-lang-banner {
+  position: fixed;
+  top: calc(10px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 16px));
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 20px;
-  background: var(--bg-side);
-  border-bottom: 2px solid var(--border);
-  flex-shrink: 0;
   gap: 12px;
   flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  z-index: 980;
 }
 
 .loading-screen {
@@ -353,33 +507,29 @@ html:root ::selection {
 .page-turn-flash.flash-next::after { right: 0; }
 .page-turn-flash.flash-prev::after { left: 0; }
 
-/* ════════ TRYB BEZ ROZPROSZEŃ ════════ */
-
-.reader-layout.distraction-free .topbar {
-  transform: translateY(-100%);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.reader-layout.distraction-free .bottombar {
-  transform: translateY(100%);
-  opacity: 0;
-  pointer-events: none;
-}
+/* ════════ CIASTECZKO (home) ════════ */
 
 .fs-page-indicator {
   position: fixed;
-  bottom: calc(16px + var(--safe-bottom));
+  bottom: calc(12px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   background: var(--bg);
-  border: 1px solid var(--border-soft);
+  border: 2px solid var(--border);
   border-radius: 999px;
-  padding: 4px 12px;
-  color: var(--txt-2);
-  font-size: 12px;
-  pointer-events: none;
+  padding: 8px 18px;
+  color: var(--txt-1);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
   user-select: none;
+  z-index: 960;
+}
+
+.fs-page-indicator.is-open {
+  background: #000;
+  border-color: #000;
+  color: #fff;
 }
 
 .fs-bookmark-toggle {
@@ -425,20 +575,8 @@ html:root ::selection {
 /* ════════ MOBILE ════════ */
 
 @media (max-width: 780px) {
-  .topbar {
-    padding: var(--safe-top) calc(14px + var(--safe-right)) 0 calc(14px + var(--safe-left));
-  }
-
-  .reader-search-strip {
-    padding: 10px 14px;
-  }
-
   .ch-inner {
     padding-left: 18px;
     padding-right: 18px;
-  }
-
-  .bottombar {
-    padding: 6px calc(12px + var(--safe-right)) calc(6px + var(--safe-bottom)) calc(12px + var(--safe-left));
   }
 }

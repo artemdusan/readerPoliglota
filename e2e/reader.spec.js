@@ -22,15 +22,16 @@ test('import EPUB and open reader', async ({ page }) => {
   await expect(page.locator('.ch-body')).toBeVisible();
   await expect(page.locator('.ch-body')).toContainText('Ala ma kota');
 
-  // Czytnik startuje w trybie bez rozproszeń — tap w środek pokazuje paski
-  await page.locator('.ch-scroll').click({ position: { x: 640, y: 360 } });
+  // Czytnik startuje w trybie bez rozproszeń — ciasteczko (home) pokazuje sterowanie
+  await page.locator('.fs-page-indicator').click();
   await expect(page.locator('.reader-layout')).not.toHaveClass(/distraction-free/);
+  await expect(page.locator('.reader-bottom-chrome')).toBeVisible();
+  await expect(page.locator('.rtc-chip.is-active')).toHaveText('Oryginał');
 
   // Menu ustawień czytnika
-  await page.locator('.topbar button[title="Ustawienia"]').click();
+  await page.locator('.rbc-tools button[title="Ustawienia"]').click();
   await expect(page.locator('.reader-float-menu')).toBeVisible();
-  await expect(page.locator('.reader-float-menu')).toContainText('Rozmiar');
-  await page.keyboard.press('Escape');
+  await expect(page.locator('.reader-float-menu')).toContainText('Głosy TTS');
 
   // Sidebar (spis treści)
   await page.locator('button[title="Spis treści"]').click();

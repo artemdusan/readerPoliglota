@@ -161,11 +161,6 @@ export default function Reader({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMatches, setSearchMatches] = useState([]);
   const [activeSearchIdx, setActiveSearchIdx] = useState(0);
-  const searchLayoutMode = searchOpen
-    ? searchQuery.trim()
-      ? "expanded"
-      : "compact"
-    : "closed";
   const [bookmarkMenuOpen, setBookmarkMenuOpen] = useState(false);
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
@@ -220,7 +215,6 @@ export default function Reader({
   const currentPageRef = useRef(0);
   const totalPagesRef = useRef(1);
   const scrollRetryTokenRef = useRef(0); // incremented each layout to cancel stale retries
-  const prevSearchLayoutModeRef = useRef(searchLayoutMode);
   const flippingRef = useRef(false);
   const pageTurnTimerRef = useRef(null);
   const pageFlashTimerRef = useRef(null);
@@ -235,8 +229,6 @@ export default function Reader({
   const settingsMenuRef = useRef(null);
   const settingsToggleRef = useRef(null);
   const ttsPagePauseModeRef = useRef(null);
-  const swipeTouchStartXRef = useRef(null);
-  const swipeTouchStartYRef = useRef(null);
   const toggleFullscreenRef = useRef(null);
   const keyPageTurnAtRef = useRef(0);
   toggleFullscreenRef.current = toggleFullscreen;
@@ -896,16 +888,6 @@ export default function Reader({
     };
   }, [queuePaginationRelayout]);
 
-  useEffect(() => {
-    if (prevSearchLayoutModeRef.current === searchLayoutMode) return;
-    prevSearchLayoutModeRef.current = searchLayoutMode;
-
-    const rafId = window.requestAnimationFrame(() => {
-      queuePaginationRelayout();
-    });
-    return () => window.cancelAnimationFrame(rafId);
-  }, [searchLayoutMode, queuePaginationRelayout]);
-
   const getCurrentProgress = useCallback(
     () => currentPageRef.current / Math.max(1, totalPagesRef.current - 1),
     [],
@@ -1264,40 +1246,10 @@ export default function Reader({
     goToPage(currentPageRef.current + 1);
   }
 
-  /* ── Swipe left/right to navigate pages ── */
   const prevPageRef = useRef(prevPage);
   const nextPageRef = useRef(nextPage);
   prevPageRef.current = prevPage;
   nextPageRef.current = nextPage;
-
-  useEffect(() => {
-    const el = chScrollRef.current;
-    if (!el) return;
-    function onTouchStart(e) {
-      swipeTouchStartXRef.current = e.touches[0].clientX;
-      swipeTouchStartYRef.current = e.touches[0].clientY;
-    }
-    function onTouchEnd(e) {
-      if (swipeTouchStartXRef.current === null) return;
-      const touch = e.changedTouches[0];
-      const dx = touch.clientX - swipeTouchStartXRef.current;
-      const dy = touch.clientY - swipeTouchStartYRef.current;
-      swipeTouchStartXRef.current = null;
-      swipeTouchStartYRef.current = null;
-      if (Math.abs(dx) >= 50) {
-        if (dx > 0) prevPageRef.current();
-        else nextPageRef.current();
-        setDistractionFree(true);
-        return;
-      }
-    }
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchend", onTouchEnd);
-    };
-  }, []);
 
   function goToSearchMatch(index) {
     if (!searchMatches.length) return;
@@ -1514,17 +1466,6 @@ export default function Reader({
         setPolyState("done");
         setActiveLang(lang);
       }
-    });
-  }
-
-  function setReaderFontSize(value) {
-    if (!Number.isFinite(value)) return;
-    setFs((current) => {
-      const next = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, value));
-      if (next !== current) {
-        void onUpdateSetting?.("fontSize", next);
-      }
-      return next;
     });
   }
 
@@ -2136,8 +2077,9 @@ export default function Reader({
       }
     }
 
-    // E-reader tap zones: left edge = previous page, right edge = next page,
-    // center = show/hide the chrome (works in both directions).
+    // E-reader tap zones: left edge = previous page, right edge = next page.
+    // Center tap only dismisses the chrome — the cookie pill is the sole
+    // toggle (iOS-home-style), no gesture navigation.
     const zone = e.clientX / Math.max(1, window.innerWidth);
     if (zone < 0.3) {
       prevPageRef.current();
@@ -2145,7 +2087,7 @@ export default function Reader({
     } else if (zone > 0.7) {
       nextPageRef.current();
       setDistractionFree(true);
-    } else {
+    } else if (!distractionFree) {
       toggleDistractionFree();
     }
   }
@@ -2189,27 +2131,25 @@ export default function Reader({
     setBookmarkMenuOpen(false);
   }
 
-  function handleSettingsSearchToolClick() {
-    if (searchOpen) {
-      setSearchOpen(false);
-      setSettingsMenuOpen(false);
-      return;
-    }
-    openSearchPanel();
+  function toggleSearchPanel() {
+    if (searchOpen) setSearchOpen(false);
+    else openSearchPanel();
   }
 
-  function handleSettingsBookmarksToolClick() {
-    if (bookmarkMenuOpen) {
-      setBookmarkMenuOpen(false);
-      setSettingsMenuOpen(false);
-      return;
-    }
-    openBookmarksPanel();
+  function toggleBookmarksPanel() {
+    if (bookmarkMenuOpen) setBookmarkMenuOpen(false);
+    else openBookmarksPanel();
   }
 
   function toggleDistractionFree() {
     setDistractionFree((v) => {
-      if (!v) setSidebarOpen(false);
+      if (!v) {
+        // Hiding the chrome — close every popover with it.
+        setSidebarOpen(false);
+        setSettingsMenuOpen(false);
+        setBookmarkMenuOpen(false);
+        setSearchOpen(false);
+      }
       return !v;
     });
   }
@@ -2352,15 +2292,31 @@ export default function Reader({
       ? "Wznów czytanie"
       : "Zatrzymaj czytanie"
     : "Odtwórz TTS";
-  const ttsButtonLabel = activeTtsPlaying
-    ? activeTtsPaused
-      ? "Wznów"
-      : "Pauza"
-    : "Play";
   const hasTtsAvailable =
     activeTtsMode === "hybrid"
       ? polyTtsParagraphs.length > 0
       : originalTtsFragments.length > 0;
+  const ttsTransport = originalTtsPlaying
+    ? {
+        paused: originalTtsPaused,
+        onToggle: toggleOriginalTts,
+        onStop: stopOriginalTts,
+        onPrev: () => jumpSentence(-1),
+        onNext: () => jumpSentence(1),
+        prevDisabled: activeSid <= 0,
+        nextDisabled: activeSid >= originalTtsFragments.length - 1,
+      }
+    : ttsPlaying
+      ? {
+          paused: ttsPaused,
+          onToggle: toggleHybridTts,
+          onStop: stopHybridTts,
+          onPrev: () => jumpPolyParagraph(-1),
+          onNext: () => jumpPolyParagraph(1),
+          prevDisabled: activePolyPid <= 0,
+          nextDisabled: activePolyPid >= polyTtsParagraphs.length - 1,
+        }
+      : null;
   const sourceLangCode = (book?.lang || "en").split("-")[0].toLowerCase();
   const targetLangCode = (activeLang || "es").split("-")[0].toLowerCase();
   const sourceLanguageLabel = getLanguageDisplayLabel(
@@ -2417,19 +2373,6 @@ export default function Reader({
 
       {/* ── Main content ── */}
       <div className="reader-main">
-        {/* Top bar */}
-        <ReaderTopbar
-          chapter={chapter}
-          chapterLabel={chapterLabel}
-          activeLang={activeLang}
-          orderedCachedLangs={orderedCachedLangs}
-          onSwitchLang={switchToLang}
-          settingsMenuOpen={settingsMenuOpen}
-          settingsToggleRef={settingsToggleRef}
-          onToggleSidebar={() => setSidebarOpen((open) => !open)}
-          onToggleSettings={handleToggleSettingsMenu}
-        />
-
         {searchOpen && (
           <ReaderSearchPanel
             inputRef={searchInputRef}
@@ -2459,24 +2402,7 @@ export default function Reader({
         {settingsMenuOpen && (
           <ReaderSettingsMenu
             menuRef={settingsMenuRef}
-            bookmarkToggleRef={bookmarkToggleRef}
-            hasCurrentPageBookmarks={hasCurrentPageBookmark}
-            isTtsActive={activeTtsPlaying && !activeTtsPaused}
-            onToggleTts={
-              activeTtsMode === "hybrid" ? toggleHybridTts : toggleOriginalTts
-            }
-            ttsButtonTitle={ttsButtonTitle}
-            ttsButtonLabel={ttsButtonLabel}
-            isTtsPlaying={activeTtsPlaying}
-            isTtsPaused={activeTtsPaused}
-            hasTtsAvailable={hasTtsAvailable}
-            fontSize={fs}
-            onChangeFontSize={changeFontSize}
-            onSetFontSize={setReaderFontSize}
-            searchOpen={searchOpen}
             isFullscreen={isFullscreen}
-            onToolSearch={handleSettingsSearchToolClick}
-            onToolBookmarks={handleSettingsBookmarksToolClick}
             onToggleFullscreen={toggleFullscreen}
             showAddTranslation={!polyMode && Boolean(chapter?.html)}
             showRegenerateTranslation={
@@ -2543,59 +2469,76 @@ export default function Reader({
           originalHtmlAnnotated={originalHtmlAnnotated}
         />
 
-        <ReaderBottomBar
-          currentPage={currentPage}
-          totalPages={totalPages}
-          chapterIdx={chapterIdx}
-          chapterCount={chapterCount}
-          onPrevPage={prevPage}
-          onNextPage={nextPage}
-          originalTtsPlaying={originalTtsPlaying}
-          activeSid={activeSid}
-          onJumpSentence={jumpSentence}
-          onToggleOriginalTts={toggleOriginalTts}
-          originalTtsPaused={originalTtsPaused}
-          onStopOriginalTts={stopOriginalTts}
-          originalTtsFragments={originalTtsFragments}
-          ttsPlaying={ttsPlaying}
-          activePolyPid={activePolyPid}
-          onJumpPolyParagraph={jumpPolyParagraph}
-          onToggleHybridTts={toggleHybridTts}
-          ttsPaused={ttsPaused}
-          onStopHybridTts={stopHybridTts}
-          polyTtsParagraphs={polyTtsParagraphs}
-          onPageSliderChange={handlePageSliderChange}
-          onPageSliderCommit={handlePageSliderCommit}
-        />
+        {!distractionFree && (
+          <>
+            <ReaderTopbar
+              chapterLabel={chapterLabel}
+              activeLang={activeLang}
+              orderedCachedLangs={orderedCachedLangs}
+              onSwitchLang={switchToLang}
+              canAddTranslation={!polyMode && Boolean(chapter?.html)}
+              onAddTranslation={requestGenerate}
+            />
+            <ReaderBottomBar
+              currentPage={currentPage}
+              totalPages={totalPages}
+              chapterIdx={chapterIdx}
+              chapterCount={chapterCount}
+              onPrevPage={prevPage}
+              onNextPage={nextPage}
+              onPageSliderChange={handlePageSliderChange}
+              onPageSliderCommit={handlePageSliderCommit}
+              ttsTransport={ttsTransport}
+              onToggleSidebar={() => setSidebarOpen((open) => !open)}
+              searchOpen={searchOpen}
+              onToggleSearch={toggleSearchPanel}
+              bookmarkMenuOpen={bookmarkMenuOpen}
+              onToggleBookmarks={toggleBookmarksPanel}
+              bookmarkToggleRef={bookmarkToggleRef}
+              hasTtsAvailable={hasTtsAvailable}
+              isTtsActive={activeTtsPlaying && !activeTtsPaused}
+              onToggleTts={toggleCurrentTts}
+              ttsButtonTitle={ttsButtonTitle}
+              onChangeFontSize={changeFontSize}
+              settingsMenuOpen={settingsMenuOpen}
+              onToggleSettings={handleToggleSettingsMenu}
+              settingsToggleRef={settingsToggleRef}
+            />
+          </>
+        )}
       </div>
 
-      {distractionFree && (
-        <>
-          <div className="fs-page-indicator">
-            Strona {currentPage + 1}/{totalPages} • {Math.round(
-              totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0,
-            )}%
-          </div>
-          <button
-            type="button"
-            className={`fs-bookmark-toggle${hasCurrentPageBookmark ? " is-active" : ""}`}
-            onClick={toggleCurrentBookmark}
-            title={
-              hasCurrentPageBookmark
-                ? "Usuń zakładkę z tego miejsca"
-                : "Dodaj zakładkę w tym miejscu"
-            }
-            aria-label={
-              hasCurrentPageBookmark
-                ? "Usuń zakładkę z tego miejsca"
-                : "Dodaj zakładkę w tym miejscu"
-            }
-            aria-pressed={hasCurrentPageBookmark}
-          >
-            <UiIcon name={hasCurrentPageBookmark ? "bookmarkFill" : "bookmark"} />
-          </button>
-        </>
-      )}
+      {/* Cookie — always-visible home pill: shows position, toggles the chrome */}
+      <button
+        type="button"
+        className={`fs-page-indicator${distractionFree ? "" : " is-open"}`}
+        onClick={toggleDistractionFree}
+        aria-expanded={!distractionFree}
+        title={distractionFree ? "Pokaż sterowanie" : "Ukryj sterowanie"}
+      >
+        Strona {currentPage + 1}/{totalPages} • {Math.round(
+          totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0,
+        )}%
+      </button>
+
+      <button
+        type="button"
+        className={`fs-bookmark-toggle${hasCurrentPageBookmark ? " is-active" : ""}`}
+        onClick={toggleCurrentBookmark}
+        title={
+          hasCurrentPageBookmark
+            ? "Usuń zakładkę z tego miejsca"
+            : "Dodaj zakładkę w tym miejscu"
+        }
+        aria-label={
+          hasCurrentPageBookmark
+            ? "Usuń zakładkę z tego miejsca"
+            : "Dodaj zakładkę w tym miejscu"
+        }
+        aria-pressed={hasCurrentPageBookmark}
+      >
+        <UiIcon name={hasCurrentPageBookmark ? "bookmarkFill" : "bookmark"} />
+      </button>
 
       {/* Page turn flash indicator (especially for e-ink) */}
       <div className={`page-turn-flash${pageFlash ? ` flash-${pageFlash}` : ''}`} />
