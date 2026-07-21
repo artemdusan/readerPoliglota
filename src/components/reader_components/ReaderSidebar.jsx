@@ -1,9 +1,8 @@
-import { Badge, Button, Drawer, Group, NavLink, Stack, Text } from "@mantine/core";
+import { Badge, Drawer, Group, NavLink, Stack, Text } from "@mantine/core";
 
 export default function ReaderSidebar({
   sidebarOpen,
   onClose,
-  onBack,
   book,
   chapterCount,
   tocItems,
@@ -23,9 +22,6 @@ export default function ReaderSidebar({
       zIndex={1100}
       title={
         <Stack gap={2}>
-          <Button variant="subtle" size="compact-sm" onClick={onBack} w="fit-content" px={4}>
-            ← Biblioteka
-          </Button>
           <Text fw={600} lineClamp={2}>{book?.title || "…"}</Text>
           {book?.author && (
             <Text size="xs" c="dimmed">

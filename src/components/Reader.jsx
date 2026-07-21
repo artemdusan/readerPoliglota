@@ -2371,7 +2371,6 @@ export default function Reader({
       <ReaderSidebar
         sidebarOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        onBack={handleBackToLibrary}
         book={book}
         chapterCount={chapterCount}
         tocItems={tocItems}
@@ -2507,6 +2506,7 @@ export default function Reader({
               onPageSliderChange={handlePageSliderChange}
               onPageSliderCommit={handlePageSliderCommit}
               ttsTransport={ttsTransport}
+              onBackToLibrary={handleBackToLibrary}
               onToggleSidebar={() => setSidebarOpen((open) => !open)}
               searchOpen={searchOpen}
               onToggleSearch={toggleSearchPanel}
