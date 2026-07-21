@@ -1,4 +1,17 @@
 import { useState, useEffect, useMemo } from "react";
+import {
+  Button,
+  Checkbox,
+  Group,
+  Loader,
+  Modal,
+  Progress,
+  ScrollArea,
+  SegmentedControl,
+  Select,
+  Stack,
+  Text,
+} from "@mantine/core";
 import { getBookChaptersWithCacheStatus, savePolyglotCache, deletePolyglotCache } from "../db";
 import {
   estimatePolyglotGeneration,
@@ -308,224 +321,153 @@ export default function BatchGenModal({
     setDone(true);
   }
 
+  const errorCount = Object.keys(errors).length;
+
   return (
-    <div
-      className="modal-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !generating) onClose();
-      }}
+    <Modal
+      opened
+      onClose={() => { if (!generating) onClose(); }}
+      title={`Tłumaczenia${book?.title ? ` — ${book.title}` : ""}`}
+      centered
+      size="lg"
     >
-      <div className="modal bgen-modal">
-        <div className="modal-head">
-          <div className="modal-title">
-            Tłumaczenia{book?.title ? ` — ${book.title}` : ""}
-          </div>
-          <button
-            className="modal-close"
-            onClick={onClose}
+      {loading ? (
+        <Group justify="center" p="xl"><Loader size="sm" /></Group>
+      ) : (
+        <Stack gap="md">
+          <Select
+            label="Język tłumaczenia"
+            description={`Przetłumaczono ${chapters.filter((c) => c.hasPoly).length} z ${chapters.length} rozdziałów`}
+            data={LANGUAGES.map((l) => ({
+              value: l.code,
+              label: `${l.flag} ${l.label} (${l.name})`,
+            }))}
+            value={selectedLang.code}
+            onChange={(value) => value && handleLangChange(value)}
             disabled={generating}
-          >
-            ✕
-          </button>
-        </div>
+            allowDeselect={false}
+          />
 
-        <div className="modal-body">
-          {loading ? (
-            <div
-              style={{ display: "flex", justifyContent: "center", padding: 40 }}
-            >
-              <div className="spin-ring" />
-            </div>
-          ) : (
-            <>
-              <div className="bgen-lang-row">
-                <span className="bgen-setup-label">Język tłumaczenia</span>
-                <select
-                  className="form-select"
-                  value={selectedLang.code}
-                  onChange={(e) => handleLangChange(e.target.value)}
-                  disabled={generating}
-                >
-                  {LANGUAGES.map((l) => (
-                    <option key={l.code} value={l.code}>
-                      {l.flag} {l.label} ({l.name})
-                    </option>
-                  ))}
-                </select>
-                <span className="bgen-lang-summary">
-                  Przetłumaczono {chapters.filter((c) => c.hasPoly).length} z{" "}
-                  {chapters.length} rozdziałów
-                </span>
-              </div>
+          <SegmentedControl
+            fullWidth
+            value={mode}
+            onChange={switchMode}
+            disabled={generating}
+            data={[
+              { value: "generate", label: "Generuj brakujące" },
+              {
+                value: "delete",
+                label: "Usuń istniejące",
+                disabled: chapters.every((c) => !c.hasPoly),
+              },
+            ]}
+          />
 
-              <div className="bgen-mode-tabs">
-                <button
-                  className={`bgen-mode-tab${mode === "generate" ? " is-active" : ""}`}
-                  onClick={() => switchMode("generate")}
-                  disabled={generating}
-                >
-                  Generuj brakujące
-                </button>
-                <button
-                  className={`bgen-mode-tab${mode === "delete" ? " is-active" : ""}`}
-                  onClick={() => switchMode("delete")}
-                  disabled={generating || chapters.every((c) => !c.hasPoly)}
-                >
-                  Usuń istniejące
-                </button>
-              </div>
-
-              <div className="bgen-chapter-list">
-                <div className="bgen-ch-header">
-                  <span className="bgen-ch-label">
-                    Rozdziały ({mode === "delete" ? chapters.filter((c) => c.hasPoly).length : chapters.length})
-                  </span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      className="ctl"
-                      onClick={selectAll}
-                      disabled={generating}
-                    >
-                      Wszystkie
-                    </button>
-                    <button
-                      className="ctl"
-                      onClick={selectNone}
-                      disabled={generating}
-                    >
-                      Żadne
-                    </button>
-                  </div>
-                </div>
+          <Stack gap="xs">
+            <Group justify="space-between">
+              <Text size="sm" fw={600}>
+                Rozdziały ({mode === "delete" ? chapters.filter((c) => c.hasPoly).length : chapters.length})
+              </Text>
+              <Group gap={6}>
+                <Button variant="default" size="compact-xs" onClick={selectAll} disabled={generating}>
+                  Wszystkie
+                </Button>
+                <Button variant="default" size="compact-xs" onClick={selectNone} disabled={generating}>
+                  Żadne
+                </Button>
+              </Group>
+            </Group>
+            <ScrollArea.Autosize mah={300}>
+              <Stack gap={6}>
                 {chapters
-                  .filter((ch) => mode === "delete" ? ch.hasPoly : true)
+                  .filter((ch) => (mode === "delete" ? ch.hasPoly : true))
                   .map((ch, i) => (
-                  <label
-                    key={ch.id}
-                    className={`bgen-ch-row ${ch.hasPoly ? "has-poly" : ""} ${errors[ch.id] ? "has-error" : ""}`}
-                  >
-                    <input
-                      type="checkbox"
+                    <Checkbox
+                      key={ch.id}
                       checked={selected.has(ch.id)}
                       disabled={generating}
                       onChange={() => toggleChapter(ch.id)}
+                      color={errors[ch.id] ? "red" : undefined}
+                      label={
+                        <Group gap={6} wrap="nowrap">
+                          <span>{i + 1}. {ch.title || `Rozdział ${i + 1}`}</span>
+                          {errors[ch.id] ? (
+                            <Text span size="xs" c="red" title={errors[ch.id]}>●</Text>
+                          ) : ch.hasPoly ? (
+                            <Text span size="xs" title="Tłumaczenie istnieje">●</Text>
+                          ) : null}
+                        </Group>
+                      }
                     />
-                    <span className="bgen-ch-num">{i + 1}.</span>
-                    <span className="bgen-ch-title">
-                      {ch.title || `Rozdział ${i + 1}`}
-                    </span>
-                    {(ch.hasPoly || errors[ch.id]) && (
-                      <span className="bgen-ch-status">
-                        <span
-                          className={`bgen-dot ${errors[ch.id] ? "error" : "done"}`}
-                          title={errors[ch.id] ?? "Tłumaczenie istnieje"}
-                        />
-                      </span>
-                    )}
-                  </label>
-                ))}
-              </div>
+                  ))}
+              </Stack>
+            </ScrollArea.Autosize>
+          </Stack>
 
-            </>
+          {toGenerate.length > 0 && !generating && !done && mode === "generate" && (
+            <Group gap="lg">
+              {[
+                [toGenerate.length, "rozdziałów"],
+                [totalSentences, "zdań"],
+                [fmtTime(timeSec), "czas"],
+                [fmtCost(costUSD), "koszt"],
+              ].map(([val, key]) => (
+                <Stack key={key} gap={0} align="center">
+                  <Text fw={700}>{val}</Text>
+                  <Text size="xs" c="dimmed">{key}</Text>
+                </Stack>
+              ))}
+            </Group>
           )}
-        </div>
 
-        {!loading && (
-          <div className="bgen-summary">
-            {toGenerate.length > 0 && !generating && !done && mode === "generate" && (
-              <div className="bgen-estimate">
-                <div className="bgen-estimate-item">
-                  <span className="bgen-estimate-val">{toGenerate.length}</span>
-                  <span className="bgen-estimate-key">rozdziałów</span>
-                </div>
-                <div className="bgen-estimate-item">
-                  <span className="bgen-estimate-val">{totalSentences}</span>
-                  <span className="bgen-estimate-key">zdań</span>
-                </div>
-                <div className="bgen-estimate-item">
-                  <span className="bgen-estimate-val">{fmtTime(timeSec)}</span>
-                  <span className="bgen-estimate-key">czas</span>
-                </div>
-                <div className="bgen-estimate-item">
-                  <span className="bgen-estimate-val">{fmtCost(costUSD)}</span>
-                  <span className="bgen-estimate-key">koszt</span>
-                </div>
-              </div>
-            )}
-
-            {generating && genStep && (
-              <div className="bgen-progress">
-                <div className="bgen-progress-label">
-                  Rozdziały {genStep.doneChapters} / {genStep.totalChapters}
-                  {genStep.batchTotal > 0
-                    ? genStep.batchDone === 0
-                      ? ` — wysyłam ${genStep.batchTotal} zapytań…`
-                      : ` — ${genStep.batchDone}/${genStep.batchTotal} zapytań`
-                    : " — łączenie…"}
-                </div>
-                {genStep.batchTotal > 0 && (
-                  <div className="poly-progress-bar bgen-bar-full">
-                    <div
-                      className="poly-progress-fill"
-                      style={{ width: `${(genStep.batchDone / genStep.batchTotal) * 100}%` }}
-                    />
-                  </div>
-                )}
-                <div className="poly-progress-bar bgen-bar-full">
-                  <div
-                    className="poly-progress-fill bgen-bar-chapters"
-                    style={{ width: `${genStep.totalChapters > 0 ? (genStep.doneChapters / genStep.totalChapters) * 100 : 0}%` }}
-                  />
-                </div>
-                {rescueNote && <div className="bgen-rescue">{rescueNote}</div>}
-              </div>
-            )}
-
-            {done && (
-              <div className={`bgen-done ${Object.keys(errors).length > 0 ? "has-errors" : ""}`}>
-                {Object.keys(errors).length > 0
-                  ? <>Zakończono z <strong>{Object.keys(errors).length}</strong> błędami.</>
-                  : <>Wszystkie tłumaczenia gotowe.</>}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="modal-foot">
-          {!generating && !done && (
-            <button className="btn-ghost" onClick={onClose}>
-              Anuluj
-            </button>
+          {generating && genStep && (
+            <Stack gap={6}>
+              <Text size="sm">
+                Rozdziały {genStep.doneChapters} / {genStep.totalChapters}
+                {genStep.batchTotal > 0
+                  ? genStep.batchDone === 0
+                    ? ` — wysyłam ${genStep.batchTotal} zapytań…`
+                    : ` — ${genStep.batchDone}/${genStep.batchTotal} zapytań`
+                  : " — łączenie…"}
+              </Text>
+              {genStep.batchTotal > 0 && (
+                <Progress value={(genStep.batchDone / genStep.batchTotal) * 100} />
+              )}
+              <Progress
+                value={genStep.totalChapters > 0 ? (genStep.doneChapters / genStep.totalChapters) * 100 : 0}
+              />
+              {rescueNote && <Text size="xs" c="dimmed">{rescueNote}</Text>}
+            </Stack>
           )}
-          {!done ? (
-            mode === "delete" ? (
-              <button
-                className="btn-primary"
-                onClick={handleDelete}
-                disabled={generating || selected.size === 0}
-              >
-                {generating
-                  ? "Usuwam…"
-                  : `Usuń (${selected.size})`}
-              </button>
+
+          {done && (
+            <Text size="sm" c={errorCount > 0 ? "red" : undefined}>
+              {errorCount > 0
+                ? <>Zakończono z <strong>{errorCount}</strong> błędami.</>
+                : "Wszystkie tłumaczenia gotowe."}
+            </Text>
+          )}
+
+          <Group justify="flex-end">
+            {!generating && !done && (
+              <Button variant="subtle" onClick={onClose}>Anuluj</Button>
+            )}
+            {!done ? (
+              mode === "delete" ? (
+                <Button onClick={handleDelete} loading={generating} disabled={selected.size === 0}>
+                  {`Usuń (${selected.size})`}
+                </Button>
+              ) : (
+                <Button onClick={handleGenerate} loading={generating} disabled={toGenerate.length === 0}>
+                  {`Generuj ${toGenerate.length > 0 ? `(${toGenerate.length})` : ""}`}
+                </Button>
+              )
             ) : (
-            <button
-              className="btn-primary"
-              onClick={handleGenerate}
-              disabled={generating || toGenerate.length === 0}
-            >
-              {generating
-                ? "Generuję…"
-                : `Generuj ${toGenerate.length > 0 ? `(${toGenerate.length})` : ""}`}
-            </button>
-            )
-          ) : (
-            <button className="btn-primary" onClick={onClose}>
-              Zamknij
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+              <Button onClick={onClose}>Zamknij</Button>
+            )}
+          </Group>
+        </Stack>
+      )}
+    </Modal>
   );
 }
