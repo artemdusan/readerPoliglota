@@ -1,3 +1,5 @@
+import { ActionIcon, Group, ScrollArea, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
+
 export default function ReaderSearchPanel({
   inputRef,
   searchQuery,
@@ -10,12 +12,13 @@ export default function ReaderSearchPanel({
   const hasQuery = Boolean(searchQuery.trim());
 
   return (
-    <div className="reader-search-strip">
-      <div className="reader-search-main">
-        <input
+    <div className="reader-search-panel">
+      <Group gap="xs" wrap="nowrap">
+        <TextInput
           ref={inputRef}
-          className="reader-search-input"
           type="search"
+          flex={1}
+          size="sm"
           value={searchQuery}
           onChange={(event) => onSearchQueryChange(event.target.value)}
           onKeyDown={(event) => {
@@ -27,58 +30,66 @@ export default function ReaderSearchPanel({
           placeholder="Szukaj tekstu w tym rozdziale"
         />
 
-        <div className="reader-search-meta">
+        <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
           {hasQuery
             ? searchMatches.length
               ? `${activeSearchIdx + 1}/${searchMatches.length}`
               : "0 wyników"
             : "Wpisz frazę"}
-        </div>
+        </Text>
 
-        <button
-          className="ctl ctl-icon"
+        <ActionIcon
+          variant="default"
           onClick={() => onGoToSearchMatch(activeSearchIdx - 1)}
           disabled={!searchMatches.length}
           title="Poprzedni wynik"
         >
           {"<"}
-        </button>
-        <button
-          className="ctl ctl-icon"
+        </ActionIcon>
+        <ActionIcon
+          variant="default"
           onClick={() => onGoToSearchMatch(activeSearchIdx + 1)}
           disabled={!searchMatches.length}
           title="Następny wynik"
         >
           {">"}
-        </button>
-        <button className="ctl ctl-icon" onClick={onClose} title="Zamknij wyszukiwanie">
-          x
-        </button>
-      </div>
+        </ActionIcon>
+        <ActionIcon variant="default" onClick={onClose} title="Zamknij wyszukiwanie">
+          ✕
+        </ActionIcon>
+      </Group>
 
       {hasQuery && (
-        <div className="reader-search-results">
-          {searchMatches.length ? (
-            searchMatches.map((match, index) => (
-              <button
-                key={`${match.blockId}-${index}`}
-                type="button"
-                className={`reader-search-result${
-                  index === activeSearchIdx ? " active" : ""
-                }`}
-                onClick={() => onGoToSearchMatch(index)}
-              >
-                <span className="reader-search-result-page">s. {match.page + 1}</span>
-                <span className="reader-search-result-text">{match.preview}</span>
-                {match.count > 1 && (
-                  <span className="reader-search-result-count">x{match.count}</span>
-                )}
-              </button>
-            ))
-          ) : (
-            <div className="reader-search-empty">Brak trafień w tym rozdziale.</div>
-          )}
-        </div>
+        <ScrollArea.Autosize mah={220} mt="xs">
+          <Stack gap={2}>
+            {searchMatches.length ? (
+              searchMatches.map((match, index) => (
+                <UnstyledButton
+                  key={`${match.blockId}-${index}`}
+                  onClick={() => onGoToSearchMatch(index)}
+                  px="xs"
+                  py={4}
+                  style={{
+                    borderRadius: 4,
+                    background: index === activeSearchIdx ? "var(--bg-hover)" : undefined,
+                  }}
+                >
+                  <Group gap="xs" wrap="nowrap">
+                    <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                      s. {match.page + 1}
+                    </Text>
+                    <Text size="sm" lineClamp={1} flex={1}>{match.preview}</Text>
+                    {match.count > 1 && (
+                      <Text size="xs" c="dimmed">x{match.count}</Text>
+                    )}
+                  </Group>
+                </UnstyledButton>
+              ))
+            ) : (
+              <Text size="sm" c="dimmed" p="xs">Brak trafień w tym rozdziale.</Text>
+            )}
+          </Stack>
+        </ScrollArea.Autosize>
       )}
     </div>
   );

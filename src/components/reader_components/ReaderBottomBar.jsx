@@ -1,3 +1,25 @@
+import { Slider } from "@mantine/core";
+import { UiIcon } from "./ReaderIcons";
+
+function Tool({ icon, glyph, label, onClick, active, disabled, title, btnRef }) {
+  return (
+    <button
+      type="button"
+      ref={btnRef}
+      className={`rbc-tool${active ? " is-active" : ""}`}
+      onClick={onClick}
+      disabled={disabled}
+      title={title || label}
+      aria-label={title || label}
+    >
+      {glyph ? <span className="rbc-tool-glyph">{glyph}</span> : <UiIcon name={icon} />}
+      {label && <span className="rbc-tool-label">{label}</span>}
+    </button>
+  );
+}
+
+/* Dolne pływające sterowanie ujawniane ciasteczkiem: nawigacja stron ze
+   sliderem (lub transport TTS podczas odtwarzania) + rząd narzędzi. */
 export default function ReaderBottomBar({
   currentPage,
   totalPages,
@@ -5,134 +27,137 @@ export default function ReaderBottomBar({
   chapterCount,
   onPrevPage,
   onNextPage,
-  originalTtsPlaying,
-  activeSid,
-  onJumpSentence,
-  onToggleOriginalTts,
-  originalTtsPaused,
-  onStopOriginalTts,
-  originalTtsFragments,
-  ttsPlaying,
-  activePolyPid,
-  onJumpPolyParagraph,
-  onToggleHybridTts,
-  ttsPaused,
-  onStopHybridTts,
-  polyTtsParagraphs,
   onPageSliderChange,
   onPageSliderCommit,
+  ttsTransport,
+  onToggleSidebar,
+  searchOpen,
+  onToggleSearch,
+  bookmarkMenuOpen,
+  onToggleBookmarks,
+  bookmarkToggleRef,
+  hasTtsAvailable,
+  isTtsActive,
+  onToggleTts,
+  ttsButtonTitle,
+  onChangeFontSize,
+  settingsMenuOpen,
+  onToggleSettings,
+  settingsToggleRef,
 }) {
-  const pageProgress =
-    totalPages > 1 ? Math.round((currentPage / (totalPages - 1)) * 100) : 0;
-
   return (
-    <div className="bottombar">
-      <button
-        className="nav-btn"
-        onClick={onPrevPage}
-        disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
-      >
-        ❮
-      </button>
-
-      {originalTtsPlaying ? (
-        <div className="tts-inline">
+    <div className="reader-bottom-chrome">
+      {ttsTransport ? (
+        <div className="rbc-nav rbc-nav-tts">
           <button
-            className="tts-bar-btn"
-            onClick={() => onJumpSentence(-1)}
-            disabled={activeSid <= 0}
+            type="button"
+            className="rbc-page-btn"
+            onClick={ttsTransport.onPrev}
+            disabled={ttsTransport.prevDisabled}
             title="Poprzedni fragment"
           >
             ⏮
           </button>
           <button
-            className="tts-bar-btn tts-bar-play active"
-            onClick={onToggleOriginalTts}
-            title={originalTtsPaused ? "Wznów" : "Pauza"}
+            type="button"
+            className="rbc-page-btn"
+            onClick={ttsTransport.onToggle}
+            title={ttsTransport.paused ? "Wznów" : "Pauza"}
           >
-            {originalTtsPaused ? "▶" : "⏸"}
+            {ttsTransport.paused ? "▶" : "⏸"}
           </button>
           <button
-            className="tts-bar-btn"
-            onClick={onStopOriginalTts}
+            type="button"
+            className="rbc-page-btn"
+            onClick={ttsTransport.onStop}
             title="Zakończ TTS"
           >
             ⏹
           </button>
           <button
-            className="tts-bar-btn"
-            onClick={() => onJumpSentence(1)}
-            disabled={activeSid >= originalTtsFragments.length - 1}
-            title="Następny akapit"
-          >
-            ⏭
-          </button>
-        </div>
-      ) : ttsPlaying ? (
-        <div className="tts-inline">
-          <button
-            className="tts-bar-btn"
-            onClick={() => onJumpPolyParagraph(-1)}
-            disabled={activePolyPid <= 0}
-            title="Poprzedni fragment"
-          >
-            ⏮
-          </button>
-          <button
-            className="tts-bar-btn tts-bar-play active"
-            onClick={onToggleHybridTts}
-            title={ttsPaused ? "Wznów" : "Pauza"}
-          >
-            {ttsPaused ? "▶" : "⏸"}
-          </button>
-          <button
-            className="tts-bar-btn"
-            onClick={onStopHybridTts}
-            title="Zakończ TTS"
-          >
-            ⏹
-          </button>
-          <button
-            className="tts-bar-btn"
-            onClick={() => onJumpPolyParagraph(1)}
-            disabled={activePolyPid >= polyTtsParagraphs.length - 1}
-            title="Następny akapit"
+            type="button"
+            className="rbc-page-btn"
+            onClick={ttsTransport.onNext}
+            disabled={ttsTransport.nextDisabled}
+            title="Następny fragment"
           >
             ⏭
           </button>
         </div>
       ) : (
-        <div className="prog-wrap">
-          <div className="prog-lbl">
-            {currentPage + 1}/{totalPages} • {pageProgress}%
-          </div>
-          <input
-            className="page-slider"
-            type="range"
-            min="0"
+        <div className="rbc-nav">
+          <button
+            type="button"
+            className="rbc-page-btn"
+            onClick={onPrevPage}
+            disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
+            title="Poprzednia strona"
+          >
+            ❮
+          </button>
+          <Slider
+            style={{ flex: 1, minWidth: 0 }}
+            size="sm"
+            min={0}
             max={Math.max(totalPages - 1, 0)}
-            step="1"
+            step={1}
             value={Math.min(currentPage, Math.max(totalPages - 1, 0))}
             disabled={totalPages <= 1}
+            label={null}
             aria-label="Przesuń do strony"
-            onChange={onPageSliderChange}
-            onPointerUp={onPageSliderCommit}
-            onMouseUp={onPageSliderCommit}
-            onTouchEnd={onPageSliderCommit}
-            onKeyUp={onPageSliderCommit}
+            onChange={(value) => onPageSliderChange({ target: { value } })}
+            onChangeEnd={(value) => onPageSliderCommit({ target: { value } })}
           />
+          <button
+            type="button"
+            className="rbc-page-btn"
+            onClick={onNextPage}
+            disabled={
+              currentPage >= totalPages - 1 &&
+              (chapterIdx ?? 0) >= chapterCount - 1
+            }
+            title="Następna strona"
+          >
+            ❯
+          </button>
         </div>
       )}
 
-      <button
-        className="nav-btn"
-        onClick={onNextPage}
-        disabled={
-          currentPage >= totalPages - 1 && (chapterIdx ?? 0) >= chapterCount - 1
-        }
-      >
-        ❯
-      </button>
+      <div className="rbc-tools">
+        <Tool icon="menu" label="Spis" title="Spis treści" onClick={onToggleSidebar} />
+        <Tool
+          icon="search"
+          label="Szukaj"
+          title="Szukaj w rozdziale"
+          active={searchOpen}
+          onClick={onToggleSearch}
+        />
+        <Tool
+          icon="bookmark"
+          label="Zakładki"
+          active={bookmarkMenuOpen}
+          onClick={onToggleBookmarks}
+          btnRef={bookmarkToggleRef}
+        />
+        <Tool
+          icon={isTtsActive ? "pause" : "play"}
+          label="Słuchaj"
+          title={ttsButtonTitle}
+          active={isTtsActive}
+          disabled={!hasTtsAvailable}
+          onClick={onToggleTts}
+        />
+        <Tool glyph="A−" title="Mniejsza czcionka" onClick={() => onChangeFontSize(-1)} />
+        <Tool glyph="A+" title="Większa czcionka" onClick={() => onChangeFontSize(1)} />
+        <Tool
+          icon="settings"
+          label="Opcje"
+          title="Ustawienia"
+          active={settingsMenuOpen}
+          onClick={onToggleSettings}
+          btnRef={settingsToggleRef}
+        />
+      </div>
     </div>
   );
 }

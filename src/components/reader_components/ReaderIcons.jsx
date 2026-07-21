@@ -12,15 +12,10 @@ import {
   RiTranslate2,
   RiMenuLine,
   RiSettings4Line,
-  RiSunLine,
-  RiMoonLine,
   RiBookOpenLine,
   RiFullscreenLine,
   RiFullscreenExitLine,
-  RiArrowUpSLine,
   RiDeleteBinLine,
-  RiDownload2Line,
-  RiContrastLine,
 } from "react-icons/ri";
 
 const ICON_MAP = {
@@ -37,15 +32,10 @@ const ICON_MAP = {
   translate:      RiTranslate2,
   menu:           RiMenuLine,
   settings:       RiSettings4Line,
-  sun:            RiSunLine,
-  moon:           RiMoonLine,
   book:           RiBookOpenLine,
   fullscreen:     RiFullscreenLine,
   fullscreenExit: RiFullscreenExitLine,
-  "chevron-up":   RiArrowUpSLine,
   delete:         RiDeleteBinLine,
-  download:       RiDownload2Line,
-  contrast:       RiContrastLine,
 };
 
 export function UiIcon({ name, className = "", title }) {

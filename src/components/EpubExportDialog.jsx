@@ -1,4 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
+import {
+  Button,
+  Checkbox,
+  Group,
+  Loader,
+  Modal,
+  ScrollArea,
+  Select,
+  Stack,
+  Text,
+} from '@mantine/core';
 import { getBookChaptersWithCacheStatus, getChapterStatusMap, getPolyglotCache } from '../db';
 import { parseStoredPolyglot } from '../lib/polyglotParser';
 import { buildEpub } from '../lib/epubBuilder';
@@ -103,107 +114,92 @@ export default function EpubExportDialog({ bookId, book, onClose }) {
   }
 
   return (
-    <div
-      className="modal-overlay"
-      onClick={e => { if (e.target === e.currentTarget && !exporting) onClose(); }}
+    <Modal
+      opened
+      onClose={() => { if (!exporting) onClose(); }}
+      title="Eksport EPUB"
+      centered
     >
-      <div className="modal bgen-modal">
-        <div className="modal-head">
-          <div className="modal-title">Eksport EPUB</div>
-          <button className="modal-close" onClick={onClose} disabled={exporting}>✕</button>
-        </div>
+      <Stack gap="md">
+        {availableLangs.length > 0 && (
+          <Select
+            label="Język tłumaczenia"
+            data={[
+              { value: '', label: 'Oryginał (bez tłumaczenia)' },
+              ...availableLangs.map(l => ({
+                value: l.code,
+                label: `${l.flag} ${l.label || l.name}`.trim(),
+              })),
+            ]}
+            value={selectedLang}
+            onChange={(value) => setSelectedLang(value ?? '')}
+            disabled={exporting}
+            allowDeselect={false}
+          />
+        )}
 
-        <div className="modal-body">
-          {availableLangs.length > 0 && (
-            <div className="form-group">
-              <label className="form-label">Język tłumaczenia</label>
-              <select
-                className="form-select"
-                value={selectedLang}
-                onChange={e => setSelectedLang(e.target.value)}
-                disabled={exporting}
-              >
-                <option value="">Oryginał (bez tłumaczenia)</option>
-                {availableLangs.map(l => (
-                  <option key={l.code} value={l.code}>
-                    {l.flag} {l.label || l.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+        <Stack gap="xs">
+          <Group justify="space-between">
+            <Text size="sm" fw={600}>
+              Rozdziały ({toExport.length}/{chapters.length})
+            </Text>
+            <Group gap={6}>
+              {selectedLang && translatedChapters.length > 0 && (
+                <Button
+                  variant="default"
+                  size="compact-xs"
+                  onClick={selectTranslated}
+                  disabled={exporting || loading}
+                  title="Zaznacz tylko rozdziały z tłumaczeniem"
+                >
+                  Z tłumaczeniem
+                </Button>
+              )}
+              <Button variant="default" size="compact-xs" onClick={toggleAll} disabled={exporting || loading}>
+                {allSelected ? 'Żadne' : 'Wszystkie'}
+              </Button>
+            </Group>
+          </Group>
 
-          <div className="bgen-chapter-list">
-            <div className="bgen-ch-header">
-              <span className="bgen-ch-label">
-                Rozdziały ({toExport.length}/{chapters.length})
-              </span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {selectedLang && translatedChapters.length > 0 && (
-                  <button
-                    className="ctl"
-                    onClick={selectTranslated}
-                    disabled={exporting || loading}
-                    title="Zaznacz tylko rozdziały z tłumaczeniem"
-                  >
-                    Z tłumaczeniem
-                  </button>
-                )}
-                <button className="ctl" onClick={toggleAll} disabled={exporting || loading}>
-                  {allSelected ? 'Żadne' : 'Wszystkie'}
-                </button>
-              </div>
-            </div>
-            {loading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
-                <div className="spin-ring" />
-              </div>
-            ) : (
-              chapters.map((ch, i) => (
-                <label key={ch.id} className="bgen-ch-row">
-                  <input
-                    type="checkbox"
+          {loading ? (
+            <Group justify="center" p="xl"><Loader size="sm" /></Group>
+          ) : (
+            <ScrollArea.Autosize mah={300}>
+              <Stack gap={6}>
+                {chapters.map((ch, i) => (
+                  <Checkbox
+                    key={ch.id}
                     checked={selected.has(ch.id)}
                     onChange={() => toggleChapter(ch.id)}
                     disabled={exporting}
+                    label={`${i + 1}. ${ch.title || `Rozdział ${i + 1}`}${selectedLang && ch.hasPoly ? ' ●' : ''}`}
                   />
-                  <span className="bgen-ch-num">{i + 1}.</span>
-                  <span className="bgen-ch-title">{ch.title || `Rozdział ${i + 1}`}</span>
-                  {selectedLang && ch.hasPoly && (
-                    <span className="bgen-ch-status">
-                      <span className="bgen-dot done" title="Ma tłumaczenie" />
-                    </span>
-                  )}
-                </label>
-              ))
-            )}
-          </div>
-
-          {!loading && selectedLang && toExport.length > 0 && (
-            <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>
-              {withPolyCount} z {toExport.length} wybranych rozdziałów zawiera tłumaczenie.
-              {withPolyCount < toExport.length && ' Pozostałe zostaną wyeksportowane w oryginale.'}
-            </div>
+                ))}
+              </Stack>
+            </ScrollArea.Autosize>
           )}
+        </Stack>
 
-          {error && (
-            <div style={{ color: 'var(--error, #e07070)', fontSize: 13 }}>{error}</div>
-          )}
-        </div>
+        {!loading && selectedLang && toExport.length > 0 && (
+          <Text size="xs" c="dimmed">
+            {withPolyCount} z {toExport.length} wybranych rozdziałów zawiera tłumaczenie.
+            {withPolyCount < toExport.length && ' Pozostałe zostaną wyeksportowane w oryginale.'}
+          </Text>
+        )}
 
-        <div className="modal-foot">
-          <button className="btn-ghost" onClick={onClose} disabled={exporting}>Anuluj</button>
-          <button
-            className="btn-primary"
+        {error && <Text size="sm" c="red">{error}</Text>}
+
+        <Group justify="flex-end">
+          <Button variant="subtle" onClick={onClose} disabled={exporting}>Anuluj</Button>
+          <Button
             onClick={handleExport}
-            disabled={exporting || !toExport.length || loading}
+            loading={exporting}
+            disabled={!toExport.length || loading}
           >
-            {exporting
-              ? 'Generowanie…'
-              : `Pobierz EPUB${toExport.length ? ` (${toExport.length})` : ''}`}
-          </button>
-        </div>
-      </div>
-    </div>
+            {`Pobierz EPUB${toExport.length ? ` (${toExport.length})` : ''}`}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }

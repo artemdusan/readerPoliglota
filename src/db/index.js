@@ -84,8 +84,7 @@ export async function getAllSettings() {
 // ─── Books ───────────────────────────────────────────────────────────────────
 
 export async function saveBook(bookData, chaptersData) {
-  const { v4: uuid } = await import('uuid');
-  const bookId = uuid();
+  const bookId = crypto.randomUUID();
   const now = Date.now();
 
   const book = {
@@ -101,7 +100,7 @@ export async function saveBook(bookData, chaptersData) {
   };
 
   const chapters = chaptersData.map((ch, idx) => ({
-    id: uuid(),
+    id: crypto.randomUUID(),
     bookId,
     chapterIndex: idx,
     href: ch.href || '',
@@ -215,9 +214,8 @@ export async function savePolyglotCache(chapterId, targetLang, value) {
   if (!normalized) throw new Error('Obslugiwany jest juz tylko nowy format tlumaczen.');
   const existing = await db.polyglotCache
     .where('[chapterId+targetLang]').equals([chapterId, targetLang]).first();
-  const { v4: uuid } = await import('uuid');
   await db.polyglotCache.put({
-    id: existing?.id ?? uuid(),
+    id: existing?.id ?? crypto.randomUUID(),
     chapterId,
     targetLang,
     ...normalized,
@@ -387,9 +385,8 @@ export async function restorePolyglotCache(chapterId, targetLang, value) {
     }
     return false;
   }
-  const { v4: uuid } = await import('uuid');
   await db.polyglotCache.put({
-    id: uuid(),
+    id: crypto.randomUUID(),
     chapterId,
     targetLang,
     ...normalized,

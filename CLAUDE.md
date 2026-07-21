@@ -7,3 +7,7 @@
 2. **Git**: Never commit to `main`. Always create a focused, descriptively-named branch first (e.g. `fix/login`, `feature/auth`).
 
 3. **Sequential work**: When given a list of tasks, do the simplest first. Finish and confirm each before starting the next.
+
+## Testy
+
+- E2E: `npm test` (Playwright, testy w `e2e/`). Przeglądarka: systemowe Chromium z `/opt/pw-browsers` (wykrywane automatycznie w `playwright.config.js`) — **nigdy nie uruchamiaj `npx playwright install`**.

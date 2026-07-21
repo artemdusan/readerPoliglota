@@ -80,15 +80,6 @@ export function getVoicesForLang(voices, lang) {
   );
 }
 
-export function resetTooltipPosition(pw) {
-  if (!pw) return;
-  pw.style.removeProperty("--pw-tooltip-left");
-  pw.style.removeProperty("--pw-tooltip-top");
-  pw.style.removeProperty("--pw-tooltip-arrow-left");
-  delete pw.dataset.tooltipPlacement;
-  delete pw.dataset.tooltipPending;
-}
-
 export function normalizeInlineText(value) {
   return (value || "").replace(/\s+/g, " ").trim();
 }

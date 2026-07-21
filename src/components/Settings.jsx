@@ -1,5 +1,17 @@
 import { useEffect, useState } from "react";
-import { formatTransfer, formatLastSync } from "../utils/formatUtils";
+import {
+  Anchor,
+  Button,
+  Group,
+  Modal,
+  PasswordInput,
+  Progress,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
+import { formatLastSync, getLastSyncTs } from "../utils/formatUtils";
 import {
   getUsername,
   isLoggedIn,
@@ -12,13 +24,13 @@ import { getSyncActivity, subscribeSyncActivity } from "../sync/syncActivity";
 import { getWorkerUrl } from "../config/workerUrl";
 
 const SYNC_INTERVAL_OPTIONS = [
-  { value: 5, label: "Co 5 minut" },
-  { value: 15, label: "Co 15 minut" },
-  { value: 30, label: "Co 30 minut" },
-  { value: 60, label: "Co 1 godzinę" },
-  { value: 180, label: "Co 3 godziny" },
-  { value: 360, label: "Co 6 godzin" },
-  { value: 720, label: "Co 12 godzin" },
+  { value: "5", label: "Co 5 minut" },
+  { value: "15", label: "Co 15 minut" },
+  { value: "30", label: "Co 30 minut" },
+  { value: "60", label: "Co 1 godzinę" },
+  { value: "180", label: "Co 3 godziny" },
+  { value: "360", label: "Co 6 godzin" },
+  { value: "720", label: "Co 12 godzin" },
 ];
 
 export default function Settings({ settings, onUpdateSetting, onClose }) {
@@ -29,10 +41,7 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
   const [authError, setAuthError] = useState("");
   const [authWorking, setAuthWorking] = useState(false);
   const [syncActivity, setSyncActivity] = useState(() => getSyncActivity());
-  const [lastSync, setLastSync] = useState(() => {
-    const value = localStorage.getItem("vocabapp:lastSync");
-    return value ? Number(value) : null;
-  });
+  const [lastSync, setLastSync] = useState(getLastSyncTs);
 
   useEffect(
     () =>
@@ -47,8 +56,7 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
 
   useEffect(() => {
     function handleSynced() {
-      const value = localStorage.getItem("vocabapp:lastSync");
-      setLastSync(value ? Number(value) : Date.now());
+      setLastSync(getLastSyncTs() ?? Date.now());
     }
 
     window.addEventListener("vocabapp:synced", handleSynced);
@@ -71,89 +79,58 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
     }
   }
 
-  async function handleManualSync() {
-    const result = await syncAll();
-    if (result.lastSync) setLastSync(result.lastSync);
-  }
-
-  function handleOverlayClick(event) {
-    if (event.target === event.currentTarget) onClose();
-  }
-
   const syncProgress = syncActivity.progress;
-  const syncResult = syncActivity.result;
   const isSyncing = syncActivity.phase === "syncing";
 
   return (
-    <div className="modal-overlay" onClick={handleOverlayClick}>
-      <div className="modal" role="dialog" aria-modal="true">
-        <div className="modal-head">
-          <div className="modal-title">Konto i synchronizacja</div>
-          <button className="modal-close" onClick={onClose}>
-            ✕
-          </button>
-        </div>
+    <Modal opened onClose={onClose} title="Konto i synchronizacja" centered>
+      <Stack gap="lg">
+        <Stack gap="xs">
+          <Text fw={600} size="sm">Konto</Text>
 
-        <div className="modal-body">
-          <div className="form-group">
-            <label className="form-label">Konto</label>
+          {cfConnected ? (
+            <>
+              <Group gap="xs">
+                {accountName && <Text fw={600}>{accountName}</Text>}
+                <Text size="sm" c="dimmed">• Zalogowany</Text>
+                <Button variant="subtle" size="compact-sm" onClick={logout}>
+                  Wyloguj
+                </Button>
+              </Group>
 
-            {cfConnected ? (
-              <>
-                <div className="settings-account-row">
-                  {accountName && (
-                    <span className="settings-account-name">{accountName}</span>
-                  )}
-                  <span className="settings-account-badge">• Zalogowany</span>
-                  <button className="btn-ghost" onClick={logout}>
-                    Wyloguj
-                  </button>
-                </div>
+              <Text size="sm" c="dimmed">
+                Ostatni sync: {formatLastSync(lastSync)}
+              </Text>
 
-                {accountName && (
-                  <p className="settings-inline-note">
-                    Aktywne konto: <strong>{accountName}</strong>
-                  </p>
-                )}
+              <Anchor
+                href={`${getWorkerUrl()}/admin`}
+                target="_blank"
+                rel="noopener noreferrer"
+                size="sm"
+              >
+                Dashboard →
+              </Anchor>
 
-                <p className="settings-inline-note">
-                  Ostatni sync: {formatLastSync(lastSync)}
-                </p>
-
-                <a
-                  href={`${getWorkerUrl()}/admin`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-ghost"
-                  style={{ alignSelf: "flex-start", textDecoration: "none" }}
-                >
-                  Dashboard →
-                </a>
-
-                {isSyncing && syncProgress && (
-                  <div className="settings-sync-progress">
-                    <div className="settings-sync-progress-track">
-                      <div
-                        className="settings-sync-progress-fill"
-                        style={{
-                          width:
-                            syncProgress.total > 0
-                              ? `${(syncProgress.done / syncProgress.total) * 100}%`
-                              : "0%",
-                        }}
-                      />
-                    </div>
-                    <p className="settings-inline-note">
-                      {syncProgress.done} / {syncProgress.total}
-                    </p>
-                  </div>
-                )}
-              </>
-            ) : (
-              <form onSubmit={handleAuth} className="settings-auth-form">
-                <input
-                  type="text"
-                  className="form-input"
+              {isSyncing && syncProgress && (
+                <Stack gap={4}>
+                  <Progress
+                    value={
+                      syncProgress.total > 0
+                        ? (syncProgress.done / syncProgress.total) * 100
+                        : 0
+                    }
+                  />
+                  <Text size="sm" c="dimmed">
+                    {syncProgress.done} / {syncProgress.total}
+                  </Text>
+                </Stack>
+              )}
+            </>
+          ) : (
+            <form onSubmit={handleAuth}>
+              <Stack gap="sm" align="flex-start">
+                <TextInput
+                  w="100%"
                   placeholder="Nazwa użytkownika"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
@@ -163,10 +140,8 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                   autoCorrect="off"
                   spellCheck={false}
                 />
-
-                <input
-                  type="password"
-                  className="form-input"
+                <PasswordInput
+                  w="100%"
                   placeholder="Hasło"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
@@ -174,48 +149,28 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                   minLength={8}
                   autoComplete="current-password"
                 />
-
                 {authError && (
-                  <p className="settings-inline-note is-error">{authError}</p>
+                  <Text size="sm" c="red">{authError}</Text>
                 )}
+                <Button type="submit" loading={authWorking}>
+                  Zaloguj
+                </Button>
+              </Stack>
+            </form>
+          )}
+        </Stack>
 
-                <button
-                  type="submit"
-                  className="btn-primary"
-                  disabled={authWorking}
-                  style={{ alignSelf: "flex-start" }}
-                >
-                  {authWorking ? "Logowanie..." : "Zaloguj"}
-                </button>
-              </form>
-            )}
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Synchronizacja w tle</label>
-            <select
-              className="form-select"
-              value={settings.syncIntervalMinutes ?? 30}
-              onChange={(event) =>
-                onUpdateSetting(
-                  "syncIntervalMinutes",
-                  Number(event.target.value),
-                )
-              }
-            >
-              {SYNC_INTERVAL_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <div className="form-hint">
-              Aplikacja będzie próbowała odświeżać dane w tle, gdy jesteś online
-              i konto jest połączone.
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+        <Select
+          label="Synchronizacja w tle"
+          description="Aplikacja będzie próbowała odświeżać dane w tle, gdy jesteś online i konto jest połączone."
+          data={SYNC_INTERVAL_OPTIONS}
+          value={String(settings.syncIntervalMinutes ?? 30)}
+          onChange={(value) =>
+            value && onUpdateSetting("syncIntervalMinutes", Number(value))
+          }
+          allowDeselect={false}
+        />
+      </Stack>
+    </Modal>
   );
 }

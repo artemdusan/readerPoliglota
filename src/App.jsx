@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { Loader } from '@mantine/core';
+import { getLastSyncTs } from './utils/formatUtils';
 import { useSettings } from './hooks/useSettings';
 import Library from './components/Library';
 import Reader  from './components/Reader';
@@ -18,8 +20,7 @@ function shouldRunStartupSync(intervalMinutes) {
   const minutes = Number(intervalMinutes ?? 30);
   if (!minutes || minutes < 1 || !navigator.onLine || !isLoggedIn()) return false;
 
-  const lastSyncRaw = localStorage.getItem('vocabapp:lastSync');
-  const lastSync = lastSyncRaw ? Number(lastSyncRaw) : null;
+  const lastSync = getLastSyncTs();
   if (!lastSync || Number.isNaN(lastSync)) return true;
 
   return Date.now() - lastSync >= minutes * 60 * 1000;
@@ -71,9 +72,8 @@ export default function App() {
 
   useEffect(() => onAuthChange(setCfConnected), []);
 
-  // Pin the single BOOX theme once on mount.
+  // Pin the theme-color meta once on mount.
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", "boox");
     document
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute('content', THEME_COLOR);
@@ -142,7 +142,7 @@ export default function App() {
   if (!loaded) {
     return (
       <div className="loading-screen">
-        <div className="spin-ring" />
+        <Loader />
         <div className="loading-msg">Ładowanie…</div>
       </div>
     );
