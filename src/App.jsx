@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { Loader } from '@mantine/core';
 import { useSettings } from './hooks/useSettings';
 import Library from './components/Library';
 import Reader  from './components/Reader';
@@ -141,7 +142,7 @@ export default function App() {
   if (!loaded) {
     return (
       <div className="loading-screen">
-        <div className="spin-ring" />
+        <Loader />
         <div className="loading-msg">Ładowanie…</div>
       </div>
     );

@@ -1,3 +1,5 @@
+import { ActionIcon, Button, Group, ScrollArea, Stack, Text, UnstyledButton } from "@mantine/core";
+
 export default function ReaderBookmarkMenu({
   menuRef,
   hasCurrentPageBookmark,
@@ -15,67 +17,63 @@ export default function ReaderBookmarkMenu({
       : 0;
 
   return (
-    <div className="bookmark-menu" ref={menuRef}>
-      <div className="bookmark-menu-head">
+    <div className="reader-float-menu" ref={menuRef}>
+      <Stack gap="sm">
         <div>
-          <div className="bookmark-menu-title">Zakładki</div>
-          <div className="bookmark-menu-sub">
+          <Text fw={600}>Zakładki</Text>
+          <Text size="xs" c="dimmed">
             Zapisz bieżący postęp i zsynchronizuj go z kontem.
-          </div>
+          </Text>
         </div>
-      </div>
 
-      <button
-        type="button"
-        className={`bookmark-save-btn${hasCurrentPageBookmark ? " active" : ""}`}
-        onClick={onAddBookmark}
-        title="Zapisz zakładkę"
-      >
-        <span className="bookmark-save-btn-label">
-          {hasCurrentPageBookmark ? "Zapisano ten postęp" : "Zapisz zakładkę"}
-        </span>
-        <span className="bookmark-save-btn-meta">
-          Postęp {currentProgress}%
-        </span>
-      </button>
+        <Button
+          variant={hasCurrentPageBookmark ? "filled" : "default"}
+          onClick={onAddBookmark}
+          title="Zapisz zakładkę"
+        >
+          {hasCurrentPageBookmark ? "Zapisano ten postęp" : "Zapisz zakładkę"} · {currentProgress}%
+        </Button>
 
-      <div className="bookmark-menu-list">
-        {bookmarkList.length ? (
-          bookmarkList.map((bookmark) => (
-            <div key={bookmark.id} className="bookmark-item">
-              <button
-                type="button"
-                className="bookmark-item-main"
-                onClick={() => onJumpToBookmark(bookmark)}
-              >
-                <span className="bookmark-item-copy">
-                  <span className="bookmark-item-title">
-                    {bookmark.chapterTitle || `Rozdział ${bookmark.chapterIndex + 1}`}
-                  </span>
-                  <span className="bookmark-item-meta">
-                    Postęp {formatBookmarkProgress(bookmark)}
-                  </span>
-                  {bookmark.preview && (
-                    <span className="bookmark-item-preview">{bookmark.preview}</span>
-                  )}
-                </span>
-              </button>
+        <ScrollArea.Autosize mah={260}>
+          <Stack gap={4}>
+            {bookmarkList.length ? (
+              bookmarkList.map((bookmark) => (
+                <Group key={bookmark.id} gap={4} wrap="nowrap" align="flex-start">
+                  <UnstyledButton
+                    flex={1}
+                    onClick={() => onJumpToBookmark(bookmark)}
+                    px="xs"
+                    py={4}
+                    style={{ borderRadius: 4 }}
+                  >
+                    <Text size="sm" fw={600}>
+                      {bookmark.chapterTitle || `Rozdział ${bookmark.chapterIndex + 1}`}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Postęp {formatBookmarkProgress(bookmark)}
+                    </Text>
+                    {bookmark.preview && (
+                      <Text size="xs" c="dimmed" lineClamp={2}>{bookmark.preview}</Text>
+                    )}
+                  </UnstyledButton>
 
-              <button
-                type="button"
-                className="bookmark-item-remove"
-                onClick={() => onRemoveBookmark(bookmark.id)}
-                title="Usuń zakładkę"
-                aria-label="Usuń zakładkę"
-              >
-                x
-              </button>
-            </div>
-          ))
-        ) : (
-          <div className="bookmark-empty">Brak zapisanych zakładek.</div>
-        )}
-      </div>
+                  <ActionIcon
+                    variant="subtle"
+                    size="sm"
+                    onClick={() => onRemoveBookmark(bookmark.id)}
+                    title="Usuń zakładkę"
+                    aria-label="Usuń zakładkę"
+                  >
+                    ✕
+                  </ActionIcon>
+                </Group>
+              ))
+            ) : (
+              <Text size="sm" c="dimmed">Brak zapisanych zakładek.</Text>
+            )}
+          </Stack>
+        </ScrollArea.Autosize>
+      </Stack>
     </div>
   );
 }

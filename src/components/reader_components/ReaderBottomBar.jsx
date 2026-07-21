@@ -1,3 +1,24 @@
+import { ActionIcon, Group, Slider, Text } from "@mantine/core";
+
+function TtsControls({ onPrev, prevDisabled, onToggle, paused, onStop, onNext, nextDisabled }) {
+  return (
+    <Group gap="xs" justify="center" flex={1}>
+      <ActionIcon variant="subtle" size="lg" onClick={onPrev} disabled={prevDisabled} title="Poprzedni fragment">
+        ⏮
+      </ActionIcon>
+      <ActionIcon variant="filled" size="lg" onClick={onToggle} title={paused ? "Wznów" : "Pauza"}>
+        {paused ? "▶" : "⏸"}
+      </ActionIcon>
+      <ActionIcon variant="subtle" size="lg" onClick={onStop} title="Zakończ TTS">
+        ⏹
+      </ActionIcon>
+      <ActionIcon variant="subtle" size="lg" onClick={onNext} disabled={nextDisabled} title="Następny akapit">
+        ⏭
+      </ActionIcon>
+    </Group>
+  );
+}
+
 export default function ReaderBottomBar({
   currentPage,
   totalPages,
@@ -27,112 +48,65 @@ export default function ReaderBottomBar({
 
   return (
     <div className="bottombar">
-      <button
-        className="nav-btn"
+      <ActionIcon
+        variant="subtle"
+        size="xl"
         onClick={onPrevPage}
         disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
       >
         ❮
-      </button>
+      </ActionIcon>
 
       {originalTtsPlaying ? (
-        <div className="tts-inline">
-          <button
-            className="tts-bar-btn"
-            onClick={() => onJumpSentence(-1)}
-            disabled={activeSid <= 0}
-            title="Poprzedni fragment"
-          >
-            ⏮
-          </button>
-          <button
-            className="tts-bar-btn tts-bar-play active"
-            onClick={onToggleOriginalTts}
-            title={originalTtsPaused ? "Wznów" : "Pauza"}
-          >
-            {originalTtsPaused ? "▶" : "⏸"}
-          </button>
-          <button
-            className="tts-bar-btn"
-            onClick={onStopOriginalTts}
-            title="Zakończ TTS"
-          >
-            ⏹
-          </button>
-          <button
-            className="tts-bar-btn"
-            onClick={() => onJumpSentence(1)}
-            disabled={activeSid >= originalTtsFragments.length - 1}
-            title="Następny akapit"
-          >
-            ⏭
-          </button>
-        </div>
+        <TtsControls
+          onPrev={() => onJumpSentence(-1)}
+          prevDisabled={activeSid <= 0}
+          onToggle={onToggleOriginalTts}
+          paused={originalTtsPaused}
+          onStop={onStopOriginalTts}
+          onNext={() => onJumpSentence(1)}
+          nextDisabled={activeSid >= originalTtsFragments.length - 1}
+        />
       ) : ttsPlaying ? (
-        <div className="tts-inline">
-          <button
-            className="tts-bar-btn"
-            onClick={() => onJumpPolyParagraph(-1)}
-            disabled={activePolyPid <= 0}
-            title="Poprzedni fragment"
-          >
-            ⏮
-          </button>
-          <button
-            className="tts-bar-btn tts-bar-play active"
-            onClick={onToggleHybridTts}
-            title={ttsPaused ? "Wznów" : "Pauza"}
-          >
-            {ttsPaused ? "▶" : "⏸"}
-          </button>
-          <button
-            className="tts-bar-btn"
-            onClick={onStopHybridTts}
-            title="Zakończ TTS"
-          >
-            ⏹
-          </button>
-          <button
-            className="tts-bar-btn"
-            onClick={() => onJumpPolyParagraph(1)}
-            disabled={activePolyPid >= polyTtsParagraphs.length - 1}
-            title="Następny akapit"
-          >
-            ⏭
-          </button>
-        </div>
+        <TtsControls
+          onPrev={() => onJumpPolyParagraph(-1)}
+          prevDisabled={activePolyPid <= 0}
+          onToggle={onToggleHybridTts}
+          paused={ttsPaused}
+          onStop={onStopHybridTts}
+          onNext={() => onJumpPolyParagraph(1)}
+          nextDisabled={activePolyPid >= polyTtsParagraphs.length - 1}
+        />
       ) : (
-        <div className="prog-wrap">
-          <div className="prog-lbl">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Text size="xs" c="dimmed" ta="center">
             {currentPage + 1}/{totalPages} • {pageProgress}%
-          </div>
-          <input
-            className="page-slider"
-            type="range"
-            min="0"
+          </Text>
+          <Slider
+            size="xs"
+            min={0}
             max={Math.max(totalPages - 1, 0)}
-            step="1"
+            step={1}
             value={Math.min(currentPage, Math.max(totalPages - 1, 0))}
             disabled={totalPages <= 1}
+            label={null}
             aria-label="Przesuń do strony"
-            onChange={onPageSliderChange}
-            onPointerUp={onPageSliderCommit}
-            onMouseUp={onPageSliderCommit}
-            onTouchEnd={onPageSliderCommit}
-            onKeyUp={onPageSliderCommit}
+            onChange={(value) => onPageSliderChange({ target: { value } })}
+            onChangeEnd={(value) => onPageSliderCommit({ target: { value } })}
           />
         </div>
       )}
 
-      <button
-        className="nav-btn"
+      <ActionIcon
+        variant="subtle"
+        size="xl"
         onClick={onNextPage}
         disabled={
           currentPage >= totalPages - 1 && (chapterIdx ?? 0) >= chapterCount - 1
         }
       >
         ❯
-      </button>
+      </ActionIcon>
     </div>
   );
 }

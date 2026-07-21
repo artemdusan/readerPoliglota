@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Button } from "@mantine/core";
 import {
   db,
   getBook,
@@ -2381,9 +2382,9 @@ export default function Reader({
     return (
       <div className="loading-screen">
         <div style={{ color: "var(--red)" }}>Nie znaleziono książki.</div>
-        <button className="btn-ghost" onClick={handleBackToLibrary}>
+        <Button variant="subtle" onClick={handleBackToLibrary}>
           ← Biblioteka
-        </button>
+        </Button>
       </div>
     );
   }

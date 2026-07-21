@@ -1,4 +1,15 @@
 import { useState, useEffect } from "react";
+import {
+  ActionIcon,
+  Button,
+  Divider,
+  Group,
+  NativeSelect,
+  Stack,
+  Text,
+  TextInput,
+  UnstyledButton,
+} from "@mantine/core";
 import { UiIcon } from "./ReaderIcons";
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, getVoiceId } from "./readerUtils";
 
@@ -10,6 +21,56 @@ function getVoiceNoteText(voiceLoadState) {
     return "Lista głosów jest pusta. Na mobilnym Chromium pojawia się to często, gdy system nie ma zainstalowanych danych TTS albo przeglądarka nie odsłoniła jeszcze głosów.";
   }
   return "Brak osobnych głosów dla tego języka. Przeglądarka użyje domyślnego głosu systemowego.";
+}
+
+function Tool({ icon, label, active, onClick, disabled, title, toolRef }) {
+  return (
+    <UnstyledButton
+      ref={toolRef}
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      px="xs"
+      py={6}
+      style={{
+        borderRadius: 6,
+        textAlign: "center",
+        flex: 1,
+        background: active ? "var(--bg-hover)" : undefined,
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      <Stack gap={2} align="center">
+        {icon}
+        <Text size="xs">{label}</Text>
+      </Stack>
+    </UnstyledButton>
+  );
+}
+
+function VoiceSelect({ icon, label, langLabel, voices, value, onChange }) {
+  return (
+    <Group gap="xs" wrap="nowrap">
+      <Group gap={6} wrap="nowrap" w={130}>
+        <UiIcon name={icon} />
+        <div>
+          <Text size="sm">{label}</Text>
+          <Text size="xs" c="dimmed">{langLabel}</Text>
+        </div>
+      </Group>
+      <NativeSelect
+        flex={1}
+        size="xs"
+        value={value}
+        disabled={!voices.length}
+        onChange={(event) => onChange(event.target.value)}
+        data={[
+          { value: "", label: voices.length ? "Domyślny głos" : "Głos systemowy" },
+          ...voices.map((voice) => ({ value: getVoiceId(voice), label: voice.name })),
+        ]}
+      />
+    </Group>
+  );
 }
 
 export default function ReaderSettingsMenu({
@@ -54,72 +115,52 @@ export default function ReaderSettingsMenu({
   }, [fontSize]);
 
   return (
-    <div className="settings-menu" ref={menuRef}>
-      <div className="settings-menu-toolbar">
-        <button
-          className={`settings-tool${searchOpen ? " settings-tool-active" : ""}`}
-          onClick={onToolSearch}
-          title="Szukaj w rozdziale"
-        >
-          <span className="settings-tool-icon">
-            <UiIcon name="search" />
-          </span>
-          <span className="settings-tool-text">Szukaj</span>
-        </button>
+    <div className="reader-float-menu" ref={menuRef}>
+      <Stack gap="sm">
+        <Group gap={4} wrap="nowrap">
+          <Tool
+            icon={<UiIcon name="search" />}
+            label="Szukaj"
+            active={searchOpen}
+            onClick={onToolSearch}
+            title="Szukaj w rozdziale"
+          />
+          <Tool
+            toolRef={bookmarkToggleRef}
+            icon={<UiIcon name="bookmark" />}
+            label="Zakładki"
+            onClick={onToolBookmarks}
+            title="Zakładki"
+          />
+          <Tool
+            icon={<UiIcon name={isTtsPlaying && !isTtsPaused ? "pause" : "play"} strokeWidth={2} />}
+            label={ttsButtonLabel}
+            active={isTtsActive}
+            onClick={onToggleTts}
+            disabled={!hasTtsAvailable}
+            title={ttsButtonTitle}
+          />
+          <Tool
+            icon={<UiIcon name={isFullscreen ? "fullscreenExit" : "fullscreen"} />}
+            label="Ekran"
+            onClick={onToggleFullscreen}
+            title={isFullscreen ? "Wyjdź z pełnego ekranu" : "Pełny ekran"}
+          />
+        </Group>
 
-        <button
-          ref={bookmarkToggleRef}
-          className={`settings-tool`}
-          onClick={onToolBookmarks}
-          title="Zakładki"
-        >
-          <span className="settings-tool-icon">
-            <UiIcon name="bookmark" />
-          </span>
-          <span className="settings-tool-text">Zakładki</span>
-        </button>
+        <Divider label="Widok" labelPosition="left" />
 
-        <button
-          className={`settings-tool${isTtsActive ? " settings-tool-active" : ""}`}
-          onClick={onToggleTts}
-          title={ttsButtonTitle}
-          disabled={!hasTtsAvailable}
-        >
-          <span className="settings-tool-icon">
-            <UiIcon
-              name={isTtsPlaying && !isTtsPaused ? "pause" : "play"}
-              strokeWidth={2}
-            />
-          </span>
-          <span className="settings-tool-text">{ttsButtonLabel}</span>
-        </button>
-
-        <button
-          className={`settings-tool`}
-          onClick={onToggleFullscreen}
-          title={isFullscreen ? "Wyjdź z pełnego ekranu" : "Peły ekran"}
-        >
-          <span className="settings-tool-icon">
-            <UiIcon name={isFullscreen ? "fullscreenExit" : "fullscreen"} />
-          </span>
-          <span className="settings-tool-text">Ekran</span>
-        </button>
-      </div>
-
-      <div className="settings-menu-divider" />
-
-      <div className="settings-menu-section-label">Widok</div>
-      <div className="settings-menu-row settings-menu-row-compact">
-        <span className="settings-menu-label settings-menu-label-with-icon">
-          <UiIcon name="type" />
-          <span>Rozmiar</span>
-        </span>
-        <div className="settings-menu-ctrl">
-          <button className="ctl" onClick={() => onChangeFontSize(-1)}>
+        <Group gap="xs" wrap="nowrap">
+          <Group gap={6} wrap="nowrap" flex={1}>
+            <UiIcon name="type" />
+            <Text size="sm">Rozmiar</Text>
+          </Group>
+          <Button variant="default" size="compact-sm" onClick={() => onChangeFontSize(-1)}>
             A-
-          </button>
-          <input
-            className="fs-val fs-input"
+          </Button>
+          <TextInput
+            w={56}
+            size="xs"
             type="number"
             min={FONT_SIZE_MIN}
             max={FONT_SIZE_MAX}
@@ -135,115 +176,68 @@ export default function ReaderSettingsMenu({
             }}
             aria-label="Rozmiar czcionki"
           />
-          <button className="ctl" onClick={() => onChangeFontSize(1)}>
+          <Button variant="default" size="compact-sm" onClick={() => onChangeFontSize(1)}>
             A+
-          </button>
-        </div>
-      </div>
+          </Button>
+        </Group>
 
-      {(showAddTranslation || showRegenerateTranslation) && (
-        <>
-          <div className="settings-menu-divider" />
-          <div className="settings-menu-section-label">Tłumaczenie</div>
-        </>
-      )}
+        {(showAddTranslation || showRegenerateTranslation) && (
+          <>
+            <Divider label="Tłumaczenie" labelPosition="left" />
+            <Group gap="xs" wrap="nowrap">
+              <Group gap={6} wrap="nowrap" flex={1}>
+                <UiIcon name="translate" />
+                <Text size="sm">Rozdział</Text>
+              </Group>
+              {showAddTranslation ? (
+                <Button size="compact-sm" leftSection={<UiIcon name="sparkles" />} onClick={onAddTranslation}>
+                  Dodaj
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    variant="default"
+                    size="compact-sm"
+                    leftSection={<UiIcon name="refresh" />}
+                    onClick={onRegenerateTranslation}
+                  >
+                    Regeneruj
+                  </Button>
+                  <ActionIcon variant="default" onClick={onDeleteTranslation} title="Usuń tłumaczenie">
+                    <UiIcon name="delete" />
+                  </ActionIcon>
+                </>
+              )}
+            </Group>
+          </>
+        )}
 
-      {showAddTranslation && (
-        <div className="settings-menu-row settings-menu-row-compact">
-          <span className="settings-menu-label settings-menu-label-with-icon">
-            <UiIcon name="translate" />
-            <span>Rozdział</span>
-          </span>
-          <div className="settings-menu-ctrl">
-            <button
-              className="ctl ctl-gold ctl-wide"
-              onClick={onAddTranslation}
-            >
-              <UiIcon name="sparkles" />
-              Dodaj
-            </button>
-          </div>
-        </div>
-      )}
+        <Divider label="Głosy TTS" labelPosition="left" />
 
-      {showRegenerateTranslation && (
-        <div className="settings-menu-row settings-menu-row-compact">
-          <span className="settings-menu-label settings-menu-label-with-icon">
-            <UiIcon name="translate" />
-            <span>Rozdział</span>
-          </span>
-          <div className="settings-menu-ctrl" style={{ gap: 6 }}>
-            <button className="ctl ctl-wide" onClick={onRegenerateTranslation}>
-              <UiIcon name="refresh" />
-              Regeneruj
-            </button>
-            <button
-              className="ctl"
-              onClick={onDeleteTranslation}
-              title="Usuń tłumaczenie"
-            >
-              <UiIcon name="delete" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="settings-menu-divider" />
-      <div className="settings-menu-section-label">Głosy TTS</div>
-
-      <div className="settings-voice-row">
-        <span className="settings-menu-label settings-menu-label-with-icon">
-          <UiIcon name="voice" />
-          <span>Oryginał</span>
-          <span className="settings-voice-lang">{sourceLanguageLabel}</span>
-        </span>
-        <select
-          className="tts-voice-sel"
+        <VoiceSelect
+          icon="voice"
+          label="Oryginał"
+          langLabel={sourceLanguageLabel}
+          voices={sourceVoices}
           value={ttsSourceVoice}
-          disabled={!sourceVoices.length}
-          onChange={(event) => onSourceVoiceChange(event.target.value)}
-        >
-          <option value="">
-            {sourceVoices.length ? "Domyślny głos" : "Głos systemowy"}
-          </option>
-          {sourceVoices.map((voice) => (
-            <option key={getVoiceId(voice)} value={getVoiceId(voice)}>
-              {voice.name}
-            </option>
-          ))}
-        </select>
-      </div>
+          onChange={onSourceVoiceChange}
+        />
 
-      {showTargetVoiceSelect && (
-        <div className="settings-voice-row">
-          <span className="settings-menu-label settings-menu-label-with-icon">
-            <UiIcon name="translate" />
-            <span>Tłumaczenie</span>
-            <span className="settings-voice-lang">{targetLanguageLabel}</span>
-          </span>
-          <select
-            className="tts-voice-sel"
+        {showTargetVoiceSelect && (
+          <VoiceSelect
+            icon="translate"
+            label="Tłumaczenie"
+            langLabel={targetLanguageLabel}
+            voices={targetVoices}
             value={ttsTargetVoice}
-            disabled={!targetVoices.length}
-            onChange={(event) => onTargetVoiceChange(event.target.value)}
-          >
-            <option value="">
-              {targetVoices.length ? "Domyślny głos" : "Głos systemowy"}
-            </option>
-            {targetVoices.map((voice) => (
-              <option key={getVoiceId(voice)} value={getVoiceId(voice)}>
-                {voice.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+            onChange={onTargetVoiceChange}
+          />
+        )}
 
-      {showVoiceNote && (
-        <div className="settings-menu-note">
-          {getVoiceNoteText(voiceLoadState)}
-        </div>
-      )}
+        {showVoiceNote && (
+          <Text size="xs" c="dimmed">{getVoiceNoteText(voiceLoadState)}</Text>
+        )}
+      </Stack>
     </div>
   );
 }

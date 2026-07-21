@@ -1,3 +1,4 @@
+import { ActionIcon, NativeSelect } from "@mantine/core";
 import { UiIcon } from "./ReaderIcons";
 
 export default function ReaderTopbar({
@@ -13,41 +14,36 @@ export default function ReaderTopbar({
 }) {
   return (
     <div className="topbar">
-      <button
-        className="sb-tog-inline ctl ctl-icon"
-        onClick={onToggleSidebar}
-        title="Spis treści"
-      >
+      <ActionIcon variant="subtle" size="lg" onClick={onToggleSidebar} title="Spis treści">
         <UiIcon name="menu" />
-      </button>
+      </ActionIcon>
 
       <div className="tb-chapter">
         {chapter ? (
-          <select
-            className="tb-ver-select"
+          <NativeSelect
+            variant="unstyled"
             value={activeLang ?? ""}
             onChange={(event) => onSwitchLang(event.target.value || null)}
-          >
-            <option value="">{`${chapterLabel} — Oryginał`}</option>
-            {orderedCachedLangs.map((lang) => (
-              <option key={`display-${lang.code}`} value={lang.code}>
-                {`${chapterLabel} — ${lang.name}`}
-              </option>
-            ))}
-          </select>
+            data={[
+              { value: "", label: `${chapterLabel} — Oryginał` },
+              ...orderedCachedLangs.map((lang) => ({
+                value: lang.code,
+                label: `${chapterLabel} — ${lang.name}`,
+              })),
+            ]}
+          />
         ) : null}
       </div>
 
-      <div className="tb-controls">
-        <button
-          ref={settingsToggleRef}
-          className={`ctl ctl-icon${settingsMenuOpen ? " ctl-active" : ""}`}
-          onClick={onToggleSettings}
-          title="Ustawienia"
-        >
-          <UiIcon name="settings" />
-        </button>
-      </div>
+      <ActionIcon
+        ref={settingsToggleRef}
+        variant={settingsMenuOpen ? "filled" : "subtle"}
+        size="lg"
+        onClick={onToggleSettings}
+        title="Ustawienia"
+      >
+        <UiIcon name="settings" />
+      </ActionIcon>
     </div>
   );
 }
