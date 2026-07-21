@@ -1,5 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { BsGear, BsArrowRepeat, BsPlus } from "react-icons/bs";
+import {
+  BsGear,
+  BsArrowRepeat,
+  BsPlus,
+  BsStars,
+  BsDownload,
+  BsPencil,
+  BsArchive,
+  BsArrowCounterclockwise,
+  BsTrash,
+} from "react-icons/bs";
 import { EpubParser } from "../lib/epubParser";
 import { formatTransfer, formatLastSync, formatRelativeSync } from "../utils/formatUtils";
 import {
@@ -325,8 +335,7 @@ export default function Library({
     );
   }
 
-  const activeBooks   = books.filter(b => !b.status || b.status === 'active');
-  const readBooks     = books.filter(b => b.status === 'read');
+  const activeBooks   = books.filter(b => b.status !== 'archived');
   const archivedBooks = books.filter(b => b.status === 'archived');
 
   const q = search.trim().toLowerCase();
@@ -336,7 +345,7 @@ export default function Library({
 
   const baseTabBooks = allFiltered
     ? allFiltered
-    : activeTab === 'read' ? readBooks : activeTab === 'archived' ? archivedBooks : activeBooks;
+    : activeTab === 'archived' ? archivedBooks : activeBooks;
 
   const tabBooks = (!allFiltered && activeTab === 'active')
     ? [...baseTabBooks].sort((a, b) => {
@@ -443,21 +452,25 @@ export default function Library({
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
+              <button
+                className="lib-add-btn"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={adding}
+                title="Dodaj książkę EPUB"
+              >
+                {adding ? <span className="lib-add-spin" /> : <BsPlus />}
+                <span className="lib-add-text">
+                  {adding ? "Wczytywanie…" : "Dodaj EPUB"}
+                </span>
+              </button>
             </div>
             <div className="lib-tabs">
               <button
                 className={`lib-tab ${activeTab === 'active' ? 'is-active' : ''}`}
                 onClick={() => setActiveTab('active')}
               >
-                Czytane
+                Biblioteka
                 {activeBooks.length > 0 && <span className="lib-tab-count">{activeBooks.length}</span>}
-              </button>
-              <button
-                className={`lib-tab ${activeTab === 'read' ? 'is-active' : ''}`}
-                onClick={() => setActiveTab('read')}
-              >
-                Przeczytane
-                {readBooks.length > 0 && <span className="lib-tab-count">{readBooks.length}</span>}
               </button>
               <button
                 className={`lib-tab ${activeTab === 'archived' ? 'is-active' : ''}`}
@@ -498,9 +511,7 @@ export default function Library({
               </button>
             </div>
             ) : (
-              <div className="lib-empty-tab">
-                {activeTab === 'read' ? 'Brak przeczytanych książek.' : 'Archiwum jest puste.'}
-              </div>
+              <div className="lib-empty-tab">Archiwum jest puste.</div>
             )
           ) : (
             <div
@@ -554,7 +565,7 @@ export default function Library({
                               setCtxBookId(null);
                             }}
                           >
-                            Generuj tłumaczenia
+                            <BsStars /> Tłumaczenia
                           </button>
                         )}
                         <button
@@ -563,7 +574,7 @@ export default function Library({
                             setCtxBookId(null);
                           }}
                         >
-                          Eksportuj EPUB
+                          <BsDownload /> Eksportuj EPUB
                         </button>
                         <button
                           onClick={() => {
@@ -571,30 +582,18 @@ export default function Library({
                             setCtxBookId(null);
                           }}
                         >
-                          Edytuj
+                          <BsPencil /> Edytuj
                         </button>
-                        {(() => {
-                          const status = book.status || 'active';
-                          const actions = {
-                            active: [
-                              { label: '✓ Oznacz jako przeczytaną', status: 'read' },
-                              { label: '⬛ Archiwizuj', status: 'archived' },
-                            ],
-                            read: [
-                              { label: '↩ Przywróć do biblioteki', status: 'active' },
-                              { label: '⬛ Archiwizuj', status: 'archived' },
-                            ],
-                            archived: [
-                              { label: '↩ Przywróć do biblioteki', status: 'active' },
-                              { label: '✓ Przenieś do przeczytanych', status: 'read' },
-                            ],
-                          };
-                          return (actions[status] || []).map((a) => (
-                            <button key={a.status} onClick={(e) => handleStatusChange(e, book.id, a.status)}>
-                              {a.label}
-                            </button>
-                          ));
-                        })()}
+                        {book.status === 'archived' ? (
+                          <button onClick={(e) => handleStatusChange(e, book.id, 'active')}>
+                            <BsArrowCounterclockwise /> Przywróć do biblioteki
+                          </button>
+                        ) : (
+                          <button onClick={(e) => handleStatusChange(e, book.id, 'archived')}>
+                            <BsArchive /> Archiwizuj
+                          </button>
+                        )}
+                        <div className="book-ctx-sep" aria-hidden="true" />
                         <button
                           className="book-ctx-delete"
                           onClick={(e) => {
@@ -602,15 +601,12 @@ export default function Library({
                             setCtxBookId(null);
                           }}
                         >
-                          Usuń
+                          <BsTrash /> Usuń
                         </button>
                       </div>
                     )}
 
                     <div className="book-meta">
-                      {book.status === 'read' && (
-                        <span className="book-status-badge is-read">Przeczytana</span>
-                      )}
                       {book.status === 'archived' && (
                         <span className="book-status-badge is-archived">Archiwum</span>
                       )}
@@ -679,16 +675,6 @@ export default function Library({
           onClose={() => setEpubBook(null)}
         />
       )}
-
-      <button
-        className={`lib-fab ${adding ? "is-loading" : ""}`}
-        onClick={() => fileInputRef.current?.click()}
-        disabled={adding}
-        title="Dodaj książkę EPUB"
-        aria-label="Dodaj książkę"
-      >
-        {adding ? <span className="lib-fab-spin" /> : <BsPlus />}
-      </button>
 
       <div className="lib-version">v{version}</div>
     </div>

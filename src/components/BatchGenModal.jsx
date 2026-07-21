@@ -142,7 +142,13 @@ export default function BatchGenModal({
   }
 
   function selectAll() {
-    setSelected(new Set(chapters.map((c) => c.id)));
+    setSelected(
+      new Set(
+        (mode === "delete" ? chapters.filter((c) => c.hasPoly) : chapters).map(
+          (c) => c.id,
+        ),
+      ),
+    );
   }
   function selectNone() {
     setSelected(new Set());
@@ -312,7 +318,7 @@ export default function BatchGenModal({
       <div className="modal bgen-modal">
         <div className="modal-head">
           <div className="modal-title">
-            {mode === "delete" ? "Usuń tłumaczenia" : "Generuj tłumaczenia"}
+            Tłumaczenia{book?.title ? ` — ${book.title}` : ""}
           </div>
           <button
             className="modal-close"
@@ -332,39 +338,40 @@ export default function BatchGenModal({
             </div>
           ) : (
             <>
-              <div className="bgen-setup-grid">
-                <div className="bgen-setup-card">
-                  <span className="bgen-setup-label">Język</span>
-                  <select
-                    className="form-select"
-                    value={selectedLang.code}
-                    onChange={(e) => handleLangChange(e.target.value)}
-                    disabled={generating}
-                  >
-                    {LANGUAGES.map((l) => (
-                      <option key={l.code} value={l.code}>
-                        {l.flag} {l.label} ({l.name})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
+              <div className="bgen-lang-row">
+                <span className="bgen-setup-label">Język tłumaczenia</span>
+                <select
+                  className="form-select"
+                  value={selectedLang.code}
+                  onChange={(e) => handleLangChange(e.target.value)}
+                  disabled={generating}
+                >
+                  {LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.flag} {l.label} ({l.name})
+                    </option>
+                  ))}
+                </select>
+                <span className="bgen-lang-summary">
+                  Przetłumaczono {chapters.filter((c) => c.hasPoly).length} z{" "}
+                  {chapters.length} rozdziałów
+                </span>
               </div>
 
-              <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              <div className="bgen-mode-tabs">
                 <button
-                  className={`ctl${mode === "generate" ? " ctl-active" : ""}`}
+                  className={`bgen-mode-tab${mode === "generate" ? " is-active" : ""}`}
                   onClick={() => switchMode("generate")}
                   disabled={generating}
                 >
-                  Generuj
+                  Generuj brakujące
                 </button>
                 <button
-                  className={`ctl${mode === "delete" ? " ctl-active" : ""}`}
+                  className={`bgen-mode-tab${mode === "delete" ? " is-active" : ""}`}
                   onClick={() => switchMode("delete")}
-                  disabled={generating}
+                  disabled={generating || chapters.every((c) => !c.hasPoly)}
                 >
-                  Usuń
+                  Usuń istniejące
                 </button>
               </div>
 
@@ -407,12 +414,14 @@ export default function BatchGenModal({
                     <span className="bgen-ch-title">
                       {ch.title || `Rozdział ${i + 1}`}
                     </span>
-                    <span className="bgen-ch-status">
-                      <span
-                        className={`bgen-dot ${ch.hasPoly ? "done" : errors[ch.id] ? "error" : "empty"}`}
-                        title={ch.hasPoly ? "Tłumaczenie istnieje" : errors[ch.id] ?? "Brak tłumaczenia"}
-                      />
-                    </span>
+                    {(ch.hasPoly || errors[ch.id]) && (
+                      <span className="bgen-ch-status">
+                        <span
+                          className={`bgen-dot ${errors[ch.id] ? "error" : "done"}`}
+                          title={errors[ch.id] ?? "Tłumaczenie istnieje"}
+                        />
+                      </span>
+                    )}
                   </label>
                 ))}
               </div>
