@@ -35,6 +35,8 @@ import ReaderSettingsMenu from "./reader_components/ReaderSettingsMenu";
 import ReaderMissingLangBanner from "./reader_components/ReaderMissingLangBanner";
 import ReaderChapterContent from "./reader_components/ReaderChapterContent";
 import ReaderBottomBar from "./reader_components/ReaderBottomBar";
+import { UiIcon } from "./reader_components/ReaderIcons";
+import { closeApp } from "../utils/closeApp";
 import {
   SEARCH_BLOCK_SELECTOR,
   FONT_SIZE_MIN,
@@ -2489,6 +2491,15 @@ export default function Reader({
 
         {!distractionFree && (
           <>
+            <button
+              type="button"
+              className="reader-close-app"
+              onClick={closeApp}
+              title="Zamknij aplikację"
+              aria-label="Zamknij aplikację"
+            >
+              <UiIcon name="power" />
+            </button>
             <ReaderTopbar
               chapterLabel={chapterLabel}
               activeLang={activeLang}
