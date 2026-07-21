@@ -749,10 +749,7 @@ function parseSentencePatchResponse(text, batchSentences) {
 }
 
 function estimateBatchCost(pricing, promptTokens, completionTokens) {
-  return (
-    (promptTokens / 1000) * pricing.input +
-    (completionTokens / 1000) * pricing.output
-  );
+  return promptTokens * pricing.input + completionTokens * pricing.output;
 }
 
 function buildSentencePatchRequest(
