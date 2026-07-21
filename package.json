@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "prepare": "git config core.hooksPath .githooks"
+    "prepare": "git config core.hooksPath .githooks",
+    "test": "playwright test"
   },
   "dependencies": {
     "dexie": "^4.0.9",
@@ -17,6 +18,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@vitejs/plugin-react": "^4.3.1",
     "vite": "^5.4.8",
     "vite-plugin-pwa": "^0.20.5"
