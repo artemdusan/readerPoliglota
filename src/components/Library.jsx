@@ -28,7 +28,7 @@ import {
   BsTrash,
 } from "react-icons/bs";
 import { EpubParser } from "../lib/epubParser";
-import { formatTransfer, formatLastSync, formatRelativeSync } from "../utils/formatUtils";
+import { formatTransfer, formatLastSync, formatRelativeSync, getLastSyncTs } from "../utils/formatUtils";
 import {
   getActiveBooks,
   saveBook,
@@ -99,10 +99,7 @@ export default function Library({
   const [accountName, setAccountName] = useState(() => getUsername());
   const [syncActivity, setSyncActivity] = useState(() => getSyncActivity());
   const [syncNow, setSyncNow] = useState(() => Date.now());
-  const [lastSync, setLastSync] = useState(() => {
-    const value = localStorage.getItem("vocabapp:lastSync");
-    return value ? Number(value) : null;
-  });
+  const [lastSync, setLastSync] = useState(getLastSyncTs);
   const [showFeedback, setShowFeedback] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
   const [search, setSearch] = useState('');
@@ -201,8 +198,7 @@ export default function Library({
 
   useEffect(() => {
     function handleSynced() {
-      const value = localStorage.getItem("vocabapp:lastSync");
-      setLastSync(value ? Number(value) : Date.now());
+      setLastSync(getLastSyncTs() ?? Date.now());
       loadBooks();
     }
 

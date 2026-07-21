@@ -26,3 +26,9 @@ export function formatRelativeSync(ts, now) {
   const diffDays = Math.floor(diffHrs / 24);
   return `${diffDays} dni temu`;
 }
+
+// Odczyt znacznika ostatniej synchronizacji z localStorage (null gdy brak).
+export function getLastSyncTs() {
+  const value = localStorage.getItem("vocabapp:lastSync");
+  return value ? Number(value) : null;
+}

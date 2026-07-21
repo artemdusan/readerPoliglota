@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Loader } from '@mantine/core';
+import { getLastSyncTs } from './utils/formatUtils';
 import { useSettings } from './hooks/useSettings';
 import Library from './components/Library';
 import Reader  from './components/Reader';
@@ -19,8 +20,7 @@ function shouldRunStartupSync(intervalMinutes) {
   const minutes = Number(intervalMinutes ?? 30);
   if (!minutes || minutes < 1 || !navigator.onLine || !isLoggedIn()) return false;
 
-  const lastSyncRaw = localStorage.getItem('vocabapp:lastSync');
-  const lastSync = lastSyncRaw ? Number(lastSyncRaw) : null;
+  const lastSync = getLastSyncTs();
   if (!lastSync || Number.isNaN(lastSync)) return true;
 
   return Date.now() - lastSync >= minutes * 60 * 1000;

@@ -11,7 +11,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { formatLastSync } from "../utils/formatUtils";
+import { formatLastSync, getLastSyncTs } from "../utils/formatUtils";
 import {
   getUsername,
   isLoggedIn,
@@ -41,10 +41,7 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
   const [authError, setAuthError] = useState("");
   const [authWorking, setAuthWorking] = useState(false);
   const [syncActivity, setSyncActivity] = useState(() => getSyncActivity());
-  const [lastSync, setLastSync] = useState(() => {
-    const value = localStorage.getItem("vocabapp:lastSync");
-    return value ? Number(value) : null;
-  });
+  const [lastSync, setLastSync] = useState(getLastSyncTs);
 
   useEffect(
     () =>
@@ -59,8 +56,7 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
 
   useEffect(() => {
     function handleSynced() {
-      const value = localStorage.getItem("vocabapp:lastSync");
-      setLastSync(value ? Number(value) : Date.now());
+      setLastSync(getLastSyncTs() ?? Date.now());
     }
 
     window.addEventListener("vocabapp:synced", handleSynced);
