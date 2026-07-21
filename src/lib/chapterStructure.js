@@ -405,7 +405,7 @@ function renderSentenceTextWithWordSelections(
     );
     const target = overrideTarget || collapseWhitespace(selection.target);
     const original = collapseWhitespace(selection.original);
-    html += `<span class="pw" data-word-id="${currentWordId}" data-word-idx="${currentWordId}" data-sentence-id="${sentenceId}" data-block-id="${blockId}"><b class="pw-target">${escapeHtml(target)}</b><i class="pw-original">${escapeHtml(original)}</i></span>`;
+    html += `<span class="pw" data-word-id="${currentWordId}" data-word-idx="${currentWordId}" data-sentence-id="${sentenceId}" data-block-id="${blockId}"><i class="pw-original">${escapeHtml(original)}</i> <b class="pw-target">${escapeHtml(target)}</b></span>`;
     words.push({
       id: currentWordId,
       blockId,

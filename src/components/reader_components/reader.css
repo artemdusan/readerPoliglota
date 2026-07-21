@@ -1,0 +1,591 @@
+/* Reader — layout czytnika + treść rozdziału (e-ink first, monochrom).
+   Chrome UI (przyciski, menu, modale) jest w Mantine; tu zostaje tylko to,
+   czego biblioteka komponentów nie pokrywa: paginacja kolumnowa, typografia
+   książki, podświetlenia TTS/wyszukiwania i tryb bez rozproszeń. */
+
+html,
+body,
+#root {
+  height: 100%;
+  background: var(--bg);
+  color: var(--txt-1);
+  font-family: "DM Sans", system-ui, sans-serif;
+}
+
+/* BOOX Carta: zero animacji/cieni — mniej ghostingu na e-ink */
+html:root *,
+html:root *::before,
+html:root *::after {
+  animation: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transition: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html:root ::selection {
+  background: #000;
+  color: #fff;
+}
+
+.ui-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  display: block;
+  flex-shrink: 0;
+}
+
+/* ════════ LAYOUT ════════ */
+
+.reader-layout {
+  display: flex;
+  flex-direction: row;
+  /* svh: stała wysokość (paski przeglądarki widoczne) — chowanie/pokazywanie
+     pasków na mobile nie zmienia rozmiaru kontenera, więc nie ma reflow. */
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+}
+
+.reader-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  min-width: 0;
+  position: relative;
+  /* Stała rezerwa na ciasteczko na dole — paginacja nie zmienia się przy
+     pokazywaniu/ukrywaniu sterowania. */
+  padding: calc(8px + var(--safe-top)) 0 calc(60px + var(--safe-bottom));
+}
+
+/* ════════ PŁYWAJĄCE STEROWANIE (bez pasków z tłem) ════════ */
+
+/* Góra: tytuł rozdziału + chipy wersji językowych */
+.reader-top-chrome {
+  position: fixed;
+  top: calc(10px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 16px);
+  z-index: 950;
+}
+
+.rtc-chapter {
+  font-size: 12px;
+  color: var(--txt-2);
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 3px 14px;
+  max-width: 80vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rtc-langs {
+  display: flex;
+  gap: 6px;
+  max-width: calc(100vw - 16px);
+  overflow-x: auto;
+  padding: 2px;
+}
+
+.rtc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--txt-1);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  white-space: nowrap;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+
+.rtc-chip.is-active {
+  background: #000;
+  border-color: #000;
+  color: #fff;
+}
+
+.rtc-chip-add {
+  border-style: dashed;
+  color: var(--txt-2);
+}
+
+/* Dół: pigułka nawigacji stron / TTS + rząd narzędzi (nad ciasteczkiem) */
+.reader-bottom-chrome {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(60px + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(560px, calc(100vw - 16px));
+  z-index: 950;
+}
+
+.rbc-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  width: 100%;
+}
+
+.rbc-nav-tts {
+  justify-content: center;
+}
+
+.rbc-page-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  color: var(--txt-1);
+  font-size: 17px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rbc-page-btn .ui-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.rbc-page-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.rbc-tools {
+  display: flex;
+  gap: 2px;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 18px;
+  padding: 4px;
+  width: 100%;
+}
+
+.rbc-tool {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  border-radius: 12px;
+  padding: 6px 1px;
+  font-family: inherit;
+  font-size: 9px;
+  color: var(--txt-2);
+  cursor: pointer;
+}
+
+.rbc-tool .ui-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.rbc-tool-glyph {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.rbc-tool-label {
+  white-space: normal;
+  overflow: hidden;
+  max-width: 100%;
+  text-align: center;
+  line-height: 1.1;
+}
+
+.rbc-tool.is-active {
+  background: var(--bg-hover);
+  color: var(--txt-1);
+}
+
+.rbc-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Panel wyszukiwania — pływająca karta u góry */
+.reader-search-panel {
+  position: fixed;
+  top: calc(10px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 16px));
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  z-index: 990;
+}
+
+/* Pływające menu (ustawienia / zakładki) — nad dolnym sterowaniem */
+.reader-float-menu {
+  position: fixed;
+  bottom: calc(178px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100dvh - 260px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  z-index: 1000;
+}
+
+.missing-lang-banner {
+  position: fixed;
+  top: calc(10px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 16px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  z-index: 980;
+}
+
+.loading-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: var(--bg);
+}
+
+.loading-msg {
+  font-size: 12px;
+  color: var(--txt-2);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tts-error-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 2px solid #000;
+  color: #000;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 14px;
+  z-index: 9999;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ════════ TREŚĆ ROZDZIAŁU (paginacja kolumnowa) ════════ */
+
+.ch-scroll {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+  background: var(--bg);
+}
+
+.ch-columns {
+  height: 100%;
+  column-gap: 0;
+  will-change: transform;
+}
+
+.ch-inner {
+  max-width: 668px;
+  margin: 0 auto;
+  padding: 24px 0 48px;
+}
+
+.ch-anim {
+  animation: riseup 0.22s ease both;
+}
+
+/* Fade tylko na opacity — translateY tworzyłby zagnieżdżony kontekst
+   kompozycji w .ch-columns (will-change), przez co iOS Safari raportuje
+   błędny scrollWidth podczas animacji i psuje przywracanie pozycji. */
+@keyframes riseup {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ch-body {
+  font-family: var(--reader-font, "EB Garamond", serif);
+  font-size: var(--fs);
+  overflow-wrap: break-word;
+  line-height: 1.9;
+  color: var(--txt-1);
+  -webkit-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+}
+
+.ch-body p {
+  margin-bottom: 0.9em;
+  break-inside: avoid;
+}
+
+.ch-body p:empty {
+  display: none;
+}
+
+.ch-body h1,
+.ch-body h2,
+.ch-body h3,
+.ch-body h4 {
+  font-family: var(--reader-font, "EB Garamond", serif);
+  color: var(--txt-1);
+  margin: 2em 0 0.7em;
+  font-weight: 600;
+  line-height: 1.3;
+  break-inside: avoid;
+}
+
+.ch-body h1 { font-size: 1.5em; }
+.ch-body h2 { font-size: 1.3em; }
+.ch-body h3 { font-size: 1.15em; }
+
+.ch-body strong {
+  font-weight: 600;
+  color: #000;
+}
+
+.ch-body a {
+  color: var(--gold);
+  text-decoration: none;
+}
+
+.ch-body a:hover {
+  text-decoration: underline;
+}
+
+.ch-body blockquote {
+  margin: 1.5em 0;
+  padding: 0.4em 0 0.4em 1.4em;
+  border-left: 2px solid var(--border);
+  color: var(--txt-2);
+  font-style: italic;
+}
+
+.ch-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 2em auto;
+  border-radius: 2px;
+}
+
+.ch-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5em 0;
+  font-size: 0.9em;
+}
+
+.ch-body td {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+}
+
+/* ════════ POLYGLOT — pary słów ════════ */
+
+/* Zwykły inline — inline-flex robił z pary słów niełamliwy blok, który przy
+   dużej czcionce wystawał poza kolumnę i nachodził na sąsiednią stronę. */
+.pw {
+  cursor: pointer;
+}
+
+.pw-original {
+  font: inherit;
+  color: inherit;
+}
+
+.pw-target {
+  font-style: normal;
+  font-weight: bold;
+  color: inherit;
+}
+
+.ch-body.tts-ready .pw {
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+/* ════════ PODŚWIETLENIA (TTS / szukaj / kotwice) ════════ */
+
+.ch-body.tts-ready .pw:hover,
+.ch-body.audio-ready [data-pid]:hover,
+[data-pid].paragraph-active,
+.tts-active {
+  background: var(--gold-dim) !important;
+  border-radius: 2px;
+  outline-color: var(--border);
+}
+
+.ch-body.audio-ready [data-pid] {
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.anchor-flash {
+  background: var(--bg-hover);
+  border-radius: 2px;
+  outline: 2px solid var(--border);
+}
+
+.search-hit-block {
+  background: var(--gold-dim);
+  border-radius: 4px;
+}
+
+.search-hit-active {
+  background: var(--bg-hover);
+  outline: 1px solid var(--border);
+}
+
+/* ════════ ZMIANA STRONY (flash dla e-ink) ════════ */
+
+.page-turn-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  opacity: 0;
+}
+
+.page-turn-flash.flash-next,
+.page-turn-flash.flash-prev {
+  opacity: 1;
+}
+
+.page-turn-flash.flash-next::after,
+.page-turn-flash.flash-prev::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: #000;
+}
+
+.page-turn-flash.flash-next::after { right: 0; }
+.page-turn-flash.flash-prev::after { left: 0; }
+
+/* ════════ CIASTECZKO (home) ════════ */
+
+.fs-home-row {
+  position: fixed;
+  bottom: calc(12px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 960;
+}
+
+.fs-page-indicator {
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 18px;
+  color: var(--txt-1);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.fs-page-indicator.is-open {
+  background: #000;
+  border-color: #000;
+  color: #fff;
+}
+
+/* Subtelne przyciski zmiany stron obok ciasteczka (tryb bez rozproszeń) */
+.fs-page-nav {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  color: var(--txt-2);
+  font-size: 14px;
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fs-page-nav:hover,
+.fs-page-nav:focus-visible {
+  opacity: 1;
+  color: var(--txt-1);
+  border-color: var(--border);
+  outline: none;
+}
+
+.fs-page-nav:disabled {
+  opacity: 0.2;
+  cursor: default;
+}
+
+/* ════════ MOBILE ════════ */
+
+@media (max-width: 780px) {
+  .ch-inner {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+}

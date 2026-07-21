@@ -7,48 +7,6 @@
 }
 
 :root {
-  --bg: #0e0d0b;
-  --bg-side: #121110;
-  --panel: #171411;
-  --bg-hover: #1b1916;
-  --border: #252220;
-  --border-soft: #1e1b18;
-  --txt-1: #e5dace;
-  --txt-2: #887b6c;
-  --txt-3: #453e36;
-  --gold: #c09050;
-  --gold-hi: #d4a862;
-  --gold-dim: rgba(192, 144, 80, 0.12);
-  --green: #7aaf7a;
-  --red: #b85a46;
-  --sidebar-w: 290px;
-  --fs: 19px;
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-left: env(safe-area-inset-left, 0px);
-  --safe-right: env(safe-area-inset-right, 0px);
-  -webkit-tap-highlight-color: rgba(212, 168, 98, 0.18);
-}
-
-html[data-theme="light"] {
-  --bg: #f5f0e8;
-  --bg-side: #ede8de;
-  --panel: #e6e0d6;
-  --bg-hover: #ddd8ce;
-  --border: #c4bdb0;
-  --border-soft: #d0c9bc;
-  --txt-1: #1a1714;
-  --txt-2: #6b6059;
-  --txt-3: #a89e94;
-  --gold: #7a5020;
-  --gold-hi: #8a6030;
-  --gold-dim: rgba(122, 80, 32, 0.1);
-  --green: #2a6f2a;
-  --red: #8a2010;
-  -webkit-tap-highlight-color: rgba(122, 80, 32, 0.15);
-}
-
-html[data-theme="boox"] {
   color-scheme: light;
   --bg: #faf7ef;
   --bg-side: #ede6d9;
@@ -64,26 +22,13 @@ html[data-theme="boox"] {
   --gold-dim: #ede6d9;
   --green: #2e2e2e;
   --red: #0f0f0f;
-}
-
-/* System preference: auto-detect dark/light */
-@media (prefers-color-scheme: light) {
-  html[data-theme="auto"] {
-    --bg: #f5f0e8;
-    --bg-side: #ede8de;
-    --panel: #e6e0d6;
-    --bg-hover: #ddd8ce;
-    --border: #c4bdb0;
-    --border-soft: #d0c9bc;
-    --txt-1: #1a1714;
-    --txt-2: #6b6059;
-    --txt-3: #a89e94;
-    --gold: #7a5020;
-    --gold-hi: #8a6030;
-    --gold-dim: rgba(122, 80, 32, 0.1);
-    --green: #2a6f2a;
-    --red: #8a2010;
-  }
+  --sidebar-w: 290px;
+  --fs: 19px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  -webkit-tap-highlight-color: rgba(212, 168, 98, 0.18);
 }
 
 /* Respect OS reduce-motion preference */
@@ -95,84 +40,5 @@ html[data-theme="boox"] {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-/* Overrides for hardcoded dark-mode colors in light theme */
-html[data-theme="light"] .ch-body {
-  color: #1a1714;
-}
-html[data-theme="light"] .ch-body strong {
-  color: #111;
-}
-html[data-theme="light"] .ch-body blockquote {
-  color: var(--txt-2);
-}
-html[data-theme="light"] .pw-original {
-  background: #fffdf8;
-  border-color: rgba(122, 80, 32, 0.35);
-  color: #1a1714;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-}
-html[data-theme="light"] .pw-target {
-  color: var(--gold);
-  background: rgba(122, 80, 32, 0.09);
-  border-bottom-color: rgba(122, 80, 32, 0.28);
-}
-html[data-theme="light"] .pw:hover .pw-target,
-html[data-theme="light"] .pw.open .pw-target {
-  background: rgba(122, 80, 32, 0.16);
-}
-html[data-theme="light"] .settings-menu {
-  background: linear-gradient(180deg, #f0ebe1, #e8e2d8);
-  border-color: rgba(0, 0, 0, 0.1);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.14);
-}
-html[data-theme="light"] .settings-tool {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.08);
-  color: var(--txt-2);
-}
-html[data-theme="light"] .settings-tool:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.08);
-  border-color: rgba(122, 80, 32, 0.3);
-  color: var(--txt-1);
-}
-html[data-theme="light"] .settings-toggle-track {
-  background: rgba(0, 0, 0, 0.18);
-}
-html[data-theme="light"] .theme-segmented {
-  background: rgba(0, 0, 0, 0.05);
-  border-color: rgba(0, 0, 0, 0.1);
-}
-html[data-theme="light"] .reader-font-sel {
-  background-color: rgba(0, 0, 0, 0.05);
-  border-color: rgba(0, 0, 0, 0.1);
-  color: var(--txt-2);
-}
-html[data-theme="light"] .theme-segment {
-  color: var(--txt-2);
-}
-html[data-theme="light"] .theme-segment.is-active {
-  background: #fffdf8;
-  color: var(--gold);
-  box-shadow: inset 0 0 0 1px rgba(122, 80, 32, 0.28);
-}
-html[data-theme="light"] .ctl {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.12);
-  color: var(--txt-2);
-}
-html[data-theme="light"] .ctl:hover {
-  background: rgba(122, 80, 32, 0.1);
-  border-color: rgba(122, 80, 32, 0.35);
-  color: var(--gold);
-}
-html[data-theme="light"] [data-pid].paragraph-active {
-  background: rgba(122, 80, 32, 0.09);
-  outline-color: rgba(122, 80, 32, 0.18);
-}
-html[data-theme="light"] .tts-active {
-  background: rgba(122, 80, 32, 0.14) !important;
-  outline-color: rgba(122, 80, 32, 0.22);
 }
 

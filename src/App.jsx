@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { Loader } from '@mantine/core';
+import { getLastSyncTs } from './utils/formatUtils';
 import { useSettings } from './hooks/useSettings';
 import Library from './components/Library';
 import Reader  from './components/Reader';
@@ -11,29 +13,14 @@ import { getSyncActivity } from './sync/syncActivity';
 let startupSyncPromise = null;
 let lastStartupSyncAttemptAt = 0;
 
-const THEME_COLORS = {
-  dark: '#17110d',
-  light: '#f5f0e8',
-  boox: '#faf7ef',
-  auto: '#17110d', // fallback; resolved dynamically
-};
-
-function resolveAutoTheme() {
-  if (typeof window === 'undefined') return 'dark';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
-function getEffectiveTheme(storedTheme) {
-  const theme = storedTheme ?? 'dark';
-  return theme === 'auto' ? resolveAutoTheme() : theme;
-}
+// Single, permanent theme: BOOX monochrome paper (e-ink first).
+const THEME_COLOR = '#faf7ef';
 
 function shouldRunStartupSync(intervalMinutes) {
   const minutes = Number(intervalMinutes ?? 30);
   if (!minutes || minutes < 1 || !navigator.onLine || !isLoggedIn()) return false;
 
-  const lastSyncRaw = localStorage.getItem('vocabapp:lastSync');
-  const lastSync = lastSyncRaw ? Number(lastSyncRaw) : null;
+  const lastSync = getLastSyncTs();
   if (!lastSync || Number.isNaN(lastSync)) return true;
 
   return Date.now() - lastSync >= minutes * 60 * 1000;
@@ -85,35 +72,12 @@ export default function App() {
 
   useEffect(() => onAuthChange(setCfConnected), []);
 
+  // Pin the theme-color meta once on mount.
   useEffect(() => {
-    const storedTheme = settings.theme ?? "dark";
-    const effectiveTheme = getEffectiveTheme(storedTheme);
-    // Set both the logical theme (auto/dark/light/boox) and the effective one
-    // The CSS uses [data-theme="auto"] for prefers-color-scheme overrides;
-    // the effective theme resolves to dark/light for the meta tag
-    document.documentElement.setAttribute("data-theme", storedTheme);
-    const metaColor = THEME_COLORS[effectiveTheme] ?? THEME_COLORS.dark;
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', metaColor);
-  }, [settings.theme]);
-
-  // Listen for system color-scheme changes when theme is "auto"
-  useEffect(() => {
-    if (settings.theme !== 'auto') return;
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = () => {
-      // Re-trigger the theme effect by forcing a DOM update
-      const effectiveTheme = resolveAutoTheme();
-      document.documentElement.setAttribute('data-theme', 'auto');
-      const metaColor = THEME_COLORS[effectiveTheme] ?? THEME_COLORS.dark;
-      document
-        .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', metaColor);
-    };
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, [settings.theme]);
+      ?.setAttribute('content', THEME_COLOR);
+  }, []);
 
   // Load CF JWT from Dexie into memory on startup
   useEffect(() => { initCfAuth(); }, []);
@@ -178,7 +142,7 @@ export default function App() {
   if (!loaded) {
     return (
       <div className="loading-screen">
-        <div className="spin-ring" />
+        <Loader />
         <div className="loading-msg">Ładowanie…</div>
       </div>
     );

@@ -1,13 +1,15 @@
+import { Button, Group, Loader, NativeSelect, Paper, Progress, Stack, Text } from "@mantine/core";
+
 function renderEstimateTime(estimatedSecs) {
   return estimatedSecs < 60
     ? `${estimatedSecs}s`
     : `${Math.round(estimatedSecs / 60)} min`;
 }
 
-function renderCount(count, one, few, many) {
-  if (count === 1) return `${count} ${one}`;
-  if (count < 5) return `${count} ${few}`;
-  return `${count} ${many}`;
+function pluralWord(count, one, few, many) {
+  if (count === 1) return one;
+  if (count < 5) return few;
+  return many;
 }
 
 export default function ReaderChapterContent({
@@ -20,13 +22,10 @@ export default function ReaderChapterContent({
   polyState,
   confirmLang,
   languages,
-  batchOptions,
   estimatedSentenceCount,
   estimatedBatchCount,
   estimatedSecs,
   estimatedCost,
-  sentencesPerRequest,
-  onSentencesPerRequestChange,
   onConfirmLangChange,
   onStartGeneration,
   onCancelConfirm,
@@ -51,164 +50,106 @@ export default function ReaderChapterContent({
     '<p style="color:var(--txt-3);font-style:italic">Ten rozdział nie zawiera tekstu.</p>';
 
   return (
-    <div className="ch-scroll" ref={scrollRef}>
+    <div className="ch-scroll" ref={scrollRef} onClick={onContentClick}>
       <div className="ch-columns" ref={innerRef} key={animKey}>
         <div className="ch-inner">
           {chapterLoading ? (
-            <div className="poly-loading">
-              <div className="spin-ring" />
-            </div>
+            <Group justify="center" p="xl"><Loader /></Group>
           ) : !chapter ? (
-            <div
-              style={{
-                color: "var(--txt-3)",
-                fontStyle: "italic",
-                fontSize: 14,
-              }}
-            >
+            <Text c="dimmed" fs="italic" size="sm">
               Nie można wczytać rozdziału.
-            </div>
+            </Text>
           ) : (
             <>
               {polyMode && polyState === "confirm" && (
-                <div className="poly-confirm ch-anim">
-                  <p className="poly-confirm-title">
-                    Wybierz język tłumaczenia
-                  </p>
-                  <div className="poly-confirm-config">
-                    <div className="poly-confirm-field">
-                      <span className="poly-confirm-field-label">
-                        Język tłumaczenia
-                      </span>
-                      <select
-                        className="form-select"
+                <div className="ch-anim">
+                  <Paper withBorder p="lg" maw={420} mx="auto" mt="10dvh">
+                    <Stack gap="sm">
+                      <div>
+                        <Text fw={700}>Przetłumacz rozdział</Text>
+                        <Text size="sm" c="dimmed">{chapter?.title || "Bieżący rozdział"}</Text>
+                      </div>
+
+                      <NativeSelect
+                        label="Język tłumaczenia"
                         value={confirmLang}
-                        onChange={(event) =>
-                          onConfirmLangChange(event.target.value)
-                        }
-                      >
-                        {languages.map((lang) => (
-                          <option key={lang.code} value={lang.code}>
-                            {lang.flag} {lang.label} ({lang.name})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                        onChange={(event) => onConfirmLangChange(event.target.value)}
+                        data={languages.map((lang) => ({
+                          value: lang.code,
+                          label: `${lang.flag} ${lang.label} (${lang.name})`,
+                        }))}
+                      />
 
-                    <div className="poly-confirm-field">
-                      <span className="poly-confirm-field-label">
-                        Paczka AI
-                      </span>
-                      <select
-                        className="form-select"
-                        value={sentencesPerRequest ?? 4}
-                        onChange={(event) =>
-                          onSentencesPerRequestChange?.(
-                            Number(event.target.value),
-                          )
-                        }
-                      >
-                        {batchOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label} na zapytanie
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                      <Group gap="lg">
+                        <Stack gap={0} align="center">
+                          <Text fw={700}>{estimatedSentenceCount}</Text>
+                          <Text size="xs" c="dimmed">
+                            {pluralWord(estimatedSentenceCount, "zdanie", "zdania", "zdań")}
+                          </Text>
+                        </Stack>
+                        <Stack gap={0} align="center">
+                          <Text fw={700}>~{renderEstimateTime(estimatedSecs)}</Text>
+                          <Text size="xs" c="dimmed">czas</Text>
+                        </Stack>
+                        {estimatedCost > 0 && (
+                          <Stack gap={0} align="center">
+                            <Text fw={700}>
+                              {estimatedCost < 0.001 ? "< $0.001" : `~$${estimatedCost.toFixed(3)}`}
+                            </Text>
+                            <Text size="xs" c="dimmed">koszt</Text>
+                          </Stack>
+                        )}
+                      </Group>
 
-                  <p className="poly-confirm-hint">
-                    <strong>
-                      {renderCount(
-                        estimatedSentenceCount,
-                        "zdanie",
-                        "zdania",
-                        "zdań",
-                      )}
-                    </strong>
-                    {" · "}
-                    <strong>
-                      {renderCount(
-                        estimatedBatchCount,
-                        "zapytanie",
-                        "zapytania",
-                        "zapytań",
-                      )}
-                    </strong>
-                    {" · ~"}
-                    {renderEstimateTime(estimatedSecs)}
-                    {estimatedCost > 0 && (
-                      <>
-                        {" · ~$"}
-                        {estimatedCost.toFixed(4)}
-                      </>
-                    )}
-                  </p>
+                      <Group>
+                        <Button onClick={onStartGeneration}>Przetłumacz</Button>
+                        <Button variant="subtle" onClick={onCancelConfirm}>Anuluj</Button>
+                      </Group>
 
-                  <p className="poly-confirm-hint">
-                    Nie zamykaj strony i nie zmieniaj rozdziału.
-                  </p>
-
-                  <div className="poly-confirm-btns">
-                    <button className="btn-primary" onClick={onStartGeneration}>
-                      Generuj tłumaczenia
-                    </button>
-                    <button className="btn-ghost" onClick={onCancelConfirm}>
-                      Anuluj
-                    </button>
-                  </div>
+                      <Text size="xs" c="dimmed">
+                        Podczas generowania nie zamykaj strony ani nie zmieniaj rozdziału.
+                      </Text>
+                    </Stack>
+                  </Paper>
                 </div>
               )}
 
               {polyMode && polyState === "loading" && (
-                <div className="poly-loading">
-                  <div className="spin-ring" />
-                  <div className="poly-loading-text">{polyLoadingText}</div>
+                <Stack align="center" gap="sm" p="xl">
+                  <Loader />
+                  <Text size="sm">{polyLoadingText}</Text>
                   {polyProgress.total > 0 && (
                     <>
-                      <div className="poly-progress-bar">
-                        <div
-                          className="poly-progress-fill"
-                          style={{
-                            width: `${(polyProgress.done / polyProgress.total) * 100}%`,
-                          }}
-                        />
-                      </div>
-                      <div className="poly-gen-stats">
+                      <Progress
+                        w="100%"
+                        maw={320}
+                        value={(polyProgress.done / polyProgress.total) * 100}
+                      />
+                      <Group gap="md">
                         {polyDisplaySecs > 0 && (
-                          <span>{polyDisplaySecs.toFixed(1)}s</span>
+                          <Text size="xs">{polyDisplaySecs.toFixed(1)}s</Text>
                         )}
-                        {polyProgress.cost > 0 ? (
-                          <span>~${polyProgress.cost.toFixed(4)}</span>
-                        ) : (
-                          <span style={{ color: "var(--txt-3)" }}>~$0.00</span>
-                        )}
-                      </div>
+                        <Text size="xs" c={polyProgress.cost > 0 ? undefined : "dimmed"}>
+                          {polyProgress.cost > 0 ? `~$${polyProgress.cost.toFixed(4)}` : "~$0.00"}
+                        </Text>
+                      </Group>
                     </>
                   )}
-                  <p className="poly-loading-hint">
-                    Nie zamykaj strony i nie zmieniaj rozdziału do końca
-                    generowania.
-                  </p>
+                  <Text size="xs" c="dimmed">
+                    Nie zamykaj strony i nie zmieniaj rozdziału do końca generowania.
+                  </Text>
 
                   {polyRescueNote && (
-                    <p
-                      className="poly-loading-hint"
-                      style={{ color: "var(--amber, #c09050)" }}
-                    >
-                      {polyRescueNote}
-                    </p>
+                    <Text size="xs" c="dimmed">{polyRescueNote}</Text>
                   )}
-                </div>
+                </Stack>
               )}
 
               {polyMode && polyState === "error" && (
-                <div className="poly-error">
-                  <div>⚠ {polyError}</div>
-                  <button className="btn-ghost" onClick={onDismissPolyError}>
-                    Wróć
-                  </button>
-                </div>
+                <Stack align="center" gap="sm" p="xl">
+                  <Text c="red">⚠ {polyError}</Text>
+                  <Button variant="subtle" onClick={onDismissPolyError}>Wróć</Button>
+                </Stack>
               )}
 
               {polyMode && polyState === "done" && (
@@ -219,7 +160,6 @@ export default function ReaderChapterContent({
                     polyWordFragments.length ? " tts-ready" : ""
                   }${ttsPlaying ? " audio-ready" : ""}`}
                   dangerouslySetInnerHTML={{ __html: renderedPolyHtml }}
-                  onClick={onContentClick}
                 />
               )}
 
@@ -228,7 +168,6 @@ export default function ReaderChapterContent({
                   ref={chapterBodyRef}
                   className={`ch-body ch-anim${originalTtsPlaying ? " audio-ready" : ""}`}
                   dangerouslySetInnerHTML={{ __html: originalHtml }}
-                  onClick={onContentClick}
                 />
               )}
             </>

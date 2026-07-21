@@ -4,6 +4,9 @@ import {
   RiBookmarkLine,
   RiPlayFill,
   RiPauseLine,
+  RiStopLine,
+  RiSkipBackLine,
+  RiSkipForwardLine,
   RiFontSize,
   RiSparklingLine,
   RiRefreshLine,
@@ -12,15 +15,11 @@ import {
   RiTranslate2,
   RiMenuLine,
   RiSettings4Line,
-  RiSunLine,
-  RiMoonLine,
   RiBookOpenLine,
+  RiBookShelfLine,
   RiFullscreenLine,
   RiFullscreenExitLine,
-  RiArrowUpSLine,
   RiDeleteBinLine,
-  RiDownload2Line,
-  RiContrastLine,
 } from "react-icons/ri";
 
 const ICON_MAP = {
@@ -29,6 +28,9 @@ const ICON_MAP = {
   bookmarkFill:   RiBookmarkFill,
   play:           RiPlayFill,
   pause:          RiPauseLine,
+  stop:           RiStopLine,
+  skipBack:       RiSkipBackLine,
+  skipForward:    RiSkipForwardLine,
   type:           RiFontSize,
   sparkles:       RiSparklingLine,
   refresh:        RiRefreshLine,
@@ -37,15 +39,11 @@ const ICON_MAP = {
   translate:      RiTranslate2,
   menu:           RiMenuLine,
   settings:       RiSettings4Line,
-  sun:            RiSunLine,
-  moon:           RiMoonLine,
   book:           RiBookOpenLine,
+  library:        RiBookShelfLine,
   fullscreen:     RiFullscreenLine,
   fullscreenExit: RiFullscreenExitLine,
-  "chevron-up":   RiArrowUpSLine,
   delete:         RiDeleteBinLine,
-  download:       RiDownload2Line,
-  contrast:       RiContrastLine,
 };
 
 export function UiIcon({ name, className = "", title }) {

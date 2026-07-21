@@ -1,5 +1,5 @@
 // VocabApp Worker — single-file backend
-// Handles: auth (JWT + PBKDF2), translation proxy (xAI Grok), book sync (D1 only)
+// Handles: auth (JWT + PBKDF2), translation proxy (DeepSeek V4 Flash), book sync (D1 only)
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 
@@ -77,14 +77,14 @@ function normalizeAuthIdentifier(value) {
 }
 
 function getAiConfig(env) {
-  const apiKey = env.XAI_API_KEY || env.GROK_API_KEY || '';
-  const baseUrl = (env.XAI_API_BASE_URL || 'https://api.x.ai/v1').replace(/\/+$/, '');
+  const apiKey = env.DEEPSEEK_API_KEY || '';
+  const baseUrl = (env.DEEPSEEK_API_BASE_URL || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
 
   return {
     apiKey,
     baseUrl,
-    model: 'grok-4.3',
-    label: 'xAI Grok',
+    model: 'deepseek-v4-flash',
+    label: 'DeepSeek V4 Flash',
   };
 }
 
@@ -365,7 +365,7 @@ async function handleTranslate(request, env) {
   if (!Array.isArray(messages)) return err('messages sa wymagane');
 
   const ai = getAiConfig(env);
-  if (!ai.apiKey) return err('XAI_API_KEY nie jest ustawiony', 500);
+  if (!ai.apiKey) return err('DEEPSEEK_API_KEY nie jest ustawiony', 500);
 
   const timeoutMs = 20_000;
   const controller = new AbortController();
@@ -382,9 +382,11 @@ async function handleTranslate(request, env) {
       body: JSON.stringify({
         model: ai.model,
         messages,
-        temperature: 0.1,
+        temperature: 0,
+        top_p: 0.1,
         max_tokens: Number(maxTokens) > 0 ? Math.min(4096, Number(maxTokens)) : 4096,
-        reasoning: { effort: 'none' },
+        response_format: { type: 'json_object' },
+        thinking: { type: 'disabled' },
       }),
       signal: controller.signal,
     });
@@ -411,8 +413,19 @@ async function handleTranslate(request, env) {
     return err('Nieprawidlowa odpowiedz z API (nie JSON)', 502);
   }
 
-  const content = extractAssistantContent(data?.choices?.[0]?.message?.content);
-  if (!content) return err('API zwrocilo pusta odpowiedz', 502);
+  const msg = data?.choices?.[0]?.message;
+  const content = extractAssistantContent(msg?.content)
+    || (typeof msg?.reasoning_content === 'string' ? msg.reasoning_content.trim() : '');
+
+  if (!content) {
+    const debug = JSON.stringify({
+      finishReason: data?.choices?.[0]?.finish_reason,
+      hasChoices: Array.isArray(data?.choices),
+      messageKeys: msg ? Object.keys(msg) : 'brak',
+      usage: data?.usage,
+    });
+    return err(`API zwrocilo pusta odpowiedz (${debug})`, 502);
+  }
 
   return json({ content, usage: data.usage });
 }
@@ -731,7 +744,7 @@ async function handleAdminPruneManifest(env) {
 
 async function handleHealth(env) {
   const ai = getAiConfig(env);
-  if (!ai.apiKey) return err('XAI_API_KEY nie jest ustawiony', 500);
+  if (!ai.apiKey) return err('DEEPSEEK_API_KEY nie jest ustawiony', 500);
 
   let resp;
   try {

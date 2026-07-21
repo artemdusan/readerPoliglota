@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useReaderStore } from "../stores/readerStore";
+import { Button } from "@mantine/core";
 import {
   db,
   getBook,
@@ -13,7 +13,7 @@ import {
   saveChapterLang,
   getChapterStatusMap,
 } from "../db";
-import { LANGUAGES, POLYGLOT_BATCH_OPTIONS } from "../hooks/useSettings";
+import { LANGUAGES } from "../hooks/useSettings";
 import { useWakeLock } from "../hooks/useWakeLock";
 import {
   generatePolyglot,
@@ -27,7 +27,6 @@ import { triggerSync, syncBook } from "../sync/cfSync";
 import { parseStoredPolyglot } from "../lib/polyglotParser";
 import { annotateParagraphsInHtml } from "../lib/sentenceWrapper";
 import { SentenceTtsPlayer } from "../lib/ttsFragments";
-import BatchGenModal from "./BatchGenModal";
 import ReaderSidebar from "./reader_components/ReaderSidebar";
 import ReaderTopbar from "./reader_components/ReaderTopbar";
 import ReaderSearchPanel from "./reader_components/ReaderSearchPanel";
@@ -36,7 +35,6 @@ import ReaderSettingsMenu from "./reader_components/ReaderSettingsMenu";
 import ReaderMissingLangBanner from "./reader_components/ReaderMissingLangBanner";
 import ReaderChapterContent from "./reader_components/ReaderChapterContent";
 import ReaderBottomBar from "./reader_components/ReaderBottomBar";
-import { UiIcon } from "./reader_components/ReaderIcons";
 import {
   SEARCH_BLOCK_SELECTOR,
   FONT_SIZE_MIN,
@@ -46,7 +44,6 @@ import {
   getVoiceId,
   findVoiceById,
   getVoicesForLang,
-  resetTooltipPosition,
   normalizeInlineText,
   buildSearchSnippet,
   getBookmarkPageIndex,
@@ -123,7 +120,6 @@ export default function Reader({
   const [book, setBook] = useState(null);
   const [toc, setToc] = useState([]);
   const [chapterCount, setChapterCount] = useState(0);
-  const [batchModalOpen, setBatchModalOpen] = useState(false);
 
   // Chapter state
   const [chapterIdx, setChapterIdx] = useState(null); // null until reading position loaded
@@ -164,47 +160,18 @@ export default function Reader({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMatches, setSearchMatches] = useState([]);
   const [activeSearchIdx, setActiveSearchIdx] = useState(0);
-  const searchLayoutMode = searchOpen
-    ? searchQuery.trim()
-      ? "expanded"
-      : "compact"
-    : "closed";
   const [bookmarkMenuOpen, setBookmarkMenuOpen] = useState(false);
   const [bookmarks, setBookmarks] = useState([]);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
-  const [distractionFree, setDistractionFree] = useState(false);
+  // Open clean: reader starts distraction-free (pure text). A center tap
+  // reveals the top/bottom chrome; tapping again hides it.
+  const [distractionFree, setDistractionFree] = useState(true);
   const [pageFlash, setPageFlash] = useState(null); // "next" | "prev" | null
-  const [keyHintVisible, setKeyHintVisible] = useState(
-    () => !localStorage.getItem("vocabapp:keyHintDismissed"),
-  );
-
-  function dismissKeyHint() {
-    localStorage.setItem("vocabapp:keyHintDismissed", "1");
-    setKeyHintVisible(false);
-  }
-
   const [isFullscreen, setIsFullscreen] = useState(
     () => Boolean(document.fullscreenElement)
   );
-  const [showAllTranslations, setShowAllTranslations] = useState(() => {
-    const v = localStorage.getItem('vocabapp:showAllTranslations');
-    if (v === 'above' || v === 'inline') return v;
-    if (v === 'true') return 'above'; // backward compat
-    return 'off';
-  });
-  // Sync local UI state to zustand store (Phase 2 — hooks will use store natively)
-  useEffect(() => {
-    useReaderStore.setState({
-      searchOpen,
-      bookmarkMenuOpen,
-      isFullscreen,
-      showAllTranslations,
-    });
-  }, [searchOpen, bookmarkMenuOpen, isFullscreen, showAllTranslations]);
-
   const [fs, setFs] = useState(settings.fontSize ?? 19);
-  const readerFont = settings.readerFont ?? "garamond";
-  const readerFontStack = getReaderFontStack(readerFont);
+  const readerFontStack = getReaderFontStack("garamond");
   const orderedCachedLangs = useMemo(
     () =>
       [...cachedLangs].sort(
@@ -214,8 +181,6 @@ export default function Reader({
       ),
     [cachedLangs],
   );
-  const tooltipReadOnClick = settings.tooltipReadOnClick !== false;
-
   // Page state
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -237,22 +202,23 @@ export default function Reader({
   const saveTimerRef = useRef(null);
   const genTokenRef = useRef(0);
   const genAbortRef = useRef(null);
-  const tooltipTimerRef = useRef(null);
-  const openPwRef = useRef(null);
   const activeLangRef = useRef(null);
   const chapterIdxRef = useRef(null);
   const pendingProgressRef = useRef(null); // progress (0-1) to restore after layout (null = no pending restore)
+  const pendingAnchorPidRef = useRef(null); // paragraph id to restore after layout (takes precedence over progress)
   const pendingChapterProgressOverrideRef = useRef(null); // one-shot progress override for the next chapter load
+  const pendingChapterAnchorPidRef = useRef(null); // one-shot paragraph anchor for the next chapter load
   const userChangedLangRef = useRef(false); // true only when user explicitly switched lang
   const positionDirtyRef = useRef(false); // true after explicit user movement/lang change
   const lastSavedPositionRef = useRef(null);
   const currentPageRef = useRef(0);
   const totalPagesRef = useRef(1);
   const scrollRetryTokenRef = useRef(0); // incremented each layout to cancel stale retries
-  const prevSearchLayoutModeRef = useRef(searchLayoutMode);
   const flippingRef = useRef(false);
   const pageTurnTimerRef = useRef(null);
   const pageFlashTimerRef = useRef(null);
+  const anchorFlashTimeoutRef = useRef(null);
+  const pendingAnchorSentenceIdRef = useRef(null); // { sid, pid } — sentence-level anchor, pid as fallback
   const desiredLangRef = useRef(null); // lang to carry over when changing chapter
   const originalTtsPlayerRef = useRef(null);
   const ttsAutoStartRef = useRef(null); // 'original' | 'hybrid' | null
@@ -262,14 +228,9 @@ export default function Reader({
   const settingsMenuRef = useRef(null);
   const settingsToggleRef = useRef(null);
   const ttsPagePauseModeRef = useRef(null);
-  const swipeTouchStartXRef = useRef(null);
-  const swipeTouchStartYRef = useRef(null);
   const toggleFullscreenRef = useRef(null);
   const keyPageTurnAtRef = useRef(0);
   toggleFullscreenRef.current = toggleFullscreen;
-  const centerTapHandledRef = useRef(false);
-  const distractionFreeRef = useRef(false);
-  useEffect(() => { distractionFreeRef.current = distractionFree; }, [distractionFree]);
 
   useWakeLock(Boolean(bookId));
 
@@ -502,9 +463,6 @@ export default function Reader({
     setSearchQuery("");
     setSearchMatches([]);
     setActiveSearchIdx(0);
-    clearTimeout(tooltipTimerRef.current);
-    resetTooltipPosition(openPwRef.current);
-    openPwRef.current = null;
     setCurrentPage(0);
     currentPageRef.current = 0;
     totalPagesRef.current = 1;
@@ -530,6 +488,8 @@ export default function Reader({
       const pos = await getReadingPosition(bookId);
       const progressOverride = pendingChapterProgressOverrideRef.current;
       pendingChapterProgressOverrideRef.current = null;
+      pendingAnchorPidRef.current = pendingChapterAnchorPidRef.current;
+      pendingChapterAnchorPidRef.current = null;
       pendingProgressRef.current =
         progressOverride ??
         (pos && pos.chapterIndex === chapterIdx ? (pos.progress ?? 0) : 0);
@@ -677,12 +637,143 @@ export default function Reader({
 
       requestAnimationFrame(() => {
         if (!container || !inner) return;
+        const prevTotal = totalPagesRef.current;
         const total = Math.max(1, Math.round(inner.scrollWidth / pw));
         totalPagesRef.current = total;
         setTotalPages(total);
 
+        // Anchors target [data-pid]/.ch-sentence nodes, but right after a
+        // version switch (or chapter jump) the intermediate render is the raw,
+        // un-annotated HTML without them. Consuming the anchors now would
+        // degrade the restore to a bare progress fraction between two
+        // differently-flowed texts — so keep them queued and retry once the
+        // annotated content lands.
+        const anchorsPending =
+          pendingAnchorSentenceIdRef.current !== null ||
+          pendingAnchorPidRef.current !== null;
+        if (
+          anchorsPending &&
+          !chapterBodyRef.current?.querySelector("[data-pid]")
+        ) {
+          const token = ++scrollRetryTokenRef.current;
+          setTimeout(() => {
+            if (scrollRetryTokenRef.current === token) {
+              setLayoutKey((k) => k + 1);
+            }
+          }, 120);
+          const cur = Math.min(currentPageRef.current, total - 1);
+          setCurrentPage(cur);
+          currentPageRef.current = cur;
+          inner.style.transition = "";
+          syncPageViewport(cur, pw);
+          return;
+        }
+
         let finalPage;
-        if (pendingProgressRef.current !== null) {
+        let anchorHandled = false;
+        // Anchor restore — keep the reader on the same sentence across a
+        // version switch or bookmark jump, where progress fractions drift
+        // because the two texts differ in length.
+        // Sentence-level first (finer-grained), then paragraph as fallback.
+        if (pendingAnchorSentenceIdRef.current !== null) {
+          const { sid } = pendingAnchorSentenceIdRef.current;
+          const el = chapterBodyRef.current?.querySelector(
+            `.ch-sentence[data-sentence-id="${sid}"]`,
+          );
+          if (el) {
+            const cRect = container.getBoundingClientRect();
+            const elRect = el.getBoundingClientRect();
+            const absLeft = elRect.left - cRect.left + container.scrollLeft;
+            const targetPage = Math.max(
+              0,
+              Math.min(total - 1, Math.floor(absLeft / pw)),
+            );
+            pendingAnchorSentenceIdRef.current = null;
+            pendingAnchorPidRef.current = null;
+            pendingProgressRef.current = null;
+            setCurrentPage(targetPage);
+            currentPageRef.current = targetPage;
+            inner.style.transition = "";
+            syncPageViewport(targetPage, pw);
+            finalPage = targetPage;
+            anchorHandled = true;
+            // Brief highlight so the user sees where to resume reading.
+            clearTimeout(anchorFlashTimeoutRef.current);
+            requestAnimationFrame(() => {
+              el.classList.add("anchor-flash");
+              anchorFlashTimeoutRef.current = setTimeout(() => {
+                el.classList.remove("anchor-flash");
+              }, 1000);
+            });
+          } else if (total <= 1) {
+            // Content not fully laid out yet — retry after the frame budget.
+            const token = ++scrollRetryTokenRef.current;
+            setTimeout(() => {
+              if (
+                scrollRetryTokenRef.current === token &&
+                pendingAnchorSentenceIdRef.current !== null
+              ) {
+                setLayoutKey((k) => k + 1);
+              }
+            }, 250);
+          } else {
+            // Laid out but the sentence is gone — fall back to paragraph.
+            pendingAnchorSentenceIdRef.current = null;
+          }
+        }
+
+        if (anchorHandled) {
+          // finalPage already set by the sentence-anchor branch
+        } else if (pendingAnchorPidRef.current !== null) {
+          const pid = pendingAnchorPidRef.current;
+          const el = chapterBodyRef.current?.querySelector(
+            `[data-pid="${pid}"]`,
+          );
+          if (el) {
+            const cRect = container.getBoundingClientRect();
+            const elRect = el.getBoundingClientRect();
+            const absLeft = elRect.left - cRect.left + container.scrollLeft;
+            const targetPage = Math.max(
+              0,
+              Math.min(total - 1, Math.floor(absLeft / pw)),
+            );
+            pendingAnchorPidRef.current = null;
+            pendingProgressRef.current = null;
+            setCurrentPage(targetPage);
+            currentPageRef.current = targetPage;
+            inner.style.transition = "";
+            syncPageViewport(targetPage, pw);
+            finalPage = targetPage;
+            anchorHandled = true;
+            // Brief highlight on the anchor paragraph so the user sees
+            // where to resume reading after the version switch.
+            clearTimeout(anchorFlashTimeoutRef.current);
+            requestAnimationFrame(() => {
+              el.classList.add("anchor-flash");
+              anchorFlashTimeoutRef.current = setTimeout(() => {
+                el.classList.remove("anchor-flash");
+              }, 1000);
+            });
+          } else if (total <= 1) {
+            // Content not fully laid out yet — retry after the frame budget.
+            const token = ++scrollRetryTokenRef.current;
+            setTimeout(() => {
+              if (
+                scrollRetryTokenRef.current === token &&
+                pendingAnchorPidRef.current !== null
+              ) {
+                setLayoutKey((k) => k + 1);
+              }
+            }, 250);
+          } else {
+            // Laid out but the paragraph is gone — fall back to progress.
+            pendingAnchorPidRef.current = null;
+          }
+        }
+
+        if (anchorHandled) {
+          // finalPage already set by the anchor branch
+        } else if (pendingProgressRef.current !== null) {
           // Initial load or chapter navigation — restore saved progress (device-independent)
           const restoreProgress = pendingProgressRef.current;
           const targetPage = Math.min(
@@ -716,8 +807,15 @@ export default function Reader({
           syncPageViewport(targetPage, pw);
           finalPage = targetPage;
         } else {
-          // Re-layout only (font change or polyMode switch) — keep current page
-          const cur = Math.min(currentPageRef.current, total - 1);
+          // Re-layout only (font change or polyMode switch) — keep current page.
+          // If the reader sat on the last page (e.g. after backing into the
+          // previous chapter), stay pinned to the end even when the re-flowed
+          // content has a different page count.
+          const wasAtEnd =
+            prevTotal > 1 && currentPageRef.current >= prevTotal - 1;
+          const cur = wasAtEnd
+            ? total - 1
+            : Math.min(currentPageRef.current, total - 1);
           if (cur !== currentPageRef.current) {
             setCurrentPage(cur);
             currentPageRef.current = cur;
@@ -824,23 +922,6 @@ export default function Reader({
     };
   }, [queuePaginationRelayout]);
 
-  useEffect(() => {
-    if (prevSearchLayoutModeRef.current === searchLayoutMode) return;
-    prevSearchLayoutModeRef.current = searchLayoutMode;
-
-    const rafId = window.requestAnimationFrame(() => {
-      queuePaginationRelayout();
-    });
-    return () => window.cancelAnimationFrame(rafId);
-  }, [searchLayoutMode, queuePaginationRelayout]);
-
-  useEffect(() => {
-    const rafId = window.requestAnimationFrame(() => {
-      queuePaginationRelayout();
-    });
-    return () => window.cancelAnimationFrame(rafId);
-  }, [showAllTranslations, queuePaginationRelayout]);
-
   const getCurrentProgress = useCallback(
     () => currentPageRef.current / Math.max(1, totalPagesRef.current - 1),
     [],
@@ -910,6 +991,53 @@ export default function Reader({
       Math.min(totalPagesRef.current - 1, Math.floor(absoluteLeft / pw)),
     );
   }, []);
+
+  // First paragraph (data-pid) shown on the current page — a stable anchor
+  // that survives version switches and bookmark jumps.
+  const getFirstVisiblePid = useCallback(() => {
+    const body = chapterBodyRef.current;
+    if (!body) return null;
+    const page = currentPageRef.current;
+    for (const el of body.querySelectorAll("[data-pid]")) {
+      if (getElementPage(el) === page) {
+        const pid = Number.parseInt(el.dataset.pid, 10);
+        if (Number.isInteger(pid)) return pid;
+      }
+    }
+    return null;
+  }, [getElementPage]);
+
+  // First sentence (.ch-sentence) shown on the current page — a finer-grained
+  // anchor than the paragraph, critical on small screens where one paragraph can
+  // span several pages.
+  const getFirstVisibleSentenceId = useCallback(() => {
+    const body = chapterBodyRef.current;
+    if (!body) return null;
+    const page = currentPageRef.current;
+    let bestEl = null;
+    let bestTop = Infinity;
+    for (const el of body.querySelectorAll(".ch-sentence")) {
+      if (getElementPage(el) === page) {
+        const top = el.getBoundingClientRect().top;
+        if (top < bestTop) {
+          bestTop = top;
+          bestEl = el;
+        }
+      }
+    }
+    if (bestEl) {
+      return {
+        sid: bestEl.dataset.sentenceId,
+        pid: Number.parseInt(
+          bestEl.closest("[data-pid]")?.dataset?.pid,
+          10,
+        ),
+      };
+    }
+    // Fall back to paragraph-level anchor if no sentence starts on this page.
+    const pid = getFirstVisiblePid();
+    return pid != null ? { sid: null, pid } : null;
+  }, [getElementPage, getFirstVisiblePid]);
 
   const getPagePreview = useCallback(
     (page = currentPageRef.current) => {
@@ -1152,40 +1280,10 @@ export default function Reader({
     goToPage(currentPageRef.current + 1);
   }
 
-  /* ── Swipe left/right to navigate pages ── */
   const prevPageRef = useRef(prevPage);
   const nextPageRef = useRef(nextPage);
   prevPageRef.current = prevPage;
   nextPageRef.current = nextPage;
-
-  useEffect(() => {
-    const el = chScrollRef.current;
-    if (!el) return;
-    function onTouchStart(e) {
-      swipeTouchStartXRef.current = e.touches[0].clientX;
-      swipeTouchStartYRef.current = e.touches[0].clientY;
-    }
-    function onTouchEnd(e) {
-      if (swipeTouchStartXRef.current === null) return;
-      const touch = e.changedTouches[0];
-      const dx = touch.clientX - swipeTouchStartXRef.current;
-      const dy = touch.clientY - swipeTouchStartYRef.current;
-      swipeTouchStartXRef.current = null;
-      swipeTouchStartYRef.current = null;
-      if (Math.abs(dx) >= 50) {
-        if (dx > 0) prevPageRef.current();
-        else nextPageRef.current();
-        setDistractionFree(true);
-        return;
-      }
-    }
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchend", onTouchEnd);
-    };
-  }, []);
 
   function goToSearchMatch(index) {
     if (!searchMatches.length) return;
@@ -1226,6 +1324,7 @@ export default function Reader({
       chapterIndex: chapterIdx,
       chapterTitle: chapterLabel,
       progress: currentProgress,
+      pid: getFirstVisiblePid(),
       preview: getPagePreview(page),
       createdAt: currentProgressBookmark?.createdAt ?? now,
       updatedAt: now,
@@ -1256,12 +1355,21 @@ export default function Reader({
   function jumpToBookmark(bookmark) {
     if (!bookmark) return;
 
+    const hasPid = Number.isInteger(bookmark.pid);
+
     if (bookmark.chapterIndex === chapterIdx) {
-      goToPage(getBookmarkPageIndex(bookmark, totalPagesRef.current), {
-        pauseTts: true,
-      });
+      // Prefer the paragraph anchor so the jump lands on the same sentence
+      // regardless of which version is active; fall back to progress.
+      const anchorEl = hasPid
+        ? chapterBodyRef.current?.querySelector(`[data-pid="${bookmark.pid}"]`)
+        : null;
+      const targetPage = anchorEl
+        ? getElementPage(anchorEl)
+        : getBookmarkPageIndex(bookmark, totalPagesRef.current);
+      goToPage(targetPage, { pauseTts: true });
       void persistPosition({ immediate: true, progress: bookmark.progress });
     } else {
+      if (hasPid) pendingChapterAnchorPidRef.current = bookmark.pid;
       navigate(bookmark.chapterIndex, { progressOverride: bookmark.progress });
     }
 
@@ -1273,8 +1381,6 @@ export default function Reader({
   useEffect(() => {
     document.documentElement.style.setProperty("--fs", fs + "px");
   }, [fs]);
-
-  const theme = settings.theme ?? "dark";
 
   /* ── Close settings menu on outside click ── */
   useEffect(() => {
@@ -1345,8 +1451,16 @@ export default function Reader({
 
   function switchToLang(lang) {
     if (lang === activeLang) return;
+    clearTimeout(anchorFlashTimeoutRef.current);
     clearPageTurnState();
     userChangedLangRef.current = true;
+    // Anchor on the first visible sentence so the reader stays on the same
+    // spot after the new version re-flows. Sentence-level is more precise than
+    // paragraph-level on small screens where one paragraph can span many pages.
+    // Paragraph pid is kept as a fallback if the sentence can't be located.
+    const anchor = getFirstVisibleSentenceId();
+    pendingAnchorSentenceIdRef.current = anchor;
+    pendingAnchorPidRef.current = anchor?.pid ?? null;
     pendingProgressRef.current = getCurrentProgress();
     // Force ch-columns to remount on mode switch to bust stale GPU compositing layer.
     // will-change:transform promotes ch-columns to its own GPU layer; after a DOM
@@ -1389,17 +1503,6 @@ export default function Reader({
     });
   }
 
-  function setReaderFontSize(value) {
-    if (!Number.isFinite(value)) return;
-    setFs((current) => {
-      const next = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, value));
-      if (next !== current) {
-        void onUpdateSetting?.("fontSize", next);
-      }
-      return next;
-    });
-  }
-
   function changeFontSize(delta) {
     setFs((current) => {
       const next = Math.max(
@@ -1411,11 +1514,6 @@ export default function Reader({
       }
       return next;
     });
-  }
-
-  function changeReaderFont(nextFont) {
-    if (!nextFont || nextFont === readerFont) return;
-    void onUpdateSetting?.("readerFont", nextFont);
   }
 
   function openSearchPanel() {
@@ -1497,7 +1595,6 @@ export default function Reader({
           targetLangName: langObj.name,
           sourceLangName: book?.lang || "",
           model: POLYGLOT_MODEL_ID,
-          sentencesPerRequest: settings.polyglotSentencesPerRequest,
           signal: controller.signal,
           onRescue: ({ retryAttempt, maxRetries }) => {
             setPolyRescueNote(
@@ -1557,7 +1654,6 @@ export default function Reader({
     const el = body.querySelector(`[data-word-id="${wordId}"]`);
     if (!el) return;
     el.classList.add("tts-active");
-    if (showAllTranslations === 'off') openTooltip(el, true);
     const scrollEl = chScrollRef.current;
     if (scrollEl) {
       const pw = scrollEl.clientWidth;
@@ -1917,7 +2013,7 @@ export default function Reader({
     switchToLang(nextLang);
   }
 
-  function playSingleWord(wordId, options = {}) {
+  function playSingleWord(wordId) {
     stopOriginalTts();
     stopHybridTts();
     const word = polyWordFragments[wordId];
@@ -1934,102 +2030,8 @@ export default function Reader({
     utt.onerror = () => {
       clearWordHighlight();
     };
-    if (!options.skipTooltip && showAllTranslations === 'off') {
-      const el = chapterBodyRef.current?.querySelector(`[data-word-id="${wordId}"]`);
-      if (el) openTooltip(el, true);
-    }
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utt);
-  }
-
-  /* ─────────────────────────────────────────
-     TOOLTIP — auto-close after 2s
-  ───────────────────────────────────────── */
-
-  function openTooltip(pw, force = false) {
-    if (openPwRef.current && openPwRef.current !== pw) {
-      openPwRef.current.classList.remove("open");
-      resetTooltipPosition(openPwRef.current);
-    }
-    clearTimeout(tooltipTimerRef.current);
-
-    if (!force && pw.classList.contains("open") && openPwRef.current === pw) {
-      pw.classList.remove("open");
-      resetTooltipPosition(pw);
-      openPwRef.current = null;
-      return;
-    }
-
-    pw.classList.add("open");
-    positionTooltip(pw);
-    openPwRef.current = pw;
-    tooltipTimerRef.current = setTimeout(() => {
-      pw.classList.remove("open");
-      resetTooltipPosition(pw);
-      if (openPwRef.current === pw) openPwRef.current = null;
-    }, 2000);
-  }
-
-  function positionTooltip(pw) {
-    const tooltip = pw?.querySelector(".pw-original");
-    const scrollEl = chScrollRef.current;
-    if (!tooltip || !scrollEl) return;
-
-    resetTooltipPosition(pw);
-    pw.dataset.tooltipPending = "true";
-
-    const applyPosition = () => {
-      if (!pw.isConnected || !pw.classList.contains("open")) return true;
-
-      const viewportRect = scrollEl.getBoundingClientRect();
-      const pwRect = pw.getBoundingClientRect();
-      const tooltipRect = tooltip.getBoundingClientRect();
-      if (!tooltipRect.width || !tooltipRect.height) return false;
-
-      const viewportPadding = 10;
-      const gap = 7;
-      const centerX = pwRect.left + pwRect.width / 2;
-      const minLeft = viewportRect.left + viewportPadding;
-      const maxLeft = viewportRect.right - viewportPadding - tooltipRect.width;
-      const preferredLeft = centerX - tooltipRect.width / 2;
-      const clampedLeft =
-        maxLeft >= minLeft
-          ? Math.min(Math.max(preferredLeft, minLeft), maxLeft)
-          : minLeft;
-
-      const fitsAbove =
-        pwRect.top - gap - tooltipRect.height >=
-        viewportRect.top + viewportPadding;
-      const preferredTop = fitsAbove
-        ? pwRect.top - gap - tooltipRect.height
-        : pwRect.bottom + gap;
-      const minTop = viewportRect.top + viewportPadding;
-      const maxTop = viewportRect.bottom - viewportPadding - tooltipRect.height;
-      const clampedTop =
-        maxTop >= minTop
-          ? Math.min(Math.max(preferredTop, minTop), maxTop)
-          : minTop;
-
-      const arrowLeft = Math.min(
-        Math.max(centerX - clampedLeft, 10),
-        tooltipRect.width - 10,
-      );
-
-      pw.style.setProperty("--pw-tooltip-left", `${clampedLeft - pwRect.left}px`);
-      pw.style.setProperty("--pw-tooltip-top", `${clampedTop - pwRect.top}px`);
-      pw.style.setProperty("--pw-tooltip-arrow-left", `${arrowLeft}px`);
-      pw.dataset.tooltipPlacement =
-        clampedTop >= pwRect.bottom ? "bottom" : "top";
-      delete pw.dataset.tooltipPending;
-      return true;
-    };
-
-    if (applyPosition()) return;
-
-    window.requestAnimationFrame(() => {
-      if (applyPosition()) return;
-      delete pw.dataset.tooltipPending;
-    });
   }
 
   /* ─────────────────────────────────────────
@@ -2070,13 +2072,8 @@ export default function Reader({
   ───────────────────────────────────────── */
 
   function handleContentClick(e) {
-    // In distraction-free mode, tapping non-interactive content exits it
-    if (distractionFreeRef.current) {
-      if (!e.target.closest(".pw") && !e.target.closest("a[href]") && !e.target.closest("[data-pid]")) {
-        setDistractionFree(false);
-        return;
-      }
-    }
+    // Interactive elements handle their own clicks (confirm card, banners…)
+    if (e.target.closest("button, select, input, textarea, label")) return;
 
     const anchor = e.target.closest("a[href]");
     if (anchor) {
@@ -2092,10 +2089,9 @@ export default function Reader({
     if (polyMode) {
       const pw = e.target.closest(".pw");
       if (pw) {
-        if (showAllTranslations === 'off') openTooltip(pw);
         const wordId = Number.parseInt(pw.dataset.wordId, 10);
-        if (tooltipReadOnClick && Number.isInteger(wordId)) {
-          playSingleWord(wordId, { skipTooltip: true });
+        if (Number.isInteger(wordId)) {
+          playSingleWord(wordId);
         }
         return;
       }
@@ -2115,19 +2111,11 @@ export default function Reader({
       }
     }
 
-    // Tap zones for page turning: left 25% → prev, center 50% → toggle distraction-free, right 25% → next
-    const container = chScrollRef.current;
-    if (container) {
-      const xRatio = (e.clientX - container.getBoundingClientRect().left) / container.clientWidth;
-      if (xRatio < 0.25) {
-        prevPageRef.current?.();
-      } else if (xRatio > 0.75) {
-        nextPageRef.current?.();
-      } else {
-        setDistractionFree((v) => !v);
-      }
+    // No gesture navigation — pages turn only via buttons/keyboard.
+    // A tap on the text only dismisses the chrome when it's open.
+    if (!distractionFree) {
+      toggleDistractionFree();
     }
-
   }
 
   /* ── TOC navigation ── */
@@ -2169,32 +2157,25 @@ export default function Reader({
     setBookmarkMenuOpen(false);
   }
 
-  function handleSettingsSearchToolClick() {
-    if (searchOpen) {
-      setSearchOpen(false);
-      setSettingsMenuOpen(false);
-      return;
-    }
-    openSearchPanel();
+  function toggleSearchPanel() {
+    if (searchOpen) setSearchOpen(false);
+    else openSearchPanel();
   }
 
-  function handleSettingsBookmarksToolClick() {
-    if (bookmarkMenuOpen) {
-      setBookmarkMenuOpen(false);
-      setSettingsMenuOpen(false);
-      return;
-    }
-    openBookmarksPanel();
-  }
-
-  function handleOpenBatchModal() {
-    setBatchModalOpen(true);
-    setSidebarOpen(false);
+  function toggleBookmarksPanel() {
+    if (bookmarkMenuOpen) setBookmarkMenuOpen(false);
+    else openBookmarksPanel();
   }
 
   function toggleDistractionFree() {
     setDistractionFree((v) => {
-      if (!v) setSidebarOpen(false);
+      if (!v) {
+        // Hiding the chrome — close every popover with it.
+        setSidebarOpen(false);
+        setSettingsMenuOpen(false);
+        setBookmarkMenuOpen(false);
+        setSearchOpen(false);
+      }
       return !v;
     });
   }
@@ -2206,10 +2187,6 @@ export default function Reader({
     }
     document.documentElement.requestFullscreen?.().catch(() => {});
   }
-
-  useEffect(() => {
-    document.documentElement.requestFullscreen?.().catch(() => {});
-  }, []);
 
   useEffect(() => {
     function onFullscreenChange() {
@@ -2238,10 +2215,6 @@ export default function Reader({
     localStorage.setItem(`tts-voice-tgt-${targetLangCode}`, nextVoiceId);
   }
 
-  function handleToggleTooltipReadOnClick() {
-    void onUpdateSetting?.("tooltipReadOnClick", !tooltipReadOnClick);
-  }
-
   function handleMissingLangGenerate() {
     if (!missingLangBanner) return;
     setMissingLangBanner(null);
@@ -2252,11 +2225,8 @@ export default function Reader({
     () =>
       estimatePolyglotGeneration(
         { html: chapter?.html },
-        {
-          sentencesPerRequest: settings.polyglotSentencesPerRequest,
-        },
       ),
-    [chapter?.html, settings.polyglotSentencesPerRequest],
+    [chapter?.html],
   );
   const estimatedSentenceCount = generationEstimate.sentenceCount;
   const estimatedBatchCount = generationEstimate.generationBatches;
@@ -2316,14 +2286,6 @@ export default function Reader({
     [visibleBookmarks, chapterIdx, totalPages, currentPage],
   );
   const hasCurrentPageBookmark = currentPageBookmarks.length > 0;
-  async function toggleCurrentBookmark() {
-    const currentBookmark = currentPageBookmarks[0];
-    if (currentBookmark) {
-      await removeBookmark(currentBookmark.id);
-      return;
-    }
-    await addBookmark();
-  }
   const bookmarkList = useMemo(
     () =>
       [...visibleBookmarks].sort((a, b) => {
@@ -2348,15 +2310,31 @@ export default function Reader({
       ? "Wznów czytanie"
       : "Zatrzymaj czytanie"
     : "Odtwórz TTS";
-  const ttsButtonLabel = activeTtsPlaying
-    ? activeTtsPaused
-      ? "Wznów"
-      : "Pauza"
-    : "Play";
   const hasTtsAvailable =
     activeTtsMode === "hybrid"
       ? polyTtsParagraphs.length > 0
       : originalTtsFragments.length > 0;
+  const ttsTransport = originalTtsPlaying
+    ? {
+        paused: originalTtsPaused,
+        onToggle: toggleOriginalTts,
+        onStop: stopOriginalTts,
+        onPrev: () => jumpSentence(-1),
+        onNext: () => jumpSentence(1),
+        prevDisabled: activeSid <= 0,
+        nextDisabled: activeSid >= originalTtsFragments.length - 1,
+      }
+    : ttsPlaying
+      ? {
+          paused: ttsPaused,
+          onToggle: toggleHybridTts,
+          onStop: stopHybridTts,
+          onPrev: () => jumpPolyParagraph(-1),
+          onNext: () => jumpPolyParagraph(1),
+          prevDisabled: activePolyPid <= 0,
+          nextDisabled: activePolyPid >= polyTtsParagraphs.length - 1,
+        }
+      : null;
   const sourceLangCode = (book?.lang || "en").split("-")[0].toLowerCase();
   const targetLangCode = (activeLang || "es").split("-")[0].toLowerCase();
   const sourceLanguageLabel = getLanguageDisplayLabel(
@@ -2378,9 +2356,9 @@ export default function Reader({
     return (
       <div className="loading-screen">
         <div style={{ color: "var(--red)" }}>Nie znaleziono książki.</div>
-        <button className="btn-ghost" onClick={handleBackToLibrary}>
+        <Button variant="subtle" onClick={handleBackToLibrary}>
           ← Biblioteka
-        </button>
+        </Button>
       </div>
     );
   }
@@ -2388,16 +2366,12 @@ export default function Reader({
   return (
     <div
       className={`reader-layout${distractionFree ? " distraction-free" : ""}`}
-      data-show-all={showAllTranslations !== 'off' ? showAllTranslations : undefined}
       style={{ "--fs": `${fs}px`, "--reader-font": readerFontStack }}
     >
       <ReaderSidebar
         sidebarOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        onBack={handleBackToLibrary}
         book={book}
-        canTranslateBook={Boolean(book && settings)}
-        onOpenBatchModal={handleOpenBatchModal}
         chapterCount={chapterCount}
         tocItems={tocItems}
         hrefToIndex={hrefToIndex}
@@ -2416,32 +2390,6 @@ export default function Reader({
 
       {/* ── Main content ── */}
       <div className="reader-main">
-        {/* Top bar */}
-        <ReaderTopbar
-          chapter={chapter}
-          chapterLabel={chapterLabel}
-          activeLang={activeLang}
-          orderedCachedLangs={orderedCachedLangs}
-          onSwitchLang={switchToLang}
-          settingsMenuOpen={settingsMenuOpen}
-          settingsToggleRef={settingsToggleRef}
-          onToggleSidebar={() => setSidebarOpen((open) => !open)}
-          onToggleSettings={handleToggleSettingsMenu}
-          onHideBars={() => setDistractionFree(true)}
-          fontSize={fs}
-          onFontSizeDown={() => changeFontSize(-2)}
-          onFontSizeUp={() => changeFontSize(2)}
-        />
-
-        {keyHintVisible && (
-          <div className="key-hint-banner" onClick={dismissKeyHint}>
-            <span>Użyj przycisków głośności lub strzałek do zmiany stron</span>
-            <button className="key-hint-dismiss" onClick={(e) => { e.stopPropagation(); dismissKeyHint(); }}>
-              OK
-            </button>
-          </div>
-        )}
-
         {searchOpen && (
           <ReaderSearchPanel
             inputRef={searchInputRef}
@@ -2471,22 +2419,8 @@ export default function Reader({
         {settingsMenuOpen && (
           <ReaderSettingsMenu
             menuRef={settingsMenuRef}
-            bookmarkToggleRef={bookmarkToggleRef}
-            hasCurrentPageBookmarks={hasCurrentPageBookmark}
-            isTtsActive={activeTtsPlaying && !activeTtsPaused}
-            onToggleTts={
-              activeTtsMode === "hybrid" ? toggleHybridTts : toggleOriginalTts
-            }
-            ttsButtonTitle={ttsButtonTitle}
-            ttsButtonLabel={ttsButtonLabel}
-            isTtsPlaying={activeTtsPlaying}
-            isTtsPaused={activeTtsPaused}
-            hasTtsAvailable={hasTtsAvailable}
-            fontSize={fs}
-            readerFont={readerFont}
-            onChangeFontSize={changeFontSize}
-            onSetFontSize={setReaderFontSize}
-            onChangeReaderFont={changeReaderFont}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
             showAddTranslation={!polyMode && Boolean(chapter?.html)}
             showRegenerateTranslation={
               polyMode &&
@@ -2503,24 +2437,10 @@ export default function Reader({
             showTargetVoiceSelect={polyMode}
             showVoiceNote={showVoiceNote}
             voiceLoadState={voiceLoadState}
-            theme={theme}
-            onChangeTheme={(nextTheme) => onUpdateSetting?.("theme", nextTheme)}
-            tooltipReadOnClick={tooltipReadOnClick}
-            onToggleTooltipReadOnClick={handleToggleTooltipReadOnClick}
             ttsSourceVoice={ttsSourceVoice}
             ttsTargetVoice={ttsTargetVoice}
             onSourceVoiceChange={handleSourceVoiceChange}
             onTargetVoiceChange={handleTargetVoiceChange}
-          />
-        )}
-
-        {batchModalOpen && book && settings && (
-          <BatchGenModal
-            bookId={book.id}
-            book={book}
-            settings={settings}
-            onUpdateSetting={onUpdateSetting}
-            onClose={() => setBatchModalOpen(false)}
           />
         )}
 
@@ -2533,16 +2453,6 @@ export default function Reader({
           />
         )}
 
-        {/* Chapter progress bar — always visible, even in distraction-free mode */}
-        <div className="reading-progress">
-          <div
-            className="reading-progress-fill"
-            style={{
-              width: `${totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0}%`,
-            }}
-          />
-        </div>
-
         <ReaderChapterContent
           scrollRef={chScrollRef}
           innerRef={chInnerRef}
@@ -2553,15 +2463,10 @@ export default function Reader({
           polyState={polyState}
           confirmLang={confirmLang}
           languages={LANGUAGES}
-          batchOptions={POLYGLOT_BATCH_OPTIONS}
           estimatedSentenceCount={estimatedSentenceCount}
           estimatedBatchCount={estimatedBatchCount}
           estimatedSecs={estimatedSecs}
           estimatedCost={estimatedCost}
-          sentencesPerRequest={settings.polyglotSentencesPerRequest}
-          onSentencesPerRequestChange={(value) =>
-            onUpdateSetting?.("polyglotSentencesPerRequest", value)
-          }
           onConfirmLangChange={handleConfirmLangChange}
           onStartGeneration={startGeneration}
           onCancelConfirm={resetTranslationSelection}
@@ -2581,66 +2486,88 @@ export default function Reader({
           originalHtmlAnnotated={originalHtmlAnnotated}
         />
 
-        <ReaderBottomBar
-          currentPage={currentPage}
-          totalPages={totalPages}
-          chapterIdx={chapterIdx}
-          chapterCount={chapterCount}
-          onPrevPage={prevPage}
-          onNextPage={nextPage}
-          originalTtsPlaying={originalTtsPlaying}
-          activeSid={activeSid}
-          onJumpSentence={jumpSentence}
-          onToggleOriginalTts={toggleOriginalTts}
-          originalTtsPaused={originalTtsPaused}
-          onStopOriginalTts={stopOriginalTts}
-          originalTtsFragments={originalTtsFragments}
-          ttsPlaying={ttsPlaying}
-          activePolyPid={activePolyPid}
-          onJumpPolyParagraph={jumpPolyParagraph}
-          onToggleHybridTts={toggleHybridTts}
-          ttsPaused={ttsPaused}
-          onStopHybridTts={stopHybridTts}
-          polyTtsParagraphs={polyTtsParagraphs}
-          onPageSliderChange={handlePageSliderChange}
-          onPageSliderCommit={handlePageSliderCommit}
-        />
+        {!distractionFree && (
+          <>
+            <ReaderTopbar
+              chapterLabel={chapterLabel}
+              activeLang={activeLang}
+              orderedCachedLangs={orderedCachedLangs}
+              onSwitchLang={switchToLang}
+              canAddTranslation={!polyMode && Boolean(chapter?.html)}
+              onAddTranslation={requestGenerate}
+            />
+            <ReaderBottomBar
+              currentPage={currentPage}
+              totalPages={totalPages}
+              chapterIdx={chapterIdx}
+              chapterCount={chapterCount}
+              onPrevPage={prevPage}
+              onNextPage={nextPage}
+              onPageSliderChange={handlePageSliderChange}
+              onPageSliderCommit={handlePageSliderCommit}
+              ttsTransport={ttsTransport}
+              onBackToLibrary={handleBackToLibrary}
+              onToggleSidebar={() => setSidebarOpen((open) => !open)}
+              searchOpen={searchOpen}
+              onToggleSearch={toggleSearchPanel}
+              bookmarkMenuOpen={bookmarkMenuOpen}
+              onToggleBookmarks={toggleBookmarksPanel}
+              bookmarkToggleRef={bookmarkToggleRef}
+              hasTtsAvailable={hasTtsAvailable}
+              isTtsActive={activeTtsPlaying && !activeTtsPaused}
+              onToggleTts={toggleCurrentTts}
+              ttsButtonTitle={ttsButtonTitle}
+              onChangeFontSize={changeFontSize}
+              settingsMenuOpen={settingsMenuOpen}
+              onToggleSettings={handleToggleSettingsMenu}
+              settingsToggleRef={settingsToggleRef}
+            />
+          </>
+        )}
       </div>
 
-      {distractionFree && (
-        <>
-          <button
-            className={`ui-toggle-btn${showAllTranslations !== 'off' ? " translations-active" : ""}`}
-            onClick={toggleDistractionFree}
-            aria-label="Pokaż/ukryj UI"
-          >
-            ≡
-          </button>
-          <div className="fs-page-indicator">
-            Strona {currentPage + 1}/{totalPages} • {Math.round(
-              totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0,
-            )}%
-          </div>
+      {/* Cookie — always-visible home pill: shows position, toggles the chrome.
+          In distraction-free mode it's flanked by subtle page-turn buttons. */}
+      <div className="fs-home-row">
+        {distractionFree && (
           <button
             type="button"
-            className={`fs-bookmark-toggle${hasCurrentPageBookmark ? " is-active" : ""}`}
-            onClick={toggleCurrentBookmark}
-            title={
-              hasCurrentPageBookmark
-                ? "Usuń zakładkę z tego miejsca"
-                : "Dodaj zakładkę w tym miejscu"
-            }
-            aria-label={
-              hasCurrentPageBookmark
-                ? "Usuń zakładkę z tego miejsca"
-                : "Dodaj zakładkę w tym miejscu"
-            }
-            aria-pressed={hasCurrentPageBookmark}
+            className="fs-page-nav"
+            onClick={prevPage}
+            disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
+            aria-label="Poprzednia strona"
+            title="Poprzednia strona"
           >
-            <UiIcon name={hasCurrentPageBookmark ? "bookmarkFill" : "bookmark"} />
+            ❮
           </button>
-        </>
-      )}
+        )}
+        <button
+          type="button"
+          className={`fs-page-indicator${distractionFree ? "" : " is-open"}`}
+          onClick={toggleDistractionFree}
+          aria-expanded={!distractionFree}
+          title={distractionFree ? "Pokaż sterowanie" : "Ukryj sterowanie"}
+        >
+          Strona {currentPage + 1}/{totalPages} • {Math.round(
+            totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0,
+          )}%
+        </button>
+        {distractionFree && (
+          <button
+            type="button"
+            className="fs-page-nav"
+            onClick={nextPage}
+            disabled={
+              currentPage >= totalPages - 1 &&
+              (chapterIdx ?? 0) >= chapterCount - 1
+            }
+            aria-label="Następna strona"
+            title="Następna strona"
+          >
+            ❯
+          </button>
+        )}
+      </div>
 
       {/* Page turn flash indicator (especially for e-ink) */}
       <div className={`page-turn-flash${pageFlash ? ` flash-${pageFlash}` : ''}`} />

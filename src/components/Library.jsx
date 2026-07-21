@@ -1,7 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { BsSun, BsMoon, BsGear, BsArrowRepeat, BsPlus, BsBook } from "react-icons/bs";
+import { Loader, Menu, Progress } from "@mantine/core";
+import "./library.css";
+import {
+  BsGear,
+  BsArrowRepeat,
+  BsPlus,
+  BsStars,
+  BsDownload,
+  BsPencil,
+  BsArchive,
+  BsArrowCounterclockwise,
+  BsTrash,
+} from "react-icons/bs";
 import { EpubParser } from "../lib/epubParser";
-import { formatTransfer, formatLastSync, formatRelativeSync, formatPolishCount } from "../utils/formatUtils";
+import { formatTransfer, formatLastSync, formatRelativeSync, getLastSyncTs } from "../utils/formatUtils";
 import {
   getActiveBooks,
   saveBook,
@@ -72,10 +84,7 @@ export default function Library({
   const [accountName, setAccountName] = useState(() => getUsername());
   const [syncActivity, setSyncActivity] = useState(() => getSyncActivity());
   const [syncNow, setSyncNow] = useState(() => Date.now());
-  const [lastSync, setLastSync] = useState(() => {
-    const value = localStorage.getItem("vocabapp:lastSync");
-    return value ? Number(value) : null;
-  });
+  const [lastSync, setLastSync] = useState(getLastSyncTs);
   const [showFeedback, setShowFeedback] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
   const [search, setSearch] = useState('');
@@ -103,13 +112,6 @@ export default function Library({
     const t = setTimeout(() => setShowFeedback(false), 4000);
     return () => clearTimeout(t);
   }, [syncActivity.result]);
-
-  useEffect(() => {
-    if (!ctxBookId) return;
-    const close = () => setCtxBookId(null);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [ctxBookId]);
 
   // Drag & Drop dla całego okna
   useEffect(() => {
@@ -181,8 +183,7 @@ export default function Library({
 
   useEffect(() => {
     function handleSynced() {
-      const value = localStorage.getItem("vocabapp:lastSync");
-      setLastSync(value ? Number(value) : Date.now());
+      setLastSync(getLastSyncTs() ?? Date.now());
       loadBooks();
     }
 
@@ -325,8 +326,7 @@ export default function Library({
     );
   }
 
-  const activeBooks   = books.filter(b => !b.status || b.status === 'active');
-  const readBooks     = books.filter(b => b.status === 'read');
+  const activeBooks   = books.filter(b => b.status !== 'archived');
   const archivedBooks = books.filter(b => b.status === 'archived');
 
   const q = search.trim().toLowerCase();
@@ -336,7 +336,7 @@ export default function Library({
 
   const baseTabBooks = allFiltered
     ? allFiltered
-    : activeTab === 'read' ? readBooks : activeTab === 'archived' ? archivedBooks : activeBooks;
+    : activeTab === 'archived' ? archivedBooks : activeBooks;
 
   const tabBooks = (!allFiltered && activeTab === 'active')
     ? [...baseTabBooks].sort((a, b) => {
@@ -363,54 +363,34 @@ export default function Library({
         ? `Ostatni sync: ${formatLastSync(lastSync)} (${formatRelativeSync(lastSync, syncNow)})`
         : "Jeszcze nie wykonano pierwszej synchronizacji.";
 
-  const currentTheme = settings?.theme ?? "dark";
-
-  const THEME_CYCLE = { dark: "light", light: "boox", boox: "dark" };
-  const THEME_NEXT_LABEL = { dark: "Tryb jasny", light: "BOOX", boox: "Tryb ciemny" };
-  const THEME_NEXT_ICON = {
-    dark: <BsSun />,
-    light: <BsBook />,
-    boox: <BsMoon />,
-  };
-
-  function handleThemeToggle() {
-    onUpdateSetting("theme", THEME_CYCLE[currentTheme] ?? "dark");
-  }
-
   return (
     <div className="lib-layout">
-      <header className="lib-topbar">
-        <div className="lib-topbar-inner">
-          <div className="lib-topbar-left">
-            <span className={`lib-topbar-dot ${syncTone}`} aria-hidden="true" />
-            {cfConnected && accountName
-              ? <span className="lib-topbar-account">{accountName}</span>
-              : <span className="lib-topbar-account is-offline">Offline</span>
-            }
+      <div className="lib-content">
+        <header className="lib-header">
+          <div className={`lib-account ${syncTone}`} title={`${syncTitle}. ${syncMetaText}`}>
+            <span className="lib-account-dot" aria-hidden="true" />
+            <span className="lib-account-name">
+              {cfConnected && accountName ? accountName : "Offline"}
+            </span>
             {cfConnected && lastSync && (
-              <span className="lib-topbar-sync-time">
+              <span className="lib-account-sync">
                 {formatRelativeSync(lastSync, syncNow)}
               </span>
             )}
           </div>
 
-          <div className="lib-topbar-actions">
+          <div className="lib-header-actions">
             <button
-              className="lib-topbar-btn"
-              onClick={handleThemeToggle}
-              title={THEME_NEXT_LABEL[currentTheme] ?? "Motyw"}
-            >
-              {THEME_NEXT_ICON[currentTheme] ?? <BsMoon />}
-            </button>
-<button
-              className="lib-topbar-btn"
+              type="button"
+              className="lib-icon-btn"
               onClick={onOpenSettings}
               title="Ustawienia"
             >
               <BsGear />
             </button>
             <button
-              className={`lib-topbar-btn ${isSyncing ? "is-spinning" : ""}`}
+              type="button"
+              className="lib-icon-btn"
               onClick={handleSyncButton}
               disabled={isSyncing}
               title={cfConnected ? "Synchronizuj" : "Połącz konto"}
@@ -418,254 +398,207 @@ export default function Library({
               <BsArrowRepeat />
             </button>
           </div>
-        </div>
+        </header>
 
         {isSyncing && syncProgress && (
-          <div className="lib-topbar-progress">
-            <div
-              className="lib-topbar-progress-fill"
-              style={{
-                width: syncProgress.total > 0
-                  ? `${(syncProgress.done / syncProgress.total) * 100}%`
-                  : "10%",
-              }}
-            />
+          <Progress
+            size="xs"
+            value={syncProgress.total > 0 ? (syncProgress.done / syncProgress.total) * 100 : 10}
+            animated
+          />
+        )}
+
+        {cfConnected && syncResult && !isSyncing && showFeedback && (
+          <div className="lib-alert">
+            {syncResult.error
+              ? `⚠ Błąd: ${syncResult.error}`
+              : `Zsynchronizowano ↑ ${formatTransfer(syncResult.sentBytes)} · ↓ ${formatTransfer(syncResult.receivedBytes)}`}
           </div>
         )}
-      </header>
 
-      {cfConnected && syncResult && !isSyncing && showFeedback && (
-        <div className={`lib-toast ${syncResult.error ? "is-error" : "is-success"}`}>
-          {syncResult.error
-            ? `Błąd: ${syncResult.error}`
-            : `Zsynchronizowano ↑ ${formatTransfer(syncResult.sentBytes)} · ↓ ${formatTransfer(syncResult.receivedBytes)}`}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".epub"
+          hidden
+          onChange={(e) => {
+            handleFile(e.target.files[0]);
+            e.target.value = "";
+          }}
+        />
+
+        <div className="lib-actions">
+          <input
+            type="search"
+            className="lib-search"
+            placeholder="Szukaj książki…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <button
+            type="button"
+            className="lib-chip is-active"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={adding}
+            title="Dodaj książkę EPUB"
+          >
+            <BsPlus size={18} /> {adding ? "Dodawanie…" : "Dodaj EPUB"}
+          </button>
         </div>
-      )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".epub"
-        hidden
-        onChange={(e) => {
-          handleFile(e.target.files[0]);
-          e.target.value = "";
-        }}
-      />
+        <div className="lib-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "active"}
+            className={`lib-chip${activeTab === "active" ? " is-active" : ""}`}
+            onClick={() => setActiveTab("active")}
+          >
+            Biblioteka{activeBooks.length > 0 ? ` · ${activeBooks.length}` : ""}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "archived"}
+            className={`lib-chip${activeTab === "archived" ? " is-active" : ""}`}
+            onClick={() => setActiveTab("archived")}
+          >
+            Archiwum{archivedBooks.length > 0 ? ` · ${archivedBooks.length}` : ""}
+          </button>
+        </div>
 
-      <div className="lib-body">
-        <div className="lib-content">
-          <section className="lib-toolbar">
-            <div className="lib-search-wrap">
-              <input
-                className="lib-search"
-                type="search"
-                placeholder="Szukaj książki…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-            </div>
-            <div className="lib-tabs">
-              <button
-                className={`lib-tab ${activeTab === 'active' ? 'is-active' : ''}`}
-                onClick={() => setActiveTab('active')}
-              >
-                Czytane
-                {activeBooks.length > 0 && <span className="lib-tab-count">{activeBooks.length}</span>}
-              </button>
-              <button
-                className={`lib-tab ${activeTab === 'read' ? 'is-active' : ''}`}
-                onClick={() => setActiveTab('read')}
-              >
-                Przeczytane
-                {readBooks.length > 0 && <span className="lib-tab-count">{readBooks.length}</span>}
-              </button>
-              <button
-                className={`lib-tab ${activeTab === 'archived' ? 'is-active' : ''}`}
-                onClick={() => setActiveTab('archived')}
-              >
-                Archiwum
-                {archivedBooks.length > 0 && <span className="lib-tab-count">{archivedBooks.length}</span>}
-              </button>
-            </div>
-          </section>
+        {addError && <div className="lib-alert">⚠ {addError}</div>}
 
-          {addError && <div className="lib-error-banner">⚠ {addError}</div>}
-
-          {loading ? (
-            <div className="lib-loading">
-              <div className="spin-ring" />
-            </div>
-          ) : tabBooks.length === 0 ? (
-            activeTab === 'active' ? (
+        {loading ? (
+          <div className="lib-muted"><Loader /></div>
+        ) : tabBooks.length === 0 ? (
+          activeTab === 'active' ? (
             <div
-              className={`dropzone ${dragging ? "over" : ""}`}
+              className={`lib-empty${dragging ? " is-dragging" : ""}`}
               onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
             >
-              <div className="dropzone-glyph">📚</div>
-              <div className="dropzone-title">Twoja biblioteka jest pusta</div>
-              <p className="dropzone-sub">
-                Przeciągnij plik <strong>.epub</strong> tutaj lub kliknij, aby
-                go dodać.
-              </p>
-              <button className="btn-primary" disabled={adding}>
-                {adding ? "Ładowanie..." : "Wybierz plik EPUB"}
-              </button>
+              <span className="lib-empty-icon">📚</span>
+              <span className="lib-empty-title">Twoja biblioteka jest pusta</span>
+              <span className="lib-empty-hint">
+                Przeciągnij plik <strong>.epub</strong> tutaj lub kliknij, aby go dodać.
+              </span>
             </div>
-            ) : (
-              <div className="lib-empty-tab">
-                {activeTab === 'read' ? 'Brak przeczytanych książek.' : 'Archiwum jest puste.'}
-              </div>
-            )
           ) : (
-            <div
-              className="lib-grid"
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={handleDrop}
-            >
-              {tabBooks.map((book) => {
-                const isStarted = Boolean(positions[book.id]);
-                const percent = progressPercent(book.id, book.chapterCount);
+            <div className="lib-muted">Archiwum jest puste.</div>
+          )
+        ) : (
+          <div
+            className="lib-grid"
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+          >
+            {tabBooks.map((book) => {
+              const isStarted = Boolean(positions[book.id]);
+              const percent = progressPercent(book.id, book.chapterCount);
 
-                return (
-                  <article
-                    key={book.id}
-                    className={`book-card ${ctxBookId === book.id ? 'has-open-menu' : ''}`}
-                    onClick={() => onOpenBook(book.id)}
+              return (
+                <div
+                  key={book.id}
+                  className="lib-card"
+                  onClick={() => onOpenBook(book.id)}
+                >
+                  <div className="lib-cover">
+                    {book.cover
+                      ? <img src={book.cover} alt="okładka" />
+                      : '📖'}
+                  </div>
+
+                  <Menu
+                    position="bottom-end"
+                    opened={ctxBookId === book.id}
+                    onChange={(opened) => setCtxBookId(opened ? book.id : null)}
+                    withinPortal
                   >
-                    <div className="book-cover">
-                      {book.cover ? (
-                        <img src={book.cover} alt="okładka" />
-                      ) : (
-                        <span className="book-cover-ph">📖</span>
-                      )}
-                    </div>
-
-                    <button
-                      className="book-menu-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCtxBookId((id) => (id === book.id ? null : book.id));
-                      }}
-                      title="Menu książki"
-                    >
-                      ⋮
-                    </button>
-
-                    {ctxBookId === book.id && (
-                      <div
-                        className="book-ctx-menu"
+                    <Menu.Target>
+                      <button
+                        type="button"
+                        className="lib-card-menu"
+                        title="Menu książki"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {settings && (
-                          <button
-                            className="book-ctx-primary"
-                            onClick={() => {
-                              setBatchBook(book);
-                              setCtxBookId(null);
-                            }}
-                          >
-                            Generuj tłumaczenia
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setEpubBook(book);
-                            setCtxBookId(null);
-                          }}
+                        ⋮
+                      </button>
+                    </Menu.Target>
+                    <Menu.Dropdown onClick={(e) => e.stopPropagation()}>
+                      {settings && (
+                        <Menu.Item
+                          leftSection={<BsStars />}
+                          onClick={() => { setBatchBook(book); setCtxBookId(null); }}
                         >
-                          Eksportuj EPUB
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingBook(book);
-                            setCtxBookId(null);
-                          }}
+                          Tłumaczenia
+                        </Menu.Item>
+                      )}
+                      <Menu.Item
+                        leftSection={<BsDownload />}
+                        onClick={() => { setEpubBook(book); setCtxBookId(null); }}
+                      >
+                        Eksportuj EPUB
+                      </Menu.Item>
+                      <Menu.Item
+                        leftSection={<BsPencil />}
+                        onClick={() => { setEditingBook(book); setCtxBookId(null); }}
+                      >
+                        Edytuj
+                      </Menu.Item>
+                      {book.status === 'archived' ? (
+                        <Menu.Item
+                          leftSection={<BsArrowCounterclockwise />}
+                          onClick={(e) => handleStatusChange(e, book.id, 'active')}
                         >
-                          Edytuj
-                        </button>
-                        {(() => {
-                          const status = book.status || 'active';
-                          const actions = {
-                            active: [
-                              { label: '✓ Oznacz jako przeczytaną', status: 'read' },
-                              { label: '⬛ Archiwizuj', status: 'archived' },
-                            ],
-                            read: [
-                              { label: '↩ Przywróć do biblioteki', status: 'active' },
-                              { label: '⬛ Archiwizuj', status: 'archived' },
-                            ],
-                            archived: [
-                              { label: '↩ Przywróć do biblioteki', status: 'active' },
-                              { label: '✓ Przenieś do przeczytanych', status: 'read' },
-                            ],
-                          };
-                          return (actions[status] || []).map((a) => (
-                            <button key={a.status} onClick={(e) => handleStatusChange(e, book.id, a.status)}>
-                              {a.label}
-                            </button>
-                          ));
-                        })()}
-                        <button
-                          className="book-ctx-delete"
-                          onClick={(e) => {
-                            handleDelete(e, book.id);
-                            setCtxBookId(null);
-                          }}
+                          Przywróć do biblioteki
+                        </Menu.Item>
+                      ) : (
+                        <Menu.Item
+                          leftSection={<BsArchive />}
+                          onClick={(e) => handleStatusChange(e, book.id, 'archived')}
                         >
-                          Usuń
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="book-meta">
-                      {book.status === 'read' && (
-                        <span className="book-status-badge is-read">Przeczytana</span>
+                          Archiwizuj
+                        </Menu.Item>
                       )}
-                      {book.status === 'archived' && (
-                        <span className="book-status-badge is-archived">Archiwum</span>
-                      )}
-                      <div className="book-title">{book.title}</div>
-                      {book.author && (
-                        <div className="book-author">{book.author}</div>
-                      )}
+                      <Menu.Divider />
+                      <Menu.Item
+                        color="red"
+                        leftSection={<BsTrash />}
+                        onClick={(e) => { handleDelete(e, book.id); setCtxBookId(null); }}
+                      >
+                        Usuń
+                      </Menu.Item>
+                    </Menu.Dropdown>
+                  </Menu>
 
-                      <div className="book-progress-block">
-                        <div className="book-progress-row">
-                          <div className="book-progress">
-                            {progressLabel(book.id, book.chapterCount)}
-                          </div>
-                          <div
-                            className={`book-progress-pct ${isStarted ? "" : "is-idle"}`}
-                          >
-                            {isStarted ? `${percent}%` : "Start"}
-                          </div>
-                        </div>
-
-                        <div className="book-progress-bar" aria-hidden="true">
-                          <div
-                            className="book-progress-fill"
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                  {book.status === 'archived' && (
+                    <span className="lib-badge">Archiwum</span>
+                  )}
+                  <div className="lib-card-title">{book.title}</div>
+                  {book.author && (
+                    <div className="lib-card-author">{book.author}</div>
+                  )}
+                  <div className="lib-card-meta">
+                    <span>{progressLabel(book.id, book.chapterCount)}</span>
+                    <span className="lib-card-percent">
+                      {isStarted ? `${percent}%` : "Start"}
+                    </span>
+                  </div>
+                  <div className="lib-progress" aria-hidden="true">
+                    <div
+                      className="lib-progress-fill"
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {importDraft && (
@@ -689,7 +622,6 @@ export default function Library({
           bookId={batchBook.id}
           book={batchBook}
           settings={settings}
-          onUpdateSetting={onUpdateSetting}
           onClose={() => setBatchBook(null)}
         />
       )}
@@ -701,16 +633,6 @@ export default function Library({
           onClose={() => setEpubBook(null)}
         />
       )}
-
-      <button
-        className={`lib-fab ${adding ? "is-loading" : ""}`}
-        onClick={() => fileInputRef.current?.click()}
-        disabled={adding}
-        title="Dodaj książkę EPUB"
-        aria-label="Dodaj książkę"
-      >
-        {adding ? <span className="lib-fab-spin" /> : <BsPlus />}
-      </button>
 
       <div className="lib-version">v{version}</div>
     </div>

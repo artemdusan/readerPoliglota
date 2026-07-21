@@ -1,81 +1,48 @@
 import { UiIcon } from "./ReaderIcons";
 
+/* Górne pływające sterowanie: tytuł rozdziału + wybór wersji językowej
+   jako rząd chipów (Oryginał / języki / dodaj tłumaczenie). Bez paska z tłem. */
 export default function ReaderTopbar({
-  chapter,
   chapterLabel,
   activeLang,
   orderedCachedLangs,
   onSwitchLang,
-  settingsMenuOpen,
-  settingsToggleRef,
-  onToggleSidebar,
-  onToggleSettings,
-  onHideBars,
-  fontSize,
-  onFontSizeDown,
-  onFontSizeUp,
+  canAddTranslation,
+  onAddTranslation,
 }) {
   return (
-    <div className="topbar">
-      <button
-        className="sb-tog-inline ctl ctl-icon"
-        onClick={onToggleSidebar}
-        title="Spis treści"
-      >
-        <UiIcon name="menu" />
-      </button>
-
-      <div className="tb-chapter">
-        {chapter ? (
-          <select
-            className="tb-ver-select"
-            value={activeLang ?? ""}
-            onChange={(event) => onSwitchLang(event.target.value || null)}
-          >
-            <option value="">{`${chapterLabel} — Oryginał`}</option>
-            {orderedCachedLangs.map((lang) => (
-              <option key={`display-${lang.code}`} value={lang.code}>
-                {`${chapterLabel} — ${lang.name}`}
-              </option>
-            ))}
-          </select>
-        ) : null}
+    <div className="reader-top-chrome">
+      <div className="rtc-chapter" title={chapterLabel}>
+        {chapterLabel}
       </div>
-
-      <div className="tb-controls">
+      <div className="rtc-langs" aria-label="Wersja językowa">
         <button
-          className="ctl ctl-icon"
-          onClick={onFontSizeDown}
-          disabled={fontSize <= 13}
-          title="Zmniejsz czcionkę"
-          aria-label="Zmniejsz czcionkę"
+          type="button"
+          className={`rtc-chip${activeLang === null ? " is-active" : ""}`}
+          onClick={() => onSwitchLang(null)}
         >
-          A−
+          Oryginał
         </button>
-        <button
-          className="ctl ctl-icon"
-          onClick={onFontSizeUp}
-          disabled={fontSize >= 99}
-          title="Powiększ czcionkę"
-          aria-label="Powiększ czcionkę"
-        >
-          A+
-        </button>
-        <button
-          className="ctl ctl-icon"
-          onClick={onHideBars}
-          title="Ukryj paski"
-        >
-          <UiIcon name="chevron-up" />
-        </button>
-        <button
-          ref={settingsToggleRef}
-          className={`ctl ctl-icon${settingsMenuOpen ? " ctl-active" : ""}`}
-          onClick={onToggleSettings}
-          title="Ustawienia"
-        >
-          <UiIcon name="settings" />
-        </button>
+        {orderedCachedLangs.map((lang) => (
+          <button
+            key={lang.code}
+            type="button"
+            className={`rtc-chip${activeLang === lang.code ? " is-active" : ""}`}
+            onClick={() => onSwitchLang(lang.code)}
+          >
+            {lang.name}
+          </button>
+        ))}
+        {canAddTranslation && (
+          <button
+            type="button"
+            className="rtc-chip rtc-chip-add"
+            onClick={onAddTranslation}
+            title="Dodaj tłumaczenie tego rozdziału"
+          >
+            <UiIcon name="sparkles" /> Tłumacz
+          </button>
+        )}
       </div>
     </div>
   );

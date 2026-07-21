@@ -1,3 +1,5 @@
+import { Button, Group, Text } from "@mantine/core";
+
 export default function ReaderMissingLangBanner({
   langCode,
   languages,
@@ -8,26 +10,14 @@ export default function ReaderMissingLangBanner({
 
   return (
     <div className="missing-lang-banner">
-      <span>
+      <Text size="sm">
         Brak tłumaczenia {lang?.flag} {lang?.label || langCode}
-      </span>
+      </Text>
 
-      <div className="missing-lang-actions">
-        <button
-          className="btn-primary"
-          style={{ fontSize: 11, padding: "7px 16px" }}
-          onClick={onGenerate}
-        >
-          Wygeneruj
-        </button>
-        <button
-          className="btn-ghost"
-          style={{ fontSize: 11, padding: "7px 16px" }}
-          onClick={onDismiss}
-        >
-          Oryginał
-        </button>
-      </div>
+      <Group gap="xs">
+        <Button size="compact-sm" onClick={onGenerate}>Wygeneruj</Button>
+        <Button size="compact-sm" variant="subtle" onClick={onDismiss}>Oryginał</Button>
+      </Group>
     </div>
   );
 }

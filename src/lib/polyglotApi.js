@@ -8,15 +8,16 @@ const STALL_TIMEOUT_MS = 150_000;
 const STALL_RETRY_LIMIT = 1;
 const STALL_CHECK_INTERVAL_MS = 10_000;
 const NETWORK_RETRY_LIMIT = 1;
-const GLOBAL_REQUESTS_PER_MINUTE = 1800;
+const PARSE_RETRY_LIMIT = 1;
+const GLOBAL_REQUESTS_PER_MINUTE = 6000;
 const GLOBAL_REQUEST_INTERVAL_MS = Math.ceil(
   60_000 / GLOBAL_REQUESTS_PER_MINUTE,
 );
 export const DEFAULT_POLYGLOT_SENTENCES_PER_REQUEST = 4;
 const MAX_POLYGLOT_SENTENCES_PER_REQUEST = 12;
-const MAX_SENTENCES_IN_FLIGHT = 24;
-export const POLYGLOT_MODEL_ID = "grok-4.3";
-const POLYGLOT_MODEL_PRICING = { input: 0.0002, output: 0.0005 };
+const MAX_SENTENCES_IN_FLIGHT = 96;
+export const POLYGLOT_MODEL_ID = "deepseek-v4-flash";
+const POLYGLOT_MODEL_PRICING = { input: 0.00000014, output: 0.00000028 };
 const ESTIMATED_REQUEST_OVERHEAD_MS = 900;
 const ESTIMATED_REQUEST_TIME_PER_BATCH_MS = 1400;
 const ESTIMATED_VERIFY_TIME_PER_SENTENCE_MS = 35;
@@ -70,36 +71,26 @@ function buildSentencePatchSystemPrompt(
   const sourceHint = sourceLangName
     ? ` Tekst zrodlowy jest w jezyku ${sourceLangName}.`
     : "";
-  const strictHint = strictJson
-    ? `
-- odpowiedz ma byc pojedynczym obiektem JSON, bez komentarzy, bez markdownu i bez dodatkowego tekstu
-- kazdy element changes ma miec dokladnie pola "id" i "words"
-- kazdy element words ma opisywac tylko jedno slowo i miec albo pola "original" oraz "target", albo pojedynczy obiekt {"oryginal":"tlumaczenie"}
-- jesli nic nie zmieniasz, zwroc {"changes":[]}`
-    : "";
 
-  return `Jestes precyzyjnym edytorem tekstu do nauki jezyka ${targetLangName}.${sourceHint}
+  return `Jestes edytorem do nauki ${targetLangName}.${sourceHint}
 
-Wejscie zawiera uporzadkowana liste jednego lub kilku zdan:
-{"sentences":[{"id":"s1","text":"..."},{"id":"s2","text":"..."}]}
+Wejscie: {"sentences":[{"id":"s1","text":"..."},...]}
 
 Zasady:
-- pracujesz zdanie po zdaniu
-- zaznaczaj tylko rzeczowniki i przymiotniki
-- mozesz zaznaczyc zero, jedno lub kilka slow w zdaniu
-- wybieraj naturalne, przydatne slowa do nauki; zwykle 1-3 na zdanie wystarcza
-- nie zaznaczaj czasownikow, imion wlasnych, nazw wlasnych, liczb, dat, skrotow ani znakow interpunkcyjnych
-- zwracasz tylko liste slow do oznaczenia, nigdy nie przepisuj calego zdania
-- pole "original" musi zawierac dokladnie jedno oryginalne slowo z danego zdania
-- pole "target" musi zawierac jedno naturalne tlumaczenie tego slowa w jezyku ${targetLangName}
-- jesli zwracasz obiekt jednopolowy, klucz ma byc slowem oryginalnym, a wartosc jego tlumaczeniem
-- uzywaj identyfikatorow dokladnie takich, jakie dostales na wejsciu
-- nie dopisuj wyjasnien, odmian, komentarzy ani calej tresci zdania
-- dodaj element do tablicy changes tylko wtedy, gdy naprawde chcesz oznaczyc przynajmniej jedno slowo
-${strictHint}
+- zaznaczaj tylko rzeczowniki i przymiotniki (1-3 na zdanie)
+- nie zaznaczaj: czasownikow, imion, nazw wlasnych, liczb, dat, skrotow, interpunkcji
+- "original" = dokladnie jedno slowo ze zdania
+- "target" = jedno tlumaczenie na ${targetLangName}
+- dodaj element do changes tylko gdy zaznaczasz przynajmniej jedno slowo
 
-Zwroc tylko JSON bez markdownu:
-{"changes":[{"id":"s1","words":[{"original":"...","target":"..."},{"oryginal":"tlumaczenie"}]}]}`;
+Jesli nie znajdziesz zadnych slow do zaznaczenia, zwroc:
+{"changes":[]}
+
+ZWROC DOKLADNIE TEN SCHEMAT. Twoja odpowiedz musi zaczynac sie od znakow:
+{"changes":[
+Nie dodawaj markdown. Nie dodawaj \`\`\`json. Nie dodawaj wyjasnien. Nie dodawaj zadnych innych pol.
+
+Przyklad: {"changes":[{"id":"s1","words":[{"original":"dom","target":"house"}]}]}`;
 }
 
 function normalizeSentencesPerRequest(value) {
@@ -488,11 +479,6 @@ function repairCommonJsonIssues(text) {
   return String(text ?? "")
     .replace(/^\s*\/\/.*$/gm, "")
     .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\bNone\b/g, "null")
-    .replace(/\bTrue\b/g, "true")
-    .replace(/\bFalse\b/g, "false")
-    .replace(/([{,]\s*)'([^'\\]*(?:\\.[^'\\]*)*)'\s*:/g, '$1"$2":')
-    .replace(/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'(?=\s*[,}\]])/g, ': "$1"')
     .replace(/,\s*([}\]])/g, "$1")
     .trim();
 }
@@ -763,10 +749,7 @@ function parseSentencePatchResponse(text, batchSentences) {
 }
 
 function estimateBatchCost(pricing, promptTokens, completionTokens) {
-  return (
-    (promptTokens / 1000) * pricing.input +
-    (completionTokens / 1000) * pricing.output
-  );
+  return promptTokens * pricing.input + completionTokens * pricing.output;
 }
 
 function buildSentencePatchRequest(
@@ -802,6 +785,10 @@ function buildSentencePatchRequest(
           })),
         }),
       },
+      {
+        role: "assistant",
+        content: '{"changes":[',
+      },
     ],
   };
 }
@@ -809,32 +796,56 @@ function buildSentencePatchRequest(
 async function generateSentenceBatch(sentences, options, pricing, batchIdx) {
   const request = buildSentencePatchRequest(sentences, options);
   const startedAt = Date.now();
-  const { text, promptTokens, completionTokens } = await processBatchWithRetry({
-    ...request,
-    batchIdx,
-    signal: options.signal,
-    onActivity: options.onActivity,
-  });
+  const PREFILL_PREFIX = '{"changes":[';
 
-  const cost = estimateBatchCost(pricing, promptTokens, completionTokens);
-  const elapsedMs = Date.now() - startedAt;
+  let lastText, lastPromptTokens, lastCompletionTokens;
 
-  try {
-    return {
-      changes: parseSentencePatchResponse(text, sentences),
-      cost,
-      elapsedMs,
-    };
-  } catch (error) {
-    console.warn(
-      `[Polyglot] patch ${batchIdx + 1} pomijam odpowiedz (${error.message})`,
-    );
-    return {
-      changes: [],
-      cost,
-      elapsedMs,
-    };
+  for (let attempt = 0; attempt <= PARSE_RETRY_LIMIT; attempt++) {
+    const { text, promptTokens, completionTokens } = await processBatchWithRetry({
+      ...request,
+      batchIdx,
+      signal: options.signal,
+      onActivity: options.onActivity,
+    });
+    lastText = text;
+    lastPromptTokens = promptTokens;
+    lastCompletionTokens = completionTokens;
+
+    console.log(`[PolyglotRaw ${batchIdx + 1}]`, text);
+
+    // próbuj surowy tekst, potem z prefiksem (prefilling)
+    try {
+      return {
+        changes: parseSentencePatchResponse(text, sentences),
+        cost: estimateBatchCost(pricing, promptTokens, completionTokens),
+        elapsedMs: Date.now() - startedAt,
+      };
+    } catch {
+      try {
+        return {
+          changes: parseSentencePatchResponse(PREFILL_PREFIX + text, sentences),
+          cost: estimateBatchCost(pricing, promptTokens, completionTokens),
+          elapsedMs: Date.now() - startedAt,
+        };
+      } catch (parseError) {
+        if (attempt < PARSE_RETRY_LIMIT && !options.signal?.aborted) {
+          console.warn(
+            `[Polyglot] patch ${batchIdx + 1} JSON parse failed, retrying (${attempt + 1}/${PARSE_RETRY_LIMIT}): ${parseError.message}`,
+          );
+          continue;
+        }
+        console.warn(
+          `[Polyglot] patch ${batchIdx + 1} pomijam odpowiedz (${parseError.message})`,
+        );
+      }
+    }
   }
+
+  return {
+    changes: [],
+    cost: estimateBatchCost(pricing, lastPromptTokens, lastCompletionTokens),
+    elapsedMs: Date.now() - startedAt,
+  };
 }
 
 async function runSentencePatchBatches(batches, options, pricing, onProgress) {
