@@ -36,7 +36,6 @@ import ReaderMissingLangBanner from "./reader_components/ReaderMissingLangBanner
 import ReaderChapterContent from "./reader_components/ReaderChapterContent";
 import ReaderBottomBar from "./reader_components/ReaderBottomBar";
 import { UiIcon } from "./reader_components/ReaderIcons";
-import { closeApp } from "../utils/closeApp";
 import {
   SEARCH_BLOCK_SELECTOR,
   FONT_SIZE_MIN,
@@ -2493,12 +2492,12 @@ export default function Reader({
           <>
             <button
               type="button"
-              className="reader-close-app"
-              onClick={closeApp}
-              title="Zamknij aplikację"
-              aria-label="Zamknij aplikację"
+              className="reader-fullscreen-btn"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Wyjdź z pełnego ekranu" : "Pełny ekran"}
+              aria-label={isFullscreen ? "Wyjdź z pełnego ekranu" : "Pełny ekran"}
             >
-              <UiIcon name="power" />
+              <UiIcon name={isFullscreen ? "fullscreenExit" : "fullscreen"} />
             </button>
             <ReaderTopbar
               chapterLabel={chapterLabel}

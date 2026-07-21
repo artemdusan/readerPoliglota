@@ -234,9 +234,9 @@ html:root ::selection {
   cursor: default;
 }
 
-/* Zamknięcie aplikacji — subtelny przycisk w prawym górnym rogu,
+/* Pełny ekran — subtelny przycisk w prawym górnym rogu,
    widoczny razem ze sterowaniem */
-.reader-close-app {
+.reader-fullscreen-btn {
   position: fixed;
   top: calc(10px + var(--safe-top));
   right: calc(12px + var(--safe-right));
@@ -255,8 +255,8 @@ html:root ::selection {
   z-index: 950;
 }
 
-.reader-close-app:hover,
-.reader-close-app:focus-visible {
+.reader-fullscreen-btn:hover,
+.reader-fullscreen-btn:focus-visible {
   opacity: 1;
   color: var(--txt-1);
   border-color: var(--border);

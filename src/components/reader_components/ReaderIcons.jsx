@@ -19,7 +19,6 @@ import {
   RiFullscreenLine,
   RiFullscreenExitLine,
   RiDeleteBinLine,
-  RiShutDownLine,
 } from "react-icons/ri";
 
 const ICON_MAP = {
@@ -43,7 +42,6 @@ const ICON_MAP = {
   fullscreen:     RiFullscreenLine,
   fullscreenExit: RiFullscreenExitLine,
   delete:         RiDeleteBinLine,
-  power:          RiShutDownLine,
 };
 
 export function UiIcon({ name, className = "", title }) {
