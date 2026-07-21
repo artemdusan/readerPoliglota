@@ -35,7 +35,6 @@ import ReaderSettingsMenu from "./reader_components/ReaderSettingsMenu";
 import ReaderMissingLangBanner from "./reader_components/ReaderMissingLangBanner";
 import ReaderChapterContent from "./reader_components/ReaderChapterContent";
 import ReaderBottomBar from "./reader_components/ReaderBottomBar";
-import { UiIcon } from "./reader_components/ReaderIcons";
 import {
   SEARCH_BLOCK_SELECTOR,
   FONT_SIZE_MIN,
@@ -638,6 +637,7 @@ export default function Reader({
 
       requestAnimationFrame(() => {
         if (!container || !inner) return;
+        const prevTotal = totalPagesRef.current;
         const total = Math.max(1, Math.round(inner.scrollWidth / pw));
         totalPagesRef.current = total;
         setTotalPages(total);
@@ -780,8 +780,15 @@ export default function Reader({
           syncPageViewport(targetPage, pw);
           finalPage = targetPage;
         } else {
-          // Re-layout only (font change or polyMode switch) — keep current page
-          const cur = Math.min(currentPageRef.current, total - 1);
+          // Re-layout only (font change or polyMode switch) — keep current page.
+          // If the reader sat on the last page (e.g. after backing into the
+          // previous chapter), stay pinned to the end even when the re-flowed
+          // content has a different page count.
+          const wasAtEnd =
+            prevTotal > 1 && currentPageRef.current >= prevTotal - 1;
+          const cur = wasAtEnd
+            ? total - 1
+            : Math.min(currentPageRef.current, total - 1);
           if (cur !== currentPageRef.current) {
             setCurrentPage(cur);
             currentPageRef.current = cur;
@@ -2077,17 +2084,9 @@ export default function Reader({
       }
     }
 
-    // E-reader tap zones: left edge = previous page, right edge = next page.
-    // Center tap only dismisses the chrome — the cookie pill is the sole
-    // toggle (iOS-home-style), no gesture navigation.
-    const zone = e.clientX / Math.max(1, window.innerWidth);
-    if (zone < 0.3) {
-      prevPageRef.current();
-      setDistractionFree(true);
-    } else if (zone > 0.7) {
-      nextPageRef.current();
-      setDistractionFree(true);
-    } else if (!distractionFree) {
+    // No gesture navigation — pages turn only via buttons/keyboard.
+    // A tap on the text only dismisses the chrome when it's open.
+    if (!distractionFree) {
       toggleDistractionFree();
     }
   }
@@ -2260,14 +2259,6 @@ export default function Reader({
     [visibleBookmarks, chapterIdx, totalPages, currentPage],
   );
   const hasCurrentPageBookmark = currentPageBookmarks.length > 0;
-  async function toggleCurrentBookmark() {
-    const currentBookmark = currentPageBookmarks[0];
-    if (currentBookmark) {
-      await removeBookmark(currentBookmark.id);
-      return;
-    }
-    await addBookmark();
-  }
   const bookmarkList = useMemo(
     () =>
       [...visibleBookmarks].sort((a, b) => {
@@ -2508,37 +2499,48 @@ export default function Reader({
         )}
       </div>
 
-      {/* Cookie — always-visible home pill: shows position, toggles the chrome */}
-      <button
-        type="button"
-        className={`fs-page-indicator${distractionFree ? "" : " is-open"}`}
-        onClick={toggleDistractionFree}
-        aria-expanded={!distractionFree}
-        title={distractionFree ? "Pokaż sterowanie" : "Ukryj sterowanie"}
-      >
-        Strona {currentPage + 1}/{totalPages} • {Math.round(
-          totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0,
-        )}%
-      </button>
-
-      <button
-        type="button"
-        className={`fs-bookmark-toggle${hasCurrentPageBookmark ? " is-active" : ""}`}
-        onClick={toggleCurrentBookmark}
-        title={
-          hasCurrentPageBookmark
-            ? "Usuń zakładkę z tego miejsca"
-            : "Dodaj zakładkę w tym miejscu"
-        }
-        aria-label={
-          hasCurrentPageBookmark
-            ? "Usuń zakładkę z tego miejsca"
-            : "Dodaj zakładkę w tym miejscu"
-        }
-        aria-pressed={hasCurrentPageBookmark}
-      >
-        <UiIcon name={hasCurrentPageBookmark ? "bookmarkFill" : "bookmark"} />
-      </button>
+      {/* Cookie — always-visible home pill: shows position, toggles the chrome.
+          In distraction-free mode it's flanked by subtle page-turn buttons. */}
+      <div className="fs-home-row">
+        {distractionFree && (
+          <button
+            type="button"
+            className="fs-page-nav"
+            onClick={prevPage}
+            disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
+            aria-label="Poprzednia strona"
+            title="Poprzednia strona"
+          >
+            ❮
+          </button>
+        )}
+        <button
+          type="button"
+          className={`fs-page-indicator${distractionFree ? "" : " is-open"}`}
+          onClick={toggleDistractionFree}
+          aria-expanded={!distractionFree}
+          title={distractionFree ? "Pokaż sterowanie" : "Ukryj sterowanie"}
+        >
+          Strona {currentPage + 1}/{totalPages} • {Math.round(
+            totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0,
+          )}%
+        </button>
+        {distractionFree && (
+          <button
+            type="button"
+            className="fs-page-nav"
+            onClick={nextPage}
+            disabled={
+              currentPage >= totalPages - 1 &&
+              (chapterIdx ?? 0) >= chapterCount - 1
+            }
+            aria-label="Następna strona"
+            title="Następna strona"
+          >
+            ❯
+          </button>
+        )}
+      </div>
 
       {/* Page turn flash indicator (especially for e-ink) */}
       <div className={`page-turn-flash${pageFlash ? ` flash-${pageFlash}` : ''}`} />

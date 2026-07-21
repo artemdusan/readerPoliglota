@@ -56,7 +56,7 @@ export default function ReaderBottomBar({
             disabled={ttsTransport.prevDisabled}
             title="Poprzedni fragment"
           >
-            ⏮
+            <UiIcon name="skipBack" />
           </button>
           <button
             type="button"
@@ -64,7 +64,7 @@ export default function ReaderBottomBar({
             onClick={ttsTransport.onToggle}
             title={ttsTransport.paused ? "Wznów" : "Pauza"}
           >
-            {ttsTransport.paused ? "▶" : "⏸"}
+            <UiIcon name={ttsTransport.paused ? "play" : "pause"} />
           </button>
           <button
             type="button"
@@ -72,7 +72,7 @@ export default function ReaderBottomBar({
             onClick={ttsTransport.onStop}
             title="Zakończ TTS"
           >
-            ⏹
+            <UiIcon name="stop" />
           </button>
           <button
             type="button"
@@ -81,7 +81,7 @@ export default function ReaderBottomBar({
             disabled={ttsTransport.nextDisabled}
             title="Następny fragment"
           >
-            ⏭
+            <UiIcon name="skipForward" />
           </button>
         </div>
       ) : (

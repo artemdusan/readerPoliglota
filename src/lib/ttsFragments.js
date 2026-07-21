@@ -37,7 +37,11 @@ export class SentenceTtsPlayer {
   pause() {
     if (this._stopped || this._paused) return;
     this._paused = true;
-    window.speechSynthesis.pause();
+    // speechSynthesis.pause() bywa ignorowane (Android/Chrome, głosy sieciowe),
+    // więc pauzujemy przez cancel() i przy wznowieniu startujemy bieżące zdanie od nowa.
+    this._needsRestartOnResume = true;
+    this._utteranceToken += 1;
+    window.speechSynthesis.cancel();
   }
 
   resume() {

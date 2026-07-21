@@ -20,6 +20,7 @@ export default function ReaderSidebar({
       onClose={onClose}
       size={290}
       padding="sm"
+      zIndex={1100}
       title={
         <Stack gap={2}>
           <Button variant="subtle" size="compact-sm" onClick={onBack} w="fit-content" px={4}>
