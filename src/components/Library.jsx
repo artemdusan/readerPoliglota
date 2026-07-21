@@ -4,8 +4,6 @@ import "./library.css";
 import {
   BsGear,
   BsArrowRepeat,
-  BsFullscreen,
-  BsFullscreenExit,
   BsPlus,
   BsStars,
   BsDownload,
@@ -33,7 +31,6 @@ import { version } from "../../package.json";
 import { getUsername, isLoggedIn, onAuthChange } from "../sync/cfAuth";
 import { syncAll, uploadBook, deleteRemoteBook, syncBookStatus } from "../sync/cfSync";
 import { getSyncActivity, subscribeSyncActivity } from "../sync/syncActivity";
-import { toggleFullscreen } from "../utils/fullscreen";
 
 function getDroppedFiles(dataTransfer) {
   if (!dataTransfer) return [];
@@ -83,9 +80,6 @@ export default function Library({
   const [importDraft, setImportDraft] = useState(null);
   const [editingBook, setEditingBook] = useState(null);
   const [ctxBookId, setCtxBookId] = useState(null);
-  const [isFullscreen, setIsFullscreen] = useState(
-    () => Boolean(document.fullscreenElement)
-  );
   const [cfConnected, setCfConnected] = useState(() => isLoggedIn());
   const [accountName, setAccountName] = useState(() => getUsername());
   const [syncActivity, setSyncActivity] = useState(() => getSyncActivity());
@@ -111,14 +105,6 @@ export default function Library({
   }, []);
 
   useEffect(() => subscribeSyncActivity(setSyncActivity), []);
-
-  useEffect(() => {
-    function onFullscreenChange() {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    }
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
 
   useEffect(() => {
     if (!syncActivity.result) return;
@@ -410,15 +396,6 @@ export default function Library({
               title={cfConnected ? "Synchronizuj" : "Połącz konto"}
             >
               <BsArrowRepeat />
-            </button>
-            <button
-              type="button"
-              className="lib-icon-btn lib-icon-btn-quiet"
-              onClick={toggleFullscreen}
-              title={isFullscreen ? "Wyjdź z pełnego ekranu" : "Pełny ekran"}
-              aria-label={isFullscreen ? "Wyjdź z pełnego ekranu" : "Pełny ekran"}
-            >
-              {isFullscreen ? <BsFullscreenExit /> : <BsFullscreen />}
             </button>
           </div>
         </header>

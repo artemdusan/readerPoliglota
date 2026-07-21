@@ -35,7 +35,6 @@ import ReaderSettingsMenu from "./reader_components/ReaderSettingsMenu";
 import ReaderMissingLangBanner from "./reader_components/ReaderMissingLangBanner";
 import ReaderChapterContent from "./reader_components/ReaderChapterContent";
 import ReaderBottomBar from "./reader_components/ReaderBottomBar";
-import { UiIcon } from "./reader_components/ReaderIcons";
 import {
   SEARCH_BLOCK_SELECTOR,
   FONT_SIZE_MIN,
@@ -2490,15 +2489,6 @@ export default function Reader({
 
         {!distractionFree && (
           <>
-            <button
-              type="button"
-              className="reader-fullscreen-btn"
-              onClick={toggleFullscreen}
-              title={isFullscreen ? "Wyjdź z pełnego ekranu" : "Pełny ekran"}
-              aria-label={isFullscreen ? "Wyjdź z pełnego ekranu" : "Pełny ekran"}
-            >
-              <UiIcon name={isFullscreen ? "fullscreenExit" : "fullscreen"} />
-            </button>
             <ReaderTopbar
               chapterLabel={chapterLabel}
               activeLang={activeLang}

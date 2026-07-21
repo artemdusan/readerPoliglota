@@ -234,35 +234,6 @@ html:root ::selection {
   cursor: default;
 }
 
-/* Pełny ekran — subtelny przycisk w prawym górnym rogu,
-   widoczny razem ze sterowaniem */
-.reader-fullscreen-btn {
-  position: fixed;
-  top: calc(10px + var(--safe-top));
-  right: calc(12px + var(--safe-right));
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 1px solid var(--border-soft);
-  background: var(--bg);
-  color: var(--txt-2);
-  opacity: 0.7;
-  cursor: pointer;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 950;
-}
-
-.reader-fullscreen-btn:hover,
-.reader-fullscreen-btn:focus-visible {
-  opacity: 1;
-  color: var(--txt-1);
-  border-color: var(--border);
-  outline: none;
-}
-
 /* Panel wyszukiwania — pływająca karta u góry */
 .reader-search-panel {
   position: fixed;
