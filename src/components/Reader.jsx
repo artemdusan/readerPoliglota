@@ -26,7 +26,6 @@ import { triggerSync, syncBook } from "../sync/cfSync";
 import { parseStoredPolyglot } from "../lib/polyglotParser";
 import { annotateParagraphsInHtml } from "../lib/sentenceWrapper";
 import { SentenceTtsPlayer } from "../lib/ttsFragments";
-import BatchGenModal from "./BatchGenModal";
 import ReaderSidebar from "./reader_components/ReaderSidebar";
 import ReaderTopbar from "./reader_components/ReaderTopbar";
 import ReaderSearchPanel from "./reader_components/ReaderSearchPanel";
@@ -121,7 +120,6 @@ export default function Reader({
   const [book, setBook] = useState(null);
   const [toc, setToc] = useState([]);
   const [chapterCount, setChapterCount] = useState(0);
-  const [batchModalOpen, setBatchModalOpen] = useState(false);
 
   // Chapter state
   const [chapterIdx, setChapterIdx] = useState(null); // null until reading position loaded
@@ -174,15 +172,6 @@ export default function Reader({
   // reveals the top/bottom chrome; tapping again hides it.
   const [distractionFree, setDistractionFree] = useState(true);
   const [pageFlash, setPageFlash] = useState(null); // "next" | "prev" | null
-  const [keyHintVisible, setKeyHintVisible] = useState(
-    () => !localStorage.getItem("vocabapp:keyHintDismissed"),
-  );
-
-  function dismissKeyHint() {
-    localStorage.setItem("vocabapp:keyHintDismissed", "1");
-    setKeyHintVisible(false);
-  }
-
   const [isFullscreen, setIsFullscreen] = useState(
     () => Boolean(document.fullscreenElement)
   );
@@ -250,9 +239,6 @@ export default function Reader({
   const toggleFullscreenRef = useRef(null);
   const keyPageTurnAtRef = useRef(0);
   toggleFullscreenRef.current = toggleFullscreen;
-  const centerTapHandledRef = useRef(false);
-  const distractionFreeRef = useRef(false);
-  useEffect(() => { distractionFreeRef.current = distractionFree; }, [distractionFree]);
 
   useWakeLock(Boolean(bookId));
 
@@ -2110,13 +2096,8 @@ export default function Reader({
   ───────────────────────────────────────── */
 
   function handleContentClick(e) {
-    // In distraction-free mode, tapping non-interactive content exits it
-    if (distractionFreeRef.current) {
-      if (!e.target.closest(".pw") && !e.target.closest("a[href]") && !e.target.closest("[data-pid]")) {
-        setDistractionFree(false);
-        return;
-      }
-    }
+    // Interactive elements handle their own clicks (confirm card, banners…)
+    if (e.target.closest("button, select, input, textarea, label")) return;
 
     const anchor = e.target.closest("a[href]");
     if (anchor) {
@@ -2152,6 +2133,19 @@ export default function Reader({
         if (pid !== activeSid) startOriginalTts(pid);
         return;
       }
+    }
+
+    // E-reader tap zones: left edge = previous page, right edge = next page,
+    // center = show/hide the chrome (works in both directions).
+    const zone = e.clientX / Math.max(1, window.innerWidth);
+    if (zone < 0.3) {
+      prevPageRef.current();
+      setDistractionFree(true);
+    } else if (zone > 0.7) {
+      nextPageRef.current();
+      setDistractionFree(true);
+    } else {
+      toggleDistractionFree();
     }
   }
 
@@ -2210,11 +2204,6 @@ export default function Reader({
       return;
     }
     openBookmarksPanel();
-  }
-
-  function handleOpenBatchModal() {
-    setBatchModalOpen(true);
-    setSidebarOpen(false);
   }
 
   function toggleDistractionFree() {
@@ -2409,8 +2398,6 @@ export default function Reader({
         onClose={() => setSidebarOpen(false)}
         onBack={handleBackToLibrary}
         book={book}
-        canTranslateBook={Boolean(book && settings)}
-        onOpenBatchModal={handleOpenBatchModal}
         chapterCount={chapterCount}
         tocItems={tocItems}
         hrefToIndex={hrefToIndex}
@@ -2441,15 +2428,6 @@ export default function Reader({
           onToggleSidebar={() => setSidebarOpen((open) => !open)}
           onToggleSettings={handleToggleSettingsMenu}
         />
-
-        {keyHintVisible && (
-          <div className="key-hint-banner" onClick={dismissKeyHint}>
-            <span>Użyj przycisków głośności lub strzałek do zmiany stron</span>
-            <button className="key-hint-dismiss" onClick={(e) => { e.stopPropagation(); dismissKeyHint(); }}>
-              OK
-            </button>
-          </div>
-        )}
 
         {searchOpen && (
           <ReaderSearchPanel
@@ -2519,15 +2497,6 @@ export default function Reader({
             ttsTargetVoice={ttsTargetVoice}
             onSourceVoiceChange={handleSourceVoiceChange}
             onTargetVoiceChange={handleTargetVoiceChange}
-          />
-        )}
-
-        {batchModalOpen && book && settings && (
-          <BatchGenModal
-            bookId={book.id}
-            book={book}
-            settings={settings}
-            onClose={() => setBatchModalOpen(false)}
           />
         )}
 
@@ -2601,13 +2570,6 @@ export default function Reader({
 
       {distractionFree && (
         <>
-          <button
-            className="ui-toggle-btn"
-            onClick={toggleDistractionFree}
-            aria-label="Pokaż/ukryj UI"
-          >
-            ≡
-          </button>
           <div className="fs-page-indicator">
             Strona {currentPage + 1}/{totalPages} • {Math.round(
               totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0,

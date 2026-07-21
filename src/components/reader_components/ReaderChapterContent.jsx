@@ -4,10 +4,10 @@ function renderEstimateTime(estimatedSecs) {
     : `${Math.round(estimatedSecs / 60)} min`;
 }
 
-function renderCount(count, one, few, many) {
-  if (count === 1) return `${count} ${one}`;
-  if (count < 5) return `${count} ${few}`;
-  return `${count} ${many}`;
+function pluralWord(count, one, few, many) {
+  if (count === 1) return one;
+  if (count < 5) return few;
+  return many;
 }
 
 export default function ReaderChapterContent({
@@ -48,7 +48,7 @@ export default function ReaderChapterContent({
     '<p style="color:var(--txt-3);font-style:italic">Ten rozdział nie zawiera tekstu.</p>';
 
   return (
-    <div className="ch-scroll" ref={scrollRef}>
+    <div className="ch-scroll" ref={scrollRef} onClick={onContentClick}>
       <div className="ch-columns" ref={innerRef} key={animKey}>
         <div className="ch-inner">
           {chapterLoading ? (
@@ -69,10 +69,12 @@ export default function ReaderChapterContent({
             <>
               {polyMode && polyState === "confirm" && (
                 <div className="poly-confirm ch-anim">
-                  <p className="poly-confirm-title">
-                    Wybierz język tłumaczenia
-                  </p>
-                  <div className="poly-confirm-config">
+                  <div className="poly-confirm-card">
+                    <p className="poly-confirm-title">Przetłumacz rozdział</p>
+                    <p className="poly-confirm-sub">
+                      {chapter?.title || "Bieżący rozdział"}
+                    </p>
+
                     <div className="poly-confirm-field">
                       <span className="poly-confirm-field-label">
                         Język tłumaczenia
@@ -92,47 +94,46 @@ export default function ReaderChapterContent({
                       </select>
                     </div>
 
-                  </div>
-
-                  <p className="poly-confirm-hint">
-                    <strong>
-                      {renderCount(
-                        estimatedSentenceCount,
-                        "zdanie",
-                        "zdania",
-                        "zdań",
+                    <div className="poly-confirm-stats">
+                      <div className="poly-confirm-stat">
+                        <span className="poly-confirm-stat-val">
+                          {estimatedSentenceCount}
+                        </span>
+                        <span className="poly-confirm-stat-key">
+                          {pluralWord(estimatedSentenceCount, "zdanie", "zdania", "zdań")}
+                        </span>
+                      </div>
+                      <div className="poly-confirm-stat">
+                        <span className="poly-confirm-stat-val">
+                          ~{renderEstimateTime(estimatedSecs)}
+                        </span>
+                        <span className="poly-confirm-stat-key">czas</span>
+                      </div>
+                      {estimatedCost > 0 && (
+                        <div className="poly-confirm-stat">
+                          <span className="poly-confirm-stat-val">
+                            {estimatedCost < 0.001
+                              ? "< $0.001"
+                              : `~$${estimatedCost.toFixed(3)}`}
+                          </span>
+                          <span className="poly-confirm-stat-key">koszt</span>
+                        </div>
                       )}
-                    </strong>
-                    {" · "}
-                    <strong>
-                      {renderCount(
-                        estimatedBatchCount,
-                        "zapytanie",
-                        "zapytania",
-                        "zapytań",
-                      )}
-                    </strong>
-                    {" · ~"}
-                    {renderEstimateTime(estimatedSecs)}
-                    {estimatedCost > 0 && (
-                      <>
-                        {" · ~$"}
-                        {estimatedCost.toFixed(4)}
-                      </>
-                    )}
-                  </p>
+                    </div>
 
-                  <p className="poly-confirm-hint">
-                    Nie zamykaj strony i nie zmieniaj rozdziału.
-                  </p>
+                    <div className="poly-confirm-btns">
+                      <button className="btn-primary" onClick={onStartGeneration}>
+                        Przetłumacz
+                      </button>
+                      <button className="btn-ghost" onClick={onCancelConfirm}>
+                        Anuluj
+                      </button>
+                    </div>
 
-                  <div className="poly-confirm-btns">
-                    <button className="btn-primary" onClick={onStartGeneration}>
-                      Generuj tłumaczenia
-                    </button>
-                    <button className="btn-ghost" onClick={onCancelConfirm}>
-                      Anuluj
-                    </button>
+                    <p className="poly-confirm-hint">
+                      Podczas generowania nie zamykaj strony ani nie zmieniaj
+                      rozdziału.
+                    </p>
                   </div>
                 </div>
               )}
@@ -196,7 +197,6 @@ export default function ReaderChapterContent({
                     polyWordFragments.length ? " tts-ready" : ""
                   }${ttsPlaying ? " audio-ready" : ""}`}
                   dangerouslySetInnerHTML={{ __html: renderedPolyHtml }}
-                  onClick={onContentClick}
                 />
               )}
 
@@ -205,7 +205,6 @@ export default function ReaderChapterContent({
                   ref={chapterBodyRef}
                   className={`ch-body ch-anim${originalTtsPlaying ? " audio-ready" : ""}`}
                   dangerouslySetInnerHTML={{ __html: originalHtml }}
-                  onClick={onContentClick}
                 />
               )}
             </>
