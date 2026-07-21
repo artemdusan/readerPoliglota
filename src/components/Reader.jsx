@@ -642,6 +642,33 @@ export default function Reader({
         totalPagesRef.current = total;
         setTotalPages(total);
 
+        // Anchors target [data-pid]/.ch-sentence nodes, but right after a
+        // version switch (or chapter jump) the intermediate render is the raw,
+        // un-annotated HTML without them. Consuming the anchors now would
+        // degrade the restore to a bare progress fraction between two
+        // differently-flowed texts — so keep them queued and retry once the
+        // annotated content lands.
+        const anchorsPending =
+          pendingAnchorSentenceIdRef.current !== null ||
+          pendingAnchorPidRef.current !== null;
+        if (
+          anchorsPending &&
+          !chapterBodyRef.current?.querySelector("[data-pid]")
+        ) {
+          const token = ++scrollRetryTokenRef.current;
+          setTimeout(() => {
+            if (scrollRetryTokenRef.current === token) {
+              setLayoutKey((k) => k + 1);
+            }
+          }, 120);
+          const cur = Math.min(currentPageRef.current, total - 1);
+          setCurrentPage(cur);
+          currentPageRef.current = cur;
+          inner.style.transition = "";
+          syncPageViewport(cur, pw);
+          return;
+        }
+
         let finalPage;
         let anchorHandled = false;
         // Anchor restore — keep the reader on the same sentence across a

@@ -538,6 +538,8 @@ html:root ::selection {
   font-size: 13px;
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .fs-page-indicator.is-open {

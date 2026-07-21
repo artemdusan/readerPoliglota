@@ -1,21 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import {
-  ActionIcon,
-  Alert,
-  Badge,
-  Box,
-  Button,
-  Card,
-  Group,
-  Loader,
-  Menu,
-  Progress,
-  SimpleGrid,
-  Stack,
-  Tabs,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { Loader, Menu, Progress } from "@mantine/core";
+import "./library.css";
 import {
   BsGear,
   BsArrowRepeat,
@@ -379,147 +364,134 @@ export default function Library({
         : "Jeszcze nie wykonano pierwszej synchronizacji.";
 
   return (
-    <Box mih="100dvh" bg="var(--bg)">
-      <Box
-        component="header"
-        px="md"
-        py={8}
-        style={{ borderBottom: '1px solid var(--border-soft)' }}
-      >
-        <Group justify="space-between">
-          <Group gap="xs">
-            <Box
-              w={8}
-              h={8}
-              style={{
-                borderRadius: '50%',
-                background: syncTone === 'is-offline' ? 'var(--border-soft)' : 'var(--txt-1)',
-              }}
-              aria-hidden="true"
-              title={syncTitle}
-            />
-            <Text size="sm" fw={600} c={cfConnected && accountName ? undefined : 'dimmed'}>
-              {cfConnected && accountName ? accountName : 'Offline'}
-            </Text>
+    <div className="lib-layout">
+      <div className="lib-content">
+        <header className="lib-header">
+          <div className={`lib-account ${syncTone}`} title={`${syncTitle}. ${syncMetaText}`}>
+            <span className="lib-account-dot" aria-hidden="true" />
+            <span className="lib-account-name">
+              {cfConnected && accountName ? accountName : "Offline"}
+            </span>
             {cfConnected && lastSync && (
-              <Text size="xs" c="dimmed">{formatRelativeSync(lastSync, syncNow)}</Text>
+              <span className="lib-account-sync">
+                {formatRelativeSync(lastSync, syncNow)}
+              </span>
             )}
-          </Group>
+          </div>
 
-          <Group gap="xs">
-            <ActionIcon variant="subtle" size="lg" onClick={onOpenSettings} title="Ustawienia">
+          <div className="lib-header-actions">
+            <button
+              type="button"
+              className="lib-icon-btn"
+              onClick={onOpenSettings}
+              title="Ustawienia"
+            >
               <BsGear />
-            </ActionIcon>
-            <ActionIcon
-              variant="subtle"
-              size="lg"
+            </button>
+            <button
+              type="button"
+              className="lib-icon-btn"
               onClick={handleSyncButton}
               disabled={isSyncing}
               title={cfConnected ? "Synchronizuj" : "Połącz konto"}
             >
               <BsArrowRepeat />
-            </ActionIcon>
-          </Group>
-        </Group>
+            </button>
+          </div>
+        </header>
 
         {isSyncing && syncProgress && (
           <Progress
-            mt={6}
             size="xs"
             value={syncProgress.total > 0 ? (syncProgress.done / syncProgress.total) * 100 : 10}
             animated
           />
         )}
-      </Box>
 
-      {cfConnected && syncResult && !isSyncing && showFeedback && (
-        <Alert color={syncResult.error ? 'red' : undefined} m="md" py="xs">
-          {syncResult.error
-            ? `Błąd: ${syncResult.error}`
-            : `Zsynchronizowano ↑ ${formatTransfer(syncResult.sentBytes)} · ↓ ${formatTransfer(syncResult.receivedBytes)}`}
-        </Alert>
-      )}
+        {cfConnected && syncResult && !isSyncing && showFeedback && (
+          <div className="lib-alert">
+            {syncResult.error
+              ? `⚠ Błąd: ${syncResult.error}`
+              : `Zsynchronizowano ↑ ${formatTransfer(syncResult.sentBytes)} · ↓ ${formatTransfer(syncResult.receivedBytes)}`}
+          </div>
+        )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".epub"
-        hidden
-        onChange={(e) => {
-          handleFile(e.target.files[0]);
-          e.target.value = "";
-        }}
-      />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".epub"
+          hidden
+          onChange={(e) => {
+            handleFile(e.target.files[0]);
+            e.target.value = "";
+          }}
+        />
 
-      <Stack p="md" gap="md" maw={1100} mx="auto">
-        <Group gap="sm">
-          <TextInput
+        <div className="lib-actions">
+          <input
             type="search"
+            className="lib-search"
             placeholder="Szukaj książki…"
             value={search}
-            onChange={e => setSearch(e.target.value)}
-            flex={1}
+            onChange={(e) => setSearch(e.target.value)}
           />
-          <Button
-            leftSection={<BsPlus size={18} />}
+          <button
+            type="button"
+            className="lib-chip is-active"
             onClick={() => fileInputRef.current?.click()}
-            loading={adding}
+            disabled={adding}
             title="Dodaj książkę EPUB"
           >
-            Dodaj EPUB
-          </Button>
-        </Group>
+            <BsPlus size={18} /> {adding ? "Dodawanie…" : "Dodaj EPUB"}
+          </button>
+        </div>
 
-        <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
-          <Tabs.List>
-            <Tabs.Tab
-              value="active"
-              rightSection={activeBooks.length > 0 ? <Badge size="xs" variant="light">{activeBooks.length}</Badge> : null}
-            >
-              Biblioteka
-            </Tabs.Tab>
-            <Tabs.Tab
-              value="archived"
-              rightSection={archivedBooks.length > 0 ? <Badge size="xs" variant="light">{archivedBooks.length}</Badge> : null}
-            >
-              Archiwum
-            </Tabs.Tab>
-          </Tabs.List>
-        </Tabs>
+        <div className="lib-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "active"}
+            className={`lib-chip${activeTab === "active" ? " is-active" : ""}`}
+            onClick={() => setActiveTab("active")}
+          >
+            Biblioteka{activeBooks.length > 0 ? ` · ${activeBooks.length}` : ""}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "archived"}
+            className={`lib-chip${activeTab === "archived" ? " is-active" : ""}`}
+            onClick={() => setActiveTab("archived")}
+          >
+            Archiwum{archivedBooks.length > 0 ? ` · ${archivedBooks.length}` : ""}
+          </button>
+        </div>
 
-        {addError && <Alert color="red" py="xs">⚠ {addError}</Alert>}
+        {addError && <div className="lib-alert">⚠ {addError}</div>}
 
         {loading ? (
-          <Group justify="center" p="xl"><Loader /></Group>
+          <div className="lib-muted"><Loader /></div>
         ) : tabBooks.length === 0 ? (
           activeTab === 'active' ? (
-            <Stack
-              align="center"
-              gap="xs"
-              p="xl"
+            <div
+              className={`lib-empty${dragging ? " is-dragging" : ""}`}
               onClick={() => fileInputRef.current?.click()}
               onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
-              style={{
-                border: `2px dashed ${dragging ? 'var(--txt-1)' : 'var(--border-soft)'}`,
-                borderRadius: 8,
-                cursor: 'pointer',
-              }}
             >
-              <Text fz={40}>📚</Text>
-              <Text fw={600}>Twoja biblioteka jest pusta</Text>
-              <Text size="sm" c="dimmed">
+              <span className="lib-empty-icon">📚</span>
+              <span className="lib-empty-title">Twoja biblioteka jest pusta</span>
+              <span className="lib-empty-hint">
                 Przeciągnij plik <strong>.epub</strong> tutaj lub kliknij, aby go dodać.
-              </Text>
-              <Button mt="xs" loading={adding}>Wybierz plik EPUB</Button>
-            </Stack>
+              </span>
+            </div>
           ) : (
-            <Text c="dimmed" ta="center" p="xl">Archiwum jest puste.</Text>
+            <div className="lib-muted">Archiwum jest puste.</div>
           )
         ) : (
-          <SimpleGrid
-            cols={{ base: 2, xs: 3, sm: 4, md: 5 }}
+          <div
+            className="lib-grid"
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
@@ -529,28 +501,16 @@ export default function Library({
               const percent = progressPercent(book.id, book.chapterCount);
 
               return (
-                <Card
+                <div
                   key={book.id}
-                  withBorder
-                  padding="xs"
+                  className="lib-card"
                   onClick={() => onOpenBook(book.id)}
-                  style={{ cursor: 'pointer', position: 'relative' }}
                 >
-                  <Box
-                    style={{
-                      aspectRatio: '2 / 3',
-                      borderRadius: 4,
-                      overflow: 'hidden',
-                      display: 'grid',
-                      placeItems: 'center',
-                      background: 'var(--bg-side)',
-                      fontSize: 40,
-                    }}
-                  >
+                  <div className="lib-cover">
                     {book.cover
-                      ? <img src={book.cover} alt="okładka" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ? <img src={book.cover} alt="okładka" />
                       : '📖'}
-                  </Box>
+                  </div>
 
                   <Menu
                     position="bottom-end"
@@ -559,15 +519,14 @@ export default function Library({
                     withinPortal
                   >
                     <Menu.Target>
-                      <ActionIcon
-                        variant="default"
-                        size="sm"
+                      <button
+                        type="button"
+                        className="lib-card-menu"
                         title="Menu książki"
                         onClick={(e) => e.stopPropagation()}
-                        style={{ position: 'absolute', top: 12, right: 12 }}
                       >
                         ⋮
-                      </ActionIcon>
+                      </button>
                     </Menu.Target>
                     <Menu.Dropdown onClick={(e) => e.stopPropagation()}>
                       {settings && (
@@ -616,28 +575,31 @@ export default function Library({
                     </Menu.Dropdown>
                   </Menu>
 
-                  <Stack gap={4} mt="xs">
-                    {book.status === 'archived' && (
-                      <Badge size="xs" variant="light" w="fit-content">Archiwum</Badge>
-                    )}
-                    <Text size="sm" fw={600} lineClamp={2}>{book.title}</Text>
-                    {book.author && (
-                      <Text size="xs" c="dimmed" lineClamp={1}>{book.author}</Text>
-                    )}
-                    <Group justify="space-between" gap={4}>
-                      <Text size="xs" c="dimmed">{progressLabel(book.id, book.chapterCount)}</Text>
-                      <Text size="xs" fw={600} c={isStarted ? undefined : 'dimmed'}>
-                        {isStarted ? `${percent}%` : "Start"}
-                      </Text>
-                    </Group>
-                    <Progress size="xs" value={percent} aria-hidden="true" />
-                  </Stack>
-                </Card>
+                  {book.status === 'archived' && (
+                    <span className="lib-badge">Archiwum</span>
+                  )}
+                  <div className="lib-card-title">{book.title}</div>
+                  {book.author && (
+                    <div className="lib-card-author">{book.author}</div>
+                  )}
+                  <div className="lib-card-meta">
+                    <span>{progressLabel(book.id, book.chapterCount)}</span>
+                    <span className="lib-card-percent">
+                      {isStarted ? `${percent}%` : "Start"}
+                    </span>
+                  </div>
+                  <div className="lib-progress" aria-hidden="true">
+                    <div
+                      className="lib-progress-fill"
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                </div>
               );
             })}
-          </SimpleGrid>
+          </div>
         )}
-      </Stack>
+      </div>
 
       {importDraft && (
         <ImportDialog
@@ -672,7 +634,7 @@ export default function Library({
         />
       )}
 
-      <Text size="xs" c="dimmed" ta="center" py="md">v{version}</Text>
-    </Box>
+      <div className="lib-version">v{version}</div>
+    </div>
   );
 }
