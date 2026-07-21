@@ -1,5 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Box,
+  Button,
+  Card,
+  Group,
+  Loader,
+  Menu,
+  Progress,
+  SimpleGrid,
+  Stack,
+  Tabs,
+  Text,
+  TextInput,
+} from "@mantine/core";
+import {
   BsGear,
   BsArrowRepeat,
   BsPlus,
@@ -113,13 +130,6 @@ export default function Library({
     const t = setTimeout(() => setShowFeedback(false), 4000);
     return () => clearTimeout(t);
   }, [syncActivity.result]);
-
-  useEffect(() => {
-    if (!ctxBookId) return;
-    const close = () => setCtxBookId(null);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [ctxBookId]);
 
   // Drag & Drop dla całego okna
   useEffect(() => {
@@ -373,61 +383,65 @@ export default function Library({
         : "Jeszcze nie wykonano pierwszej synchronizacji.";
 
   return (
-    <div className="lib-layout">
-      <header className="lib-topbar">
-        <div className="lib-topbar-inner">
-          <div className="lib-topbar-left">
-            <span className={`lib-topbar-dot ${syncTone}`} aria-hidden="true" />
-            {cfConnected && accountName
-              ? <span className="lib-topbar-account">{accountName}</span>
-              : <span className="lib-topbar-account is-offline">Offline</span>
-            }
+    <Box mih="100dvh" bg="var(--bg)">
+      <Box
+        component="header"
+        px="md"
+        py={8}
+        style={{ borderBottom: '1px solid var(--border-soft)' }}
+      >
+        <Group justify="space-between">
+          <Group gap="xs">
+            <Box
+              w={8}
+              h={8}
+              style={{
+                borderRadius: '50%',
+                background: syncTone === 'is-offline' ? 'var(--border-soft)' : 'var(--txt-1)',
+              }}
+              aria-hidden="true"
+              title={syncTitle}
+            />
+            <Text size="sm" fw={600} c={cfConnected && accountName ? undefined : 'dimmed'}>
+              {cfConnected && accountName ? accountName : 'Offline'}
+            </Text>
             {cfConnected && lastSync && (
-              <span className="lib-topbar-sync-time">
-                {formatRelativeSync(lastSync, syncNow)}
-              </span>
+              <Text size="xs" c="dimmed">{formatRelativeSync(lastSync, syncNow)}</Text>
             )}
-          </div>
+          </Group>
 
-          <div className="lib-topbar-actions">
-            <button
-              className="lib-topbar-btn"
-              onClick={onOpenSettings}
-              title="Ustawienia"
-            >
+          <Group gap="xs">
+            <ActionIcon variant="subtle" size="lg" onClick={onOpenSettings} title="Ustawienia">
               <BsGear />
-            </button>
-            <button
-              className={`lib-topbar-btn ${isSyncing ? "is-spinning" : ""}`}
+            </ActionIcon>
+            <ActionIcon
+              variant="subtle"
+              size="lg"
               onClick={handleSyncButton}
               disabled={isSyncing}
               title={cfConnected ? "Synchronizuj" : "Połącz konto"}
             >
               <BsArrowRepeat />
-            </button>
-          </div>
-        </div>
+            </ActionIcon>
+          </Group>
+        </Group>
 
         {isSyncing && syncProgress && (
-          <div className="lib-topbar-progress">
-            <div
-              className="lib-topbar-progress-fill"
-              style={{
-                width: syncProgress.total > 0
-                  ? `${(syncProgress.done / syncProgress.total) * 100}%`
-                  : "10%",
-              }}
-            />
-          </div>
+          <Progress
+            mt={6}
+            size="xs"
+            value={syncProgress.total > 0 ? (syncProgress.done / syncProgress.total) * 100 : 10}
+            animated
+          />
         )}
-      </header>
+      </Box>
 
       {cfConnected && syncResult && !isSyncing && showFeedback && (
-        <div className={`lib-toast ${syncResult.error ? "is-error" : "is-success"}`}>
+        <Alert color={syncResult.error ? 'red' : undefined} m="md" py="xs">
           {syncResult.error
             ? `Błąd: ${syncResult.error}`
             : `Zsynchronizowano ↑ ${formatTransfer(syncResult.sentBytes)} · ↓ ${formatTransfer(syncResult.receivedBytes)}`}
-        </div>
+        </Alert>
       )}
 
       <input
@@ -441,207 +455,193 @@ export default function Library({
         }}
       />
 
-      <div className="lib-body">
-        <div className="lib-content">
-          <section className="lib-toolbar">
-            <div className="lib-search-wrap">
-              <input
-                className="lib-search"
-                type="search"
-                placeholder="Szukaj książki…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-              <button
-                className="lib-add-btn"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={adding}
-                title="Dodaj książkę EPUB"
-              >
-                {adding ? <span className="lib-add-spin" /> : <BsPlus />}
-                <span className="lib-add-text">
-                  {adding ? "Wczytywanie…" : "Dodaj EPUB"}
-                </span>
-              </button>
-            </div>
-            <div className="lib-tabs">
-              <button
-                className={`lib-tab ${activeTab === 'active' ? 'is-active' : ''}`}
-                onClick={() => setActiveTab('active')}
-              >
-                Biblioteka
-                {activeBooks.length > 0 && <span className="lib-tab-count">{activeBooks.length}</span>}
-              </button>
-              <button
-                className={`lib-tab ${activeTab === 'archived' ? 'is-active' : ''}`}
-                onClick={() => setActiveTab('archived')}
-              >
-                Archiwum
-                {archivedBooks.length > 0 && <span className="lib-tab-count">{archivedBooks.length}</span>}
-              </button>
-            </div>
-          </section>
+      <Stack p="md" gap="md" maw={1100} mx="auto">
+        <Group gap="sm">
+          <TextInput
+            type="search"
+            placeholder="Szukaj książki…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            flex={1}
+          />
+          <Button
+            leftSection={<BsPlus size={18} />}
+            onClick={() => fileInputRef.current?.click()}
+            loading={adding}
+            title="Dodaj książkę EPUB"
+          >
+            Dodaj EPUB
+          </Button>
+        </Group>
 
-          {addError && <div className="lib-error-banner">⚠ {addError}</div>}
+        <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
+          <Tabs.List>
+            <Tabs.Tab
+              value="active"
+              rightSection={activeBooks.length > 0 ? <Badge size="xs" variant="light">{activeBooks.length}</Badge> : null}
+            >
+              Biblioteka
+            </Tabs.Tab>
+            <Tabs.Tab
+              value="archived"
+              rightSection={archivedBooks.length > 0 ? <Badge size="xs" variant="light">{archivedBooks.length}</Badge> : null}
+            >
+              Archiwum
+            </Tabs.Tab>
+          </Tabs.List>
+        </Tabs>
 
-          {loading ? (
-            <div className="lib-loading">
-              <div className="spin-ring" />
-            </div>
-          ) : tabBooks.length === 0 ? (
-            activeTab === 'active' ? (
-            <div
-              className={`dropzone ${dragging ? "over" : ""}`}
+        {addError && <Alert color="red" py="xs">⚠ {addError}</Alert>}
+
+        {loading ? (
+          <Group justify="center" p="xl"><Loader /></Group>
+        ) : tabBooks.length === 0 ? (
+          activeTab === 'active' ? (
+            <Stack
+              align="center"
+              gap="xs"
+              p="xl"
               onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
+              style={{
+                border: `2px dashed ${dragging ? 'var(--txt-1)' : 'var(--border-soft)'}`,
+                borderRadius: 8,
+                cursor: 'pointer',
+              }}
             >
-              <div className="dropzone-glyph">📚</div>
-              <div className="dropzone-title">Twoja biblioteka jest pusta</div>
-              <p className="dropzone-sub">
-                Przeciągnij plik <strong>.epub</strong> tutaj lub kliknij, aby
-                go dodać.
-              </p>
-              <button className="btn-primary" disabled={adding}>
-                {adding ? "Ładowanie..." : "Wybierz plik EPUB"}
-              </button>
-            </div>
-            ) : (
-              <div className="lib-empty-tab">Archiwum jest puste.</div>
-            )
+              <Text fz={40}>📚</Text>
+              <Text fw={600}>Twoja biblioteka jest pusta</Text>
+              <Text size="sm" c="dimmed">
+                Przeciągnij plik <strong>.epub</strong> tutaj lub kliknij, aby go dodać.
+              </Text>
+              <Button mt="xs" loading={adding}>Wybierz plik EPUB</Button>
+            </Stack>
           ) : (
-            <div
-              className="lib-grid"
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={handleDrop}
-            >
-              {tabBooks.map((book) => {
-                const isStarted = Boolean(positions[book.id]);
-                const percent = progressPercent(book.id, book.chapterCount);
+            <Text c="dimmed" ta="center" p="xl">Archiwum jest puste.</Text>
+          )
+        ) : (
+          <SimpleGrid
+            cols={{ base: 2, xs: 3, sm: 4, md: 5 }}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+          >
+            {tabBooks.map((book) => {
+              const isStarted = Boolean(positions[book.id]);
+              const percent = progressPercent(book.id, book.chapterCount);
 
-                return (
-                  <article
-                    key={book.id}
-                    className={`book-card ${ctxBookId === book.id ? 'has-open-menu' : ''}`}
-                    onClick={() => onOpenBook(book.id)}
+              return (
+                <Card
+                  key={book.id}
+                  withBorder
+                  padding="xs"
+                  onClick={() => onOpenBook(book.id)}
+                  style={{ cursor: 'pointer', position: 'relative' }}
+                >
+                  <Box
+                    style={{
+                      aspectRatio: '2 / 3',
+                      borderRadius: 4,
+                      overflow: 'hidden',
+                      display: 'grid',
+                      placeItems: 'center',
+                      background: 'var(--bg-side)',
+                      fontSize: 40,
+                    }}
                   >
-                    <div className="book-cover">
-                      {book.cover ? (
-                        <img src={book.cover} alt="okładka" />
-                      ) : (
-                        <span className="book-cover-ph">📖</span>
-                      )}
-                    </div>
+                    {book.cover
+                      ? <img src={book.cover} alt="okładka" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : '📖'}
+                  </Box>
 
-                    <button
-                      className="book-menu-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCtxBookId((id) => (id === book.id ? null : book.id));
-                      }}
-                      title="Menu książki"
-                    >
-                      ⋮
-                    </button>
-
-                    {ctxBookId === book.id && (
-                      <div
-                        className="book-ctx-menu"
+                  <Menu
+                    position="bottom-end"
+                    opened={ctxBookId === book.id}
+                    onChange={(opened) => setCtxBookId(opened ? book.id : null)}
+                    withinPortal
+                  >
+                    <Menu.Target>
+                      <ActionIcon
+                        variant="default"
+                        size="sm"
+                        title="Menu książki"
                         onClick={(e) => e.stopPropagation()}
+                        style={{ position: 'absolute', top: 12, right: 12 }}
                       >
-                        {settings && (
-                          <button
-                            className="book-ctx-primary"
-                            onClick={() => {
-                              setBatchBook(book);
-                              setCtxBookId(null);
-                            }}
-                          >
-                            <BsStars /> Tłumaczenia
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setEpubBook(book);
-                            setCtxBookId(null);
-                          }}
+                        ⋮
+                      </ActionIcon>
+                    </Menu.Target>
+                    <Menu.Dropdown onClick={(e) => e.stopPropagation()}>
+                      {settings && (
+                        <Menu.Item
+                          leftSection={<BsStars />}
+                          onClick={() => { setBatchBook(book); setCtxBookId(null); }}
                         >
-                          <BsDownload /> Eksportuj EPUB
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingBook(book);
-                            setCtxBookId(null);
-                          }}
+                          Tłumaczenia
+                        </Menu.Item>
+                      )}
+                      <Menu.Item
+                        leftSection={<BsDownload />}
+                        onClick={() => { setEpubBook(book); setCtxBookId(null); }}
+                      >
+                        Eksportuj EPUB
+                      </Menu.Item>
+                      <Menu.Item
+                        leftSection={<BsPencil />}
+                        onClick={() => { setEditingBook(book); setCtxBookId(null); }}
+                      >
+                        Edytuj
+                      </Menu.Item>
+                      {book.status === 'archived' ? (
+                        <Menu.Item
+                          leftSection={<BsArrowCounterclockwise />}
+                          onClick={(e) => handleStatusChange(e, book.id, 'active')}
                         >
-                          <BsPencil /> Edytuj
-                        </button>
-                        {book.status === 'archived' ? (
-                          <button onClick={(e) => handleStatusChange(e, book.id, 'active')}>
-                            <BsArrowCounterclockwise /> Przywróć do biblioteki
-                          </button>
-                        ) : (
-                          <button onClick={(e) => handleStatusChange(e, book.id, 'archived')}>
-                            <BsArchive /> Archiwizuj
-                          </button>
-                        )}
-                        <div className="book-ctx-sep" aria-hidden="true" />
-                        <button
-                          className="book-ctx-delete"
-                          onClick={(e) => {
-                            handleDelete(e, book.id);
-                            setCtxBookId(null);
-                          }}
+                          Przywróć do biblioteki
+                        </Menu.Item>
+                      ) : (
+                        <Menu.Item
+                          leftSection={<BsArchive />}
+                          onClick={(e) => handleStatusChange(e, book.id, 'archived')}
                         >
-                          <BsTrash /> Usuń
-                        </button>
-                      </div>
+                          Archiwizuj
+                        </Menu.Item>
+                      )}
+                      <Menu.Divider />
+                      <Menu.Item
+                        color="red"
+                        leftSection={<BsTrash />}
+                        onClick={(e) => { handleDelete(e, book.id); setCtxBookId(null); }}
+                      >
+                        Usuń
+                      </Menu.Item>
+                    </Menu.Dropdown>
+                  </Menu>
+
+                  <Stack gap={4} mt="xs">
+                    {book.status === 'archived' && (
+                      <Badge size="xs" variant="light" w="fit-content">Archiwum</Badge>
                     )}
-
-                    <div className="book-meta">
-                      {book.status === 'archived' && (
-                        <span className="book-status-badge is-archived">Archiwum</span>
-                      )}
-                      <div className="book-title">{book.title}</div>
-                      {book.author && (
-                        <div className="book-author">{book.author}</div>
-                      )}
-
-                      <div className="book-progress-block">
-                        <div className="book-progress-row">
-                          <div className="book-progress">
-                            {progressLabel(book.id, book.chapterCount)}
-                          </div>
-                          <div
-                            className={`book-progress-pct ${isStarted ? "" : "is-idle"}`}
-                          >
-                            {isStarted ? `${percent}%` : "Start"}
-                          </div>
-                        </div>
-
-                        <div className="book-progress-bar" aria-hidden="true">
-                          <div
-                            className="book-progress-fill"
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+                    <Text size="sm" fw={600} lineClamp={2}>{book.title}</Text>
+                    {book.author && (
+                      <Text size="xs" c="dimmed" lineClamp={1}>{book.author}</Text>
+                    )}
+                    <Group justify="space-between" gap={4}>
+                      <Text size="xs" c="dimmed">{progressLabel(book.id, book.chapterCount)}</Text>
+                      <Text size="xs" fw={600} c={isStarted ? undefined : 'dimmed'}>
+                        {isStarted ? `${percent}%` : "Start"}
+                      </Text>
+                    </Group>
+                    <Progress size="xs" value={percent} aria-hidden="true" />
+                  </Stack>
+                </Card>
+              );
+            })}
+          </SimpleGrid>
+        )}
+      </Stack>
 
       {importDraft && (
         <ImportDialog
@@ -676,7 +676,7 @@ export default function Library({
         />
       )}
 
-      <div className="lib-version">v{version}</div>
-    </div>
+      <Text size="xs" c="dimmed" ta="center" py="md">v{version}</Text>
+    </Box>
   );
 }
