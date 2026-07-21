@@ -204,9 +204,9 @@ html:root ::selection {
   background: none;
   border: none;
   border-radius: 12px;
-  padding: 6px 2px;
+  padding: 6px 1px;
   font-family: inherit;
-  font-size: 10px;
+  font-size: 9px;
   color: var(--txt-2);
   cursor: pointer;
 }
@@ -223,9 +223,11 @@ html:root ::selection {
 }
 
 .rbc-tool-label {
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
   max-width: 100%;
+  text-align: center;
+  line-height: 1.1;
 }
 
 .rbc-tool.is-active {
