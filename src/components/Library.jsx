@@ -4,6 +4,7 @@ import "./library.css";
 import {
   BsGear,
   BsArrowRepeat,
+  BsPower,
   BsPlus,
   BsStars,
   BsDownload,
@@ -31,6 +32,7 @@ import { version } from "../../package.json";
 import { getUsername, isLoggedIn, onAuthChange } from "../sync/cfAuth";
 import { syncAll, uploadBook, deleteRemoteBook, syncBookStatus } from "../sync/cfSync";
 import { getSyncActivity, subscribeSyncActivity } from "../sync/syncActivity";
+import { closeApp } from "../utils/closeApp";
 
 function getDroppedFiles(dataTransfer) {
   if (!dataTransfer) return [];
@@ -396,6 +398,15 @@ export default function Library({
               title={cfConnected ? "Synchronizuj" : "Połącz konto"}
             >
               <BsArrowRepeat />
+            </button>
+            <button
+              type="button"
+              className="lib-icon-btn lib-icon-btn-quiet"
+              onClick={closeApp}
+              title="Zamknij aplikację"
+              aria-label="Zamknij aplikację"
+            >
+              <BsPower />
             </button>
           </div>
         </header>

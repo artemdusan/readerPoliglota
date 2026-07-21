@@ -9,6 +9,7 @@ import {
 } from "@mantine/core";
 import { UiIcon } from "./ReaderIcons";
 import { getVoiceId } from "./readerUtils";
+import { closeApp } from "../../utils/closeApp";
 
 function getVoiceNoteText(voiceLoadState) {
   if (voiceLoadState === "unsupported") {
@@ -76,6 +77,16 @@ export default function ReaderSettingsMenu({
           </Group>
           <Button variant="default" size="compact-sm" onClick={onToggleFullscreen}>
             {isFullscreen ? "Wyjdź z pełnego ekranu" : "Pełny ekran"}
+          </Button>
+        </Group>
+
+        <Group gap="xs" wrap="nowrap">
+          <Group gap={6} wrap="nowrap" flex={1}>
+            <UiIcon name="power" />
+            <Text size="sm">Aplikacja</Text>
+          </Group>
+          <Button variant="default" size="compact-sm" onClick={closeApp}>
+            Zamknij aplikację
           </Button>
         </Group>
 

@@ -92,6 +92,20 @@
   cursor: default;
 }
 
+/* Subtelniejszy wariant — zamknięcie aplikacji */
+.lib-icon-btn-quiet {
+  border-width: 1px;
+  border-color: var(--border-soft);
+  color: var(--txt-2);
+}
+
+.lib-icon-btn-quiet:hover,
+.lib-icon-btn-quiet:focus-visible {
+  border-color: var(--border);
+  color: var(--txt-1);
+  outline: none;
+}
+
 /* ── Szukaj + dodaj ── */
 
 .lib-actions {
