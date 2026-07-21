@@ -24,7 +24,10 @@ export const theme = createTheme({
   respectReducedMotion: true,
   components: {
     Modal: {
-      defaultProps: { overlayProps: { opacity: 0.35, blur: 0 } },
+      defaultProps: {
+        overlayProps: { opacity: 0.35, blur: 0 },
+        closeButtonProps: { 'aria-label': 'Zamknij' },
+      },
     },
   },
 });

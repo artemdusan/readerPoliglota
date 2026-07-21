@@ -17,9 +17,9 @@ test('library renders topbar and toolbar', async ({ page }) => {
 test('settings modal opens and closes', async ({ page }) => {
   await page.goto('/');
   await page.locator('button[title="Ustawienia"]').click();
-  const modal = page.locator('.modal');
+  const modal = page.getByRole('dialog');
   await expect(modal).toBeVisible();
-  await expect(modal.locator('.modal-title')).toHaveText('Konto i synchronizacja');
-  await modal.locator('.modal-close').click();
+  await expect(modal).toContainText('Konto i synchronizacja');
+  await modal.getByRole('button', { name: 'Zamknij' }).click();
   await expect(modal).toBeHidden();
 });
