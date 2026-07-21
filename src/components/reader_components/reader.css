@@ -360,6 +360,7 @@ html:root ::selection {
 .ch-body {
   font-family: var(--reader-font, "EB Garamond", serif);
   font-size: var(--fs);
+  overflow-wrap: break-word;
   line-height: 1.9;
   color: var(--txt-1);
   -webkit-font-smoothing: auto;
@@ -435,22 +436,18 @@ html:root ::selection {
 
 /* ════════ POLYGLOT — pary słów ════════ */
 
+/* Zwykły inline — inline-flex robił z pary słów niełamliwy blok, który przy
+   dużej czcionce wystawał poza kolumnę i nachodził na sąsiednią stronę. */
 .pw {
   cursor: pointer;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.28em;
-  vertical-align: baseline;
 }
 
 .pw-original {
-  order: 1;
   font: inherit;
   color: inherit;
 }
 
 .pw-target {
-  order: 2;
   font-style: normal;
   font-weight: bold;
   color: inherit;
