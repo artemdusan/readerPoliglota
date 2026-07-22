@@ -400,22 +400,6 @@ export default function Library({
           </div>
         </header>
 
-        {isSyncing && syncProgress && (
-          <Progress
-            size="xs"
-            value={syncProgress.total > 0 ? (syncProgress.done / syncProgress.total) * 100 : 10}
-            animated
-          />
-        )}
-
-        {cfConnected && syncResult && !isSyncing && showFeedback && (
-          <div className="lib-alert">
-            {syncResult.error
-              ? `⚠ Błąd: ${syncResult.error}`
-              : `Zsynchronizowano ↑ ${formatTransfer(syncResult.sentBytes)} · ↓ ${formatTransfer(syncResult.receivedBytes)}`}
-          </div>
-        )}
-
         <input
           ref={fileInputRef}
           type="file"
@@ -632,6 +616,27 @@ export default function Library({
           book={epubBook}
           onClose={() => setEpubBook(null)}
         />
+      )}
+
+      {/* Overlay synchronizacji — wisi nad zawartością, nie przesuwa layoutu. */}
+      {((isSyncing && syncProgress) ||
+        (cfConnected && syncResult && !isSyncing && showFeedback)) && (
+        <div className="lib-sync-overlay">
+          {isSyncing && syncProgress && (
+            <Progress
+              size="xs"
+              value={syncProgress.total > 0 ? (syncProgress.done / syncProgress.total) * 100 : 10}
+              animated
+            />
+          )}
+          {cfConnected && syncResult && !isSyncing && showFeedback && (
+            <div className="lib-alert">
+              {syncResult.error
+                ? `⚠ Błąd: ${syncResult.error}`
+                : `Zsynchronizowano ↑ ${formatTransfer(syncResult.sentBytes)} · ↓ ${formatTransfer(syncResult.receivedBytes)}`}
+            </div>
+          )}
+        </div>
       )}
 
       <div className="lib-version">v{version}</div>

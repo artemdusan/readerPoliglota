@@ -532,10 +532,14 @@ html:root ::selection {
 }
 
 .fs-page-indicator {
+  box-sizing: border-box;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
   background: var(--bg);
   border: 2px solid var(--border);
   border-radius: 999px;
-  padding: 8px 18px;
+  padding: 0 18px;
   color: var(--txt-1);
   font-family: inherit;
   font-size: 13px;
@@ -583,21 +587,25 @@ html:root ::selection {
 
 /* Podczas audio (tryb bez rozproszeń): transport TTS + ciasteczko w jednej
    pigułce, spięte cienkim separatorem. Siedzi nisko, więc nie zakrywa tekstu. */
+/* Ta sama wysokość co zwykłe ciasteczko (.fs-page-indicator = 40px), żeby
+   wejście w tryb audio nie zmieniało wysokości pigułki na dole. */
 .fs-audio-pill {
+  box-sizing: border-box;
+  height: 40px;
   display: flex;
   align-items: center;
   gap: 2px;
   background: var(--bg);
   border: 2px solid var(--border);
   border-radius: 999px;
-  padding: 4px 8px;
+  padding: 0 6px;
   max-width: calc(100vw - 16px);
 }
 
 .fs-audio-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+  width: 34px;
+  height: 32px;
+  border-radius: 999px;
   border: none;
   background: none;
   color: var(--txt-1);
@@ -610,8 +618,8 @@ html:root ::selection {
 }
 
 .fs-audio-btn .ui-icon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 .fs-audio-btn:disabled {
@@ -621,7 +629,10 @@ html:root ::selection {
 
 .fs-audio-page {
   margin-left: 4px;
-  padding: 6px 10px 6px 14px;
+  padding: 0 10px 0 14px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
   border: none;
   border-left: 1.5px solid var(--border-soft);
   border-radius: 0;

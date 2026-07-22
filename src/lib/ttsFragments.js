@@ -112,8 +112,17 @@ export class SentenceTtsPlayer {
     this._consecutiveErrors = 0;
     this._inFlight = 0;
     this._token += 1;
-    window.speechSynthesis.cancel();
-    this._pump();
+    const token = this._token;
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    // Chrome/Android gubi speak() wywołane tuż po cancel() (cancel jest
+    // asynchroniczny) — stąd „zacinanie” przy odpauzowaniu. Odczekaj tick;
+    // resume() odblokowuje silnik, gdyby natywna pauza zostawiła go wstrzymanym.
+    window.setTimeout(() => {
+      if (this._stopped || this._paused || token !== this._token) return;
+      synth.resume();
+      this._pump();
+    }, 90);
   }
 
   // Keep the engine queue topped up to QUEUE_AHEAD utterances.

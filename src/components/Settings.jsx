@@ -121,7 +121,9 @@ export default function Settings({ settings, onUpdateSetting, onClose }) {
                     }
                   />
                   <Text size="sm" c="dimmed">
-                    {syncProgress.done} / {syncProgress.total}
+                    {syncProgress.total > 0
+                      ? `${Math.round((syncProgress.done / syncProgress.total) * 100)}%`
+                      : "…"}
                   </Text>
                 </Stack>
               )}
