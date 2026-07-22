@@ -19,41 +19,105 @@ function toTrimmedRange(text, start, end) {
   return start < end ? { start, end } : null;
 }
 
-function buildSentenceRanges(text, lang = "en") {
-  if (!String(text ?? "").trim()) return [];
+/* Fragment kończy się naturalnie, gdy ostatni znak (przed domykającym
+   cudzysłowem/nawiasem) to interpunkcja — tylko tam wolno ciąć. */
+const NATURAL_END = /[.!?…,;:—–]["'”»«)\]]*$/;
 
+// Cięcie po kropce/!/?/… gdy dalej zaczyna się nowa fraza (wielka litera,
+// pauza dialogowa lub cudzysłów) — nie po skrótach typu "np. coś".
+const HARD_CUT = /[.!?…]+["'”»«)\]]*(?=\s+(?:["'“«]|[—–]|\p{Lu}))/gu;
+
+// Kropka po skrócie/inicjale nie kończy zdania — taki fragment sklejamy z następnym.
+// Uwaga: bez flagi `i` przy \p{Lu}, bo z `i` dopasowałaby też małe litery (czyli
+// każde normalne zdanie). Inicjał "J." — osobny wzorzec bez `i`; skróty — z `i`.
+const ABBREV_INITIAL = /\b\p{Lu}\.$/u;
+const ABBREV_WORD =
+  /\b(?:np|prof|dr|mgr|inż|hab|św|ks|itd|itp|itn|tzn|tzw|ul|al|nr|godz|ok|tj|Mr|Mrs|Ms|St|vs|etc|no)\.$/iu;
+const isAbbrevEnd = (text) => ABBREV_INITIAL.test(text) || ABBREV_WORD.test(text);
+
+// Dla bardzo długich zdań: dodatkowe cięcia po , ; : — krótsze frazy dla TTS.
+const CLAUSE_CUT = /[,;:]["'”»«)\]]*(?=\s)/g;
+const LONG_FRAGMENT = 220;
+const MIN_PIECE = 60;
+
+function splitRangeAt(text, range, regex, minPiece = 0) {
+  const out = [];
+  const slice = text.slice(range.start, range.end);
+  let cursor = range.start;
+  let match;
+  regex.lastIndex = 0;
+  while ((match = regex.exec(slice)) !== null) {
+    const cutEnd = range.start + match.index + match[0].length;
+    if (minPiece && (cutEnd - cursor < minPiece || range.end - cutEnd < minPiece))
+      continue;
+    const piece = toTrimmedRange(text, cursor, cutEnd);
+    if (piece) out.push(piece);
+    cursor = cutEnd;
+  }
+  const rest = toTrimmedRange(text, cursor, range.end);
+  if (rest) out.push(rest);
+  return out.length ? out : [range];
+}
+
+/* Doszlifowanie segmentacji: cięcia tylko w naturalnych miejscach.
+   1. Tnij wewnątrz segmentów po . ! ? … (Intl.Segmenter pomija np. granice
+      przed pauzą dialogową "— ...").
+   2. Scal segment z następnym, gdy nie kończy się interpunkcją — usuwa
+      nienaturalne cięcia w środku frazy.
+   3. Bardzo długie zdania tnij dodatkowo po , ; : . */
+function refineSentenceRanges(text, baseRanges) {
+  const cut = baseRanges.flatMap((range) => splitRangeAt(text, range, HARD_CUT));
+
+  const merged = [];
+  cut.forEach((range) => {
+    const prev = merged[merged.length - 1];
+    const prevText = prev ? text.slice(prev.start, prev.end) : "";
+    if (prev && (!NATURAL_END.test(prevText) || isAbbrevEnd(prevText))) {
+      prev.end = range.end;
+    } else {
+      merged.push({ ...range });
+    }
+  });
+
+  return merged
+    .flatMap((range) =>
+      range.end - range.start > LONG_FRAGMENT
+        ? splitRangeAt(text, range, CLAUSE_CUT, MIN_PIECE)
+        : [range],
+    )
+    .map((range, sid) => ({ ...range, sid }));
+}
+
+function buildSentenceRanges(text, lang = "en") {
+  const source = String(text ?? "");
+  if (!source.trim()) return [];
+
+  let ranges = [];
   if (typeof Intl !== "undefined" && typeof Intl.Segmenter === "function") {
     const segmenter = new Intl.Segmenter(lang || "en", {
       granularity: "sentence",
     });
-    const ranges = Array.from(
-      segmenter.segment(String(text)),
-      (segment) =>
-        toTrimmedRange(
-          String(text),
-          segment.index,
-          segment.index + segment.segment.length,
-        ),
-    )
-      .filter(Boolean)
-      .map((range, sid) => ({ ...range, sid }));
-    if (ranges.length) return ranges;
+    ranges = Array.from(segmenter.segment(source), (segment) =>
+      toTrimmedRange(source, segment.index, segment.index + segment.segment.length),
+    ).filter(Boolean);
   }
 
-  const ranges = [];
-  const regex = /[\s\S]*?(?:[.!?]+(?=\s|$)|$)/g;
-  let match;
-  while ((match = regex.exec(String(text))) !== null) {
-    if (!match[0]) break;
-    const range = toTrimmedRange(
-      String(text),
-      match.index,
-      match.index + match[0].length,
-    );
-    if (range) ranges.push({ ...range, sid: ranges.length });
-    if (match.index + match[0].length >= String(text).length) break;
+  if (!ranges.length) {
+    const regex = /[\s\S]*?(?:[.!?]+(?=\s|$)|$)/g;
+    let match;
+    while ((match = regex.exec(source)) !== null) {
+      if (!match[0]) break;
+      const range = toTrimmedRange(
+        source,
+        match.index,
+        match.index + match[0].length,
+      );
+      if (range) ranges.push(range);
+      if (match.index + match[0].length >= source.length) break;
+    }
   }
-  return ranges;
+
+  return refineSentenceRanges(source, ranges);
 }
 
 function normalizeGapText(text) {
