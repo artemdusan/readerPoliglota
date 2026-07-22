@@ -18,6 +18,49 @@ function Tool({ icon, glyph, label, onClick, active, disabled, title, btnRef }) 
   );
 }
 
+/* Transport TTS (poprzedni / pauza / stop / następny) — używany w dolnym
+   sterowaniu i solo nad ciasteczkiem w trybie bez rozproszeń. */
+export function TtsTransportNav({ transport }) {
+  return (
+    <div className="rbc-nav rbc-nav-tts">
+      <button
+        type="button"
+        className="rbc-page-btn"
+        onClick={transport.onPrev}
+        disabled={transport.prevDisabled}
+        title="Poprzedni fragment"
+      >
+        <UiIcon name="skipBack" />
+      </button>
+      <button
+        type="button"
+        className="rbc-page-btn"
+        onClick={transport.onToggle}
+        title={transport.paused ? "Wznów" : "Pauza"}
+      >
+        <UiIcon name={transport.paused ? "play" : "pause"} />
+      </button>
+      <button
+        type="button"
+        className="rbc-page-btn"
+        onClick={transport.onStop}
+        title="Zakończ TTS"
+      >
+        <UiIcon name="stop" />
+      </button>
+      <button
+        type="button"
+        className="rbc-page-btn"
+        onClick={transport.onNext}
+        disabled={transport.nextDisabled}
+        title="Następny fragment"
+      >
+        <UiIcon name="skipForward" />
+      </button>
+    </div>
+  );
+}
+
 /* Dolne pływające sterowanie ujawniane ciasteczkiem: nawigacja stron ze
    sliderem (lub transport TTS podczas odtwarzania) + rząd narzędzi. */
 export default function ReaderBottomBar({
@@ -49,42 +92,7 @@ export default function ReaderBottomBar({
   return (
     <div className="reader-bottom-chrome">
       {ttsTransport ? (
-        <div className="rbc-nav rbc-nav-tts">
-          <button
-            type="button"
-            className="rbc-page-btn"
-            onClick={ttsTransport.onPrev}
-            disabled={ttsTransport.prevDisabled}
-            title="Poprzedni fragment"
-          >
-            <UiIcon name="skipBack" />
-          </button>
-          <button
-            type="button"
-            className="rbc-page-btn"
-            onClick={ttsTransport.onToggle}
-            title={ttsTransport.paused ? "Wznów" : "Pauza"}
-          >
-            <UiIcon name={ttsTransport.paused ? "play" : "pause"} />
-          </button>
-          <button
-            type="button"
-            className="rbc-page-btn"
-            onClick={ttsTransport.onStop}
-            title="Zakończ TTS"
-          >
-            <UiIcon name="stop" />
-          </button>
-          <button
-            type="button"
-            className="rbc-page-btn"
-            onClick={ttsTransport.onNext}
-            disabled={ttsTransport.nextDisabled}
-            title="Następny fragment"
-          >
-            <UiIcon name="skipForward" />
-          </button>
-        </div>
+        <TtsTransportNav transport={ttsTransport} />
       ) : (
         <div className="rbc-nav">
           <button

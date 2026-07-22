@@ -34,7 +34,9 @@ import ReaderBookmarkMenu from "./reader_components/ReaderBookmarkMenu";
 import ReaderSettingsMenu from "./reader_components/ReaderSettingsMenu";
 import ReaderMissingLangBanner from "./reader_components/ReaderMissingLangBanner";
 import ReaderChapterContent from "./reader_components/ReaderChapterContent";
-import ReaderBottomBar from "./reader_components/ReaderBottomBar";
+import ReaderBottomBar, {
+  TtsTransportNav,
+} from "./reader_components/ReaderBottomBar";
 import {
   SEARCH_BLOCK_SELECTOR,
   FONT_SIZE_MIN,
@@ -2558,6 +2560,14 @@ export default function Reader({
               settingsToggleRef={settingsToggleRef}
             />
           </>
+        )}
+
+        {/* W trybie bez rozproszeń transport TTS zostaje widoczny nad
+            ciasteczkiem, żeby dało się sterować odtwarzaniem podczas czytania. */}
+        {distractionFree && ttsTransport && (
+          <div className="reader-bottom-chrome">
+            <TtsTransportNav transport={ttsTransport} />
+          </div>
         )}
       </div>
 
