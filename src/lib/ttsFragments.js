@@ -7,72 +7,40 @@ function extractPolyglotTtsData(polyHtml) {
   return extractRenderedPolyglotData(polyHtml);
 }
 
-// Group several short sentences into one utterance for natural prosody, but
-// keep chunks small: Android/Chrome silently cuts long utterances off and one
-// giant utterance would also make pages/pause lag a whole paragraph. ~220 chars
-// flows naturally, stays under the cutoff, and still turns pages inside long
-// paragraphs.
-const DEFAULT_CHUNK_MAX_LEN = 220;
+// Keep at most this many utterances in the engine queue at once. One sentence
+// speaks while the next is already queued, so the engine plays them back-to-back
+// (natural flow) instead of leaving a gap after every sentence.
+const QUEUE_AHEAD = 2;
 
 /**
- * Build one utterance chunk starting at `startIndex`: consecutive sentence
- * fragments joined with spaces, up to maxLen, never crossing a paragraph
- * (blockId) boundary so paragraph breaks keep their natural pause.
- * Returns the chunk text, per-sentence char ranges inside that text (for
- * onboundary → sentence mapping) and the index the next chunk starts at.
+ * Speaks a chapter one sentence per utterance.
+ *
+ * Why one sentence per utterance: on Android/Chrome `onboundary` is unreliable
+ * (Google voices often fire only word boundaries, or none), so it can't be
+ * trusted to tell which sentence is being read. `onstart`, however, is
+ * reliable — so highlighting driven by `onstart` always matches the audio
+ * exactly, and the page turns precisely when a sentence on a new page begins.
+ * Queueing one sentence ahead keeps playback continuous, and pause/resume
+ * restarts only the current sentence, never the whole paragraph.
  */
-function buildChunk(fragments, startIndex, maxLen) {
-  let text = "";
-  let firstBlockId = null;
-  const ranges = [];
-  let i = startIndex;
-
-  for (; i < fragments.length; i++) {
-    const fragment = fragments[i];
-    const fragText = (fragment?.text || "").trim();
-    if (!fragText) continue;
-
-    if (text) {
-      if (fragment.blockId !== firstBlockId) break;
-      if (text.length + 1 + fragText.length > maxLen) break;
-    } else {
-      firstBlockId = fragment.blockId;
-    }
-
-    const sep = text ? " " : "";
-    const start = text.length + sep.length;
-    text += sep + fragText;
-    ranges.push({ sid: i, start, end: text.length });
-  }
-
-  return { text, ranges, nextIndex: i };
-}
-
 export class SentenceTtsPlayer {
-  constructor({
-    fragments,
-    lang,
-    voice,
-    onSentence,
-    onDone,
-    onError,
-    chunkMaxLen = DEFAULT_CHUNK_MAX_LEN,
-  }) {
+  constructor({ fragments, lang, voice, onSentence, onDone, onError }) {
     this.fragments = fragments;
     this.lang = lang;
     this.voice = voice || null;
     this.onSentence = onSentence;
     this.onDone = onDone;
     this.onError = onError;
-    this.maxLen = chunkMaxLen;
     this._stopped = false;
     this._paused = false;
     this._needsRestartOnResume = false;
-    this._sid = 0;
-    this._chunkNextIndex = 0;
-    this._ranges = [];
-    this._utteranceToken = 0;
+    this._sid = 0; // sentence currently being spoken (updated on onstart)
+    this._nextToQueue = 0; // next fragment index to enqueue
+    this._stopAfterSid = Infinity;
+    this._inFlight = 0;
+    this._token = 0;
     this._consecutiveErrors = 0;
+    this._keepAlive = null;
   }
 
   play(fromSid = 0, stopAfterSid = Infinity) {
@@ -80,32 +48,36 @@ export class SentenceTtsPlayer {
     this._paused = false;
     this._needsRestartOnResume = false;
     this._sid = fromSid;
+    this._nextToQueue = fromSid;
     this._stopAfterSid = stopAfterSid;
-    this._utteranceToken += 1;
+    this._inFlight = 0;
+    this._consecutiveErrors = 0;
+    this._token += 1;
     window.speechSynthesis.cancel();
-    this._speakFrom(fromSid);
+    this._startKeepAlive();
+    this._pump();
   }
 
   pause() {
     if (this._stopped || this._paused) return;
     this._paused = true;
     // speechSynthesis.pause() bywa ignorowane (Android/Chrome, głosy sieciowe),
-    // więc pauzujemy przez cancel() i przy wznowieniu startujemy od bieżącego
-    // zdania (nie od początku akapitu).
+    // więc pauzujemy przez cancel() i wznawiamy od bieżącego zdania.
     this._needsRestartOnResume = true;
-    this._utteranceToken += 1;
+    this._token += 1;
+    this._inFlight = 0;
     window.speechSynthesis.cancel();
   }
 
   resume() {
     if (this._stopped || !this._paused) return;
     this._paused = false;
-    if (this._needsRestartOnResume) {
-      this._needsRestartOnResume = false;
-      this._speakFrom(this._sid);
+    if (!this._needsRestartOnResume) {
+      window.speechSynthesis.resume();
       return;
     }
-    window.speechSynthesis.resume();
+    this._needsRestartOnResume = false;
+    this._restartFrom(this._sid);
   }
 
   setVoice(voice) {
@@ -113,82 +85,122 @@ export class SentenceTtsPlayer {
     if (this._stopped) return;
 
     const wasPaused = this._paused;
-    this._utteranceToken += 1;
+    this._token += 1;
+    this._inFlight = 0;
     window.speechSynthesis.cancel();
 
     if (wasPaused) {
       this._needsRestartOnResume = true;
       return;
     }
-
-    this._speakFrom(this._sid);
+    this._restartFrom(this._sid);
   }
 
   stop() {
     this._stopped = true;
     this._paused = false;
     this._needsRestartOnResume = false;
-    this._utteranceToken += 1;
+    this._token += 1;
+    this._inFlight = 0;
+    this._stopKeepAlive();
     window.speechSynthesis.cancel();
   }
 
-  _speakFrom(index) {
-    if (this._stopped || this._paused) return;
+  _restartFrom(index) {
+    this._nextToQueue = index;
+    this._sid = index;
+    this._consecutiveErrors = 0;
+    this._inFlight = 0;
+    this._token += 1;
+    window.speechSynthesis.cancel();
+    this._pump();
+  }
 
-    if (index >= this.fragments.length || index > this._stopAfterSid) {
-      if (!this._stopped) this.onDone?.();
-      return;
+  // Keep the engine queue topped up to QUEUE_AHEAD utterances.
+  _pump() {
+    while (this._inFlight < QUEUE_AHEAD && this._enqueueNext()) {
+      /* keep queueing */
     }
+  }
 
-    const chunk = buildChunk(this.fragments, index, this.maxLen);
-    if (!chunk.ranges.length) {
-      // Only empty fragments remained.
-      if (!this._stopped) this.onDone?.();
-      return;
+  // Queue the next non-empty fragment; return true if one was queued.
+  _enqueueNext() {
+    let i = this._nextToQueue;
+    while (
+      i < this.fragments.length &&
+      i <= this._stopAfterSid &&
+      !this.fragments[i]?.text?.trim()
+    ) {
+      i += 1;
     }
+    if (i >= this.fragments.length || i > this._stopAfterSid) {
+      this._nextToQueue = i;
+      return false;
+    }
+    this._nextToQueue = i + 1;
 
-    this._ranges = chunk.ranges;
-    this._chunkNextIndex = chunk.nextIndex;
-    this._sid = chunk.ranges[0].sid;
-    // Baseline highlight at the chunk start; onboundary refines it per sentence
-    // when the voice supports boundaries.
-    this.onSentence?.(this._sid);
-
-    const utt = new SpeechSynthesisUtterance(chunk.text);
-    const utteranceToken = ++this._utteranceToken;
+    const token = this._token;
+    const utt = new SpeechSynthesisUtterance(this.fragments[i].text);
     utt.lang = this.lang;
     if (this.voice) utt.voice = this.voice;
 
-    utt.onboundary = (event) => {
-      if (this._stopped || utteranceToken !== this._utteranceToken) return;
-      const charIndex = event.charIndex ?? 0;
-      const range =
-        this._ranges.find((r) => charIndex >= r.start && charIndex < r.end) ||
-        this._ranges[this._ranges.length - 1];
-      if (range && range.sid !== this._sid) {
-        this._sid = range.sid;
-        this.onSentence?.(range.sid);
-      }
+    utt.onstart = () => {
+      if (this._stopped || token !== this._token) return;
+      this._sid = i;
+      this.onSentence?.(i);
     };
 
     utt.onend = () => {
-      if (this._stopped || utteranceToken !== this._utteranceToken) return;
+      if (token !== this._token) return;
+      this._inFlight = Math.max(0, this._inFlight - 1);
+      if (this._stopped || this._paused) return;
       this._consecutiveErrors = 0;
-      this._speakFrom(this._chunkNextIndex);
+      this._pump();
+      if (this._inFlight === 0) {
+        this._stopKeepAlive();
+        this.onDone?.();
+      }
     };
 
     utt.onerror = () => {
-      if (this._stopped || utteranceToken !== this._utteranceToken) return;
-      this._consecutiveErrors++;
+      if (token !== this._token) return;
+      this._inFlight = Math.max(0, this._inFlight - 1);
+      if (this._stopped || this._paused) return;
+      this._consecutiveErrors += 1;
       if (this._consecutiveErrors >= 3) {
         this.stop();
         this.onError?.();
         return;
       }
-      // Skip the failing chunk and keep going.
-      this._speakFrom(this._chunkNextIndex);
+      // Skip the failing sentence and keep going.
+      this._pump();
+      if (this._inFlight === 0) {
+        this._stopKeepAlive();
+        this.onDone?.();
+      }
     };
 
+    this._inFlight += 1;
     window.speechSynthesis.speak(utt);
+    return true;
+  }
+
+  // Chrome silently pauses synthesis after ~15s of continuous speech; nudging
+  // resume() keeps a long chapter playing. No-op while our own (cancel-based)
+  // pause is active, since nothing is speaking then.
+  _startKeepAlive() {
+    this._stopKeepAlive();
+    this._keepAlive = window.setInterval(() => {
+      if (this._stopped || this._paused) return;
+      const synth = window.speechSynthesis;
+      if (synth?.speaking && !synth.paused) synth.resume();
+    }, 8000);
+  }
+
+  _stopKeepAlive() {
+    if (this._keepAlive) {
+      window.clearInterval(this._keepAlive);
+      this._keepAlive = null;
+    }
   }
 }
