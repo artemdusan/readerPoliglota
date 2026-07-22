@@ -41,10 +41,12 @@ html:root ::selection {
 .reader-layout {
   display: flex;
   flex-direction: row;
-  /* svh: stała wysokość (paski przeglądarki widoczne) — chowanie/pokazywanie
-     pasków na mobile nie zmienia rozmiaru kontenera, więc nie ma reflow. */
+  /* Wysokość zablokowana na sztywno w px (--reader-h ustawiane raz w JS), żeby
+     chowanie/pokazywanie pasków przeglądarki na mobile nie zmieniało rozmiaru
+     obszaru czytania (piksele nie reagują na paski). Fallback: svh, potem vh. */
   height: 100vh;
   height: 100svh;
+  height: var(--reader-h, 100svh);
   overflow: hidden;
   overscroll-behavior: none;
   background: var(--bg);
@@ -56,6 +58,7 @@ html:root ::selection {
   flex-direction: column;
   height: 100vh;
   height: 100svh;
+  height: var(--reader-h, 100svh);
   overflow: hidden;
   min-width: 0;
   position: relative;
