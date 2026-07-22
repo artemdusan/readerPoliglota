@@ -35,7 +35,7 @@ import ReaderSettingsMenu from "./reader_components/ReaderSettingsMenu";
 import ReaderMissingLangBanner from "./reader_components/ReaderMissingLangBanner";
 import ReaderChapterContent from "./reader_components/ReaderChapterContent";
 import ReaderBottomBar, {
-  TtsTransportNav,
+  TtsHomePill,
 } from "./reader_components/ReaderBottomBar";
 import {
   SEARCH_BLOCK_SELECTOR,
@@ -2470,6 +2470,9 @@ export default function Reader({
           nextDisabled: activePolyPid >= polyTtsParagraphs.length - 1,
         }
       : null;
+  const pagePercent = Math.round(
+    totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0,
+  );
   const sourceLangCode = (book?.lang || "en").split("-")[0].toLowerCase();
   const targetLangCode = (activeLang || "es").split("-")[0].toLowerCase();
   const sourceLanguageLabel = getLanguageDisplayLabel(
@@ -2660,55 +2663,57 @@ export default function Reader({
           </>
         )}
 
-        {/* W trybie bez rozproszeń transport TTS zostaje widoczny nad
-            ciasteczkiem, żeby dało się sterować odtwarzaniem podczas czytania. */}
-        {distractionFree && ttsTransport && (
-          <div className="reader-bottom-chrome">
-            <TtsTransportNav transport={ttsTransport} />
-          </div>
-        )}
       </div>
 
       {/* Cookie — always-visible home pill: shows position, toggles the chrome.
-          In distraction-free mode it's flanked by subtle page-turn buttons. */}
+          During TTS (distraction-free) it merges with the audio transport into
+          one pill and the page-turn arrows drop away — transport handles moves. */}
       <div className="fs-home-row">
-        {distractionFree && (
-          <button
-            type="button"
-            className="fs-page-nav"
-            onClick={prevPage}
-            disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
-            aria-label="Poprzednia strona"
-            title="Poprzednia strona"
-          >
-            ❮
-          </button>
-        )}
-        <button
-          type="button"
-          className={`fs-page-indicator${distractionFree ? "" : " is-open"}`}
-          onClick={toggleDistractionFree}
-          aria-expanded={!distractionFree}
-          title={distractionFree ? "Pokaż sterowanie" : "Ukryj sterowanie"}
-        >
-          Strona {currentPage + 1}/{totalPages} • {Math.round(
-            totalPages > 1 ? (currentPage / (totalPages - 1)) * 100 : 0,
-          )}%
-        </button>
-        {distractionFree && (
-          <button
-            type="button"
-            className="fs-page-nav"
-            onClick={nextPage}
-            disabled={
-              currentPage >= totalPages - 1 &&
-              (chapterIdx ?? 0) >= chapterCount - 1
-            }
-            aria-label="Następna strona"
-            title="Następna strona"
-          >
-            ❯
-          </button>
+        {distractionFree && ttsTransport ? (
+          <TtsHomePill
+            transport={ttsTransport}
+            pageLabel={`${currentPage + 1}/${totalPages} • ${pagePercent}%`}
+            onToggleChrome={toggleDistractionFree}
+          />
+        ) : (
+          <>
+            {distractionFree && (
+              <button
+                type="button"
+                className="fs-page-nav"
+                onClick={prevPage}
+                disabled={currentPage === 0 && (chapterIdx ?? 0) === 0}
+                aria-label="Poprzednia strona"
+                title="Poprzednia strona"
+              >
+                ❮
+              </button>
+            )}
+            <button
+              type="button"
+              className={`fs-page-indicator${distractionFree ? "" : " is-open"}`}
+              onClick={toggleDistractionFree}
+              aria-expanded={!distractionFree}
+              title={distractionFree ? "Pokaż sterowanie" : "Ukryj sterowanie"}
+            >
+              Strona {currentPage + 1}/{totalPages} • {pagePercent}%
+            </button>
+            {distractionFree && (
+              <button
+                type="button"
+                className="fs-page-nav"
+                onClick={nextPage}
+                disabled={
+                  currentPage >= totalPages - 1 &&
+                  (chapterIdx ?? 0) >= chapterCount - 1
+                }
+                aria-label="Następna strona"
+                title="Następna strona"
+              >
+                ❯
+              </button>
+            )}
+          </>
         )}
       </div>
 

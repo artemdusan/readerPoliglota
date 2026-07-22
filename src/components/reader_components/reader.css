@@ -581,6 +581,60 @@ html:root ::selection {
   cursor: default;
 }
 
+/* Podczas audio (tryb bez rozproszeń): transport TTS + ciasteczko w jednej
+   pigułce, spięte cienkim separatorem. Siedzi nisko, więc nie zakrywa tekstu. */
+.fs-audio-pill {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  max-width: calc(100vw - 16px);
+}
+
+.fs-audio-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  color: var(--txt-1);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fs-audio-btn .ui-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.fs-audio-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.fs-audio-page {
+  margin-left: 4px;
+  padding: 6px 10px 6px 14px;
+  border: none;
+  border-left: 1.5px solid var(--border-soft);
+  border-radius: 0;
+  background: none;
+  color: var(--txt-1);
+  font-family: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
 /* ════════ MOBILE ════════ */
 
 @media (max-width: 780px) {
