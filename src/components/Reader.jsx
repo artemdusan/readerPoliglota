@@ -55,6 +55,14 @@ import {
 } from "./reader_components/readerUtils";
 import { getPageTurnDirection, isTextEntryElement } from "./reader_components/keyboardNav";
 
+// Szacowane tempo mowy TTS (znaki/s przy domyślnej prędkości). Służy tylko do
+// przybliżonego wyliczenia, kiedy fragment przechodzi na kolejną stronę —
+// nie musi być dokładne, bo auto-przewijanie nigdy nie cofa czytelnika.
+const TTS_CHARS_PER_SEC = 15;
+// Przewiń nieco zanim mowa dojdzie do granicy strony, żeby dało się zobaczyć
+// dalszą część fragmentu (0.9 = na ~90% czasu potrzebnego na bieżącą stronę).
+const TTS_TURN_LEAD = 0.9;
+
 const LANGUAGE_META = Object.fromEntries(
   LANGUAGES.map((lang) => [lang.code, lang]),
 );
@@ -230,6 +238,10 @@ export default function Reader({
   const settingsMenuRef = useRef(null);
   const settingsToggleRef = useRef(null);
   const ttsPagePauseModeRef = useRef(null);
+  // Timery auto-przewracania strony w trakcie czytania jednego fragmentu przez
+  // wiele stron; token unieważnia zaległe timery po zmianie fragmentu/pauzie.
+  const ttsAutoTurnTimersRef = useRef([]);
+  const ttsAutoTurnTokenRef = useRef(0);
   const toggleFullscreenRef = useRef(null);
   const keyPageTurnAtRef = useRef(0);
   toggleFullscreenRef.current = toggleFullscreen;
@@ -1238,7 +1250,7 @@ export default function Reader({
 
   /* ── Page navigation ── */
   function goToPage(page, options = {}) {
-    const { pauseTts = false } =
+    const { pauseTts = false, keepAutoTurns = false } =
       typeof options === "boolean" ? {} : options;
     const inner = chInnerRef.current;
     const container = chScrollRef.current;
@@ -1247,6 +1259,9 @@ export default function Reader({
     const clampedPage = Math.max(0, Math.min(page, total - 1));
 
     clearPageTurnState();
+    // Ręczne/wyszukiwaniowe przewinięcia anulują zaplanowane auto-przewinięcia
+    // TTS, żeby nie walczyły z intencją czytelnika; auto-turn przekazuje flagę.
+    if (!keepAutoTurns) clearTtsAutoTurns();
     if (pauseTts) pauseTtsForManualPageTurn();
 
     // Brief edge flash for page turn feedback (especially e-ink)
@@ -1682,6 +1697,75 @@ export default function Reader({
       .forEach((el) => el.classList.remove("sentence-active"));
   }
 
+  function clearTtsAutoTurns() {
+    ttsAutoTurnTokenRef.current += 1;
+    ttsAutoTurnTimersRef.current.forEach((id) => window.clearTimeout(id));
+    ttsAutoTurnTimersRef.current = [];
+  }
+
+  // Rozkład szerokości fragmentu (sumarycznie na wiersz) po stronach, w
+  // kolejności stron. Wiele wierszy/kolumn = fragment przechodzi między stronami.
+  function measureFragmentPageWidths(sentenceId) {
+    const body = chapterBodyRef.current;
+    const scrollEl = chScrollRef.current;
+    if (!body || !scrollEl) return [];
+    const pw = scrollEl.clientWidth || 1;
+    const containerLeft = scrollEl.getBoundingClientRect().left;
+    const scrollLeft = scrollEl.scrollLeft;
+    const widthByPage = new Map();
+    body
+      .querySelectorAll(`.ch-sentence[data-sentence-id="${sentenceId}"]`)
+      .forEach((span) => {
+        for (const rect of span.getClientRects()) {
+          if (rect.width < 1) continue;
+          const page = Math.floor(
+            (rect.left - containerLeft + scrollLeft) / pw,
+          );
+          widthByPage.set(page, (widthByPage.get(page) || 0) + rect.width);
+        }
+      });
+    return [...widthByPage.entries()]
+      .map(([page, width]) => ({ page, width }))
+      .sort((a, b) => a.page - b.page);
+  }
+
+  // Gdy czytany fragment rozciąga się na kilka stron, zaplanuj automatyczne
+  // przewinięcie do kolejnej strony w chwili, gdy mowa ma tam dojść — oszacowaną
+  // z długości tekstu i tempa TTS. Zawsze do przodu: jeśli czytelnik jest już
+  // dalej (błąd estymaty lub ręczne przewinięcie), przewinięcie jest pomijane.
+  function scheduleTtsAutoTurns(sentenceId, text) {
+    clearTtsAutoTurns();
+    if (!sentenceId) return;
+    const spans = measureFragmentPageWidths(sentenceId);
+    if (spans.length < 2) return; // mieści się na jednej stronie
+
+    const totalWidth = spans.reduce((sum, s) => sum + s.width, 0) || 1;
+    const totalChars = Math.max(1, String(text || "").length);
+    const token = ttsAutoTurnTokenRef.current;
+
+    let cumWidth = 0;
+    for (let i = 0; i < spans.length - 1; i += 1) {
+      cumWidth += spans[i].width;
+      const charsBeforeBoundary = totalChars * (cumWidth / totalWidth);
+      const delayMs = Math.max(
+        400,
+        (charsBeforeBoundary / TTS_CHARS_PER_SEC) * 1000 * TTS_TURN_LEAD,
+      );
+      const targetPage = spans[i + 1].page;
+      const timerId = window.setTimeout(() => {
+        if (token !== ttsAutoTurnTokenRef.current) return;
+        // Smart: tylko do przodu, nigdy nie cofaj czytelnika.
+        if (
+          targetPage > currentPageRef.current &&
+          targetPage < totalPagesRef.current
+        ) {
+          goToPage(targetPage, { keepAutoTurns: true });
+        }
+      }, delayMs);
+      ttsAutoTurnTimersRef.current.push(timerId);
+    }
+  }
+
   // Highlight the sentence being read and follow it across page boundaries so
   // long paragraphs turn pages while the TTS advances sentence by sentence.
   function highlightCurrentSentence(sentenceId) {
@@ -1689,7 +1773,10 @@ export default function Reader({
     if (!body) return;
 
     clearSentenceHighlight();
-    if (!sentenceId) return;
+    if (!sentenceId) {
+      clearTtsAutoTurns();
+      return;
+    }
 
     // One sentence can span several .ch-sentence spans (inline markup).
     const els = body.querySelectorAll(
@@ -1712,7 +1799,9 @@ export default function Reader({
       targetPage >= 0 &&
       targetPage < totalPagesRef.current
     ) {
-      goToPage(targetPage, false);
+      // Skok do początku fragmentu (synchronizacja z mową) — bez czyszczenia
+      // zaplanowanych auto-przewinięć, które ustawiamy zaraz po podświetleniu.
+      goToPage(targetPage, { keepAutoTurns: true });
     }
   }
 
@@ -1744,6 +1833,7 @@ export default function Reader({
     setTtsPlaying(false);
     setTtsPaused(false);
     setActivePolyPid(-1);
+    clearTtsAutoTurns();
     clearSentenceHighlight();
     clearWordHighlight();
   }
@@ -1759,6 +1849,7 @@ export default function Reader({
     setOriginalTtsPaused(false);
     setActiveSid(-1);
     activeSidRef.current = -1;
+    clearTtsAutoTurns();
     clearSentenceHighlight();
   }
 
@@ -1775,6 +1866,7 @@ export default function Reader({
   }
 
   function pauseTtsForManualPageTurn() {
+    clearTtsAutoTurns();
     if (originalTtsPlaying || originalTtsPaused) {
       originalTtsPlayerRef.current?.pause();
       setOriginalTtsPaused(true);
@@ -1856,7 +1948,9 @@ export default function Reader({
       onSentence: (sid) => {
         activeSidRef.current = sid;
         setActiveSid(sid);
-        highlightCurrentSentence(originalTtsFragments[sid]?.sentenceId);
+        const fragment = originalTtsFragments[sid];
+        highlightCurrentSentence(fragment?.sentenceId);
+        scheduleTtsAutoTurns(fragment?.sentenceId, fragment?.text);
       },
       onDone: () => {
         setOriginalTtsPlaying(false);
@@ -1918,6 +2012,7 @@ export default function Reader({
 
     originalTtsPlayerRef.current?.pause();
     setOriginalTtsPaused(true);
+    clearTtsAutoTurns();
   }
 
   function startHybridTts(fromPid = 0) {
@@ -1931,7 +2026,9 @@ export default function Reader({
       voice: findVoiceById(ttsVoices, ttsSourceVoice),
       onSentence: (idx) => {
         setActivePolyPid(idx);
-        highlightCurrentSentence(polyTtsParagraphs[idx]?.sentenceId);
+        const fragment = polyTtsParagraphs[idx];
+        highlightCurrentSentence(fragment?.sentenceId);
+        scheduleTtsAutoTurns(fragment?.sentenceId, fragment?.text);
       },
       onDone: () => {
         setTtsPlaying(false);
@@ -1992,6 +2089,7 @@ export default function Reader({
 
     ttsPlayerRef.current?.pause();
     setTtsPaused(true);
+    clearTtsAutoTurns();
   }
 
   function toggleCurrentTts() {
