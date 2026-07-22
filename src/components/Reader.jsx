@@ -553,10 +553,10 @@ export default function Reader({
         if (langToLoad) {
           const entry = await getPolyglotCache(ch.id, langToLoad);
           if (entry) {
-            const { html, paragraphs, words } = parseStoredPolyglot(entry, ch.html);
+            const { html, sentences, words } = parseStoredPolyglot(entry, ch.html);
             setPolyHtml(html);
             setPolyHtmlAnnotated(html);
-            setPolyTtsParagraphs(paragraphs);
+            setPolyTtsParagraphs(sentences);
             setPolyWordFragments(words);
             setPolyState("done");
             setActiveLang(langToLoad);
@@ -1442,10 +1442,10 @@ export default function Reader({
   ───────────────────────────────────────── */
 
   function applyPolyEntry(entry, chapterHtml) {
-    const { html, paragraphs, words } = parseStoredPolyglot(entry, chapterHtml);
+    const { html, sentences, words } = parseStoredPolyglot(entry, chapterHtml);
     setPolyHtml(html);
     setPolyHtmlAnnotated(html);
-    setPolyTtsParagraphs(paragraphs);
+    setPolyTtsParagraphs(sentences);
     setPolyWordFragments(words);
   }
 
@@ -1676,27 +1676,32 @@ export default function Reader({
     const body = chapterBodyRef.current;
     if (!body) return;
     body
-      .querySelectorAll(".paragraph-active")
-      .forEach((el) => el.classList.remove("paragraph-active"));
+      .querySelectorAll(".sentence-active")
+      .forEach((el) => el.classList.remove("sentence-active"));
   }
 
-  function highlightCurrentSentence(pid) {
+  // Highlight the sentence being read and follow it across page boundaries so
+  // long paragraphs turn pages while the TTS advances sentence by sentence.
+  function highlightCurrentSentence(sentenceId) {
     const body = chapterBodyRef.current;
     if (!body) return;
 
     clearSentenceHighlight();
-    if (pid < 0) return;
+    if (!sentenceId) return;
 
-    const el = body.querySelector(`[data-pid="${pid}"]`);
-    if (!el) return;
-    el.classList.add("paragraph-active");
+    // One sentence can span several .ch-sentence spans (inline markup).
+    const els = body.querySelectorAll(
+      `.ch-sentence[data-sentence-id="${sentenceId}"]`,
+    );
+    if (!els.length) return;
+    els.forEach((el) => el.classList.add("sentence-active"));
 
     const scrollEl = chScrollRef.current;
     if (!scrollEl) return;
 
     const pw = scrollEl.clientWidth;
     const containerRect = scrollEl.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
+    const elRect = els[0].getBoundingClientRect();
     const currentOffset = currentPageRef.current * pw;
     const elAbsLeft = elRect.left - containerRect.left + currentOffset;
     const targetPage = Math.floor(elAbsLeft / pw);
@@ -1788,23 +1793,51 @@ export default function Reader({
     onBack();
   }
 
+  // Fragment index of the first sentence visible on the current page, so
+  // starting/resuming TTS begins from what the reader is actually looking at.
   function getFirstSidOnCurrentPage() {
-    const scrollEl = chScrollRef.current;
     const body = chapterBodyRef.current;
-    if (!scrollEl || !body) return 0;
-    const pw = scrollEl.clientWidth;
-    const containerRect = scrollEl.getBoundingClientRect();
+    const fragments = polyMode ? polyTtsParagraphs : originalTtsFragments;
+    if (!body || !fragments.length) return 0;
     const page = currentPageRef.current;
 
-    for (const el of body.querySelectorAll("[data-pid]")) {
-      const elRect = el.getBoundingClientRect();
-      const elAbsLeft = elRect.left - containerRect.left + page * pw;
-      if (Math.floor(elAbsLeft / pw) >= page) {
-        return parseInt(el.dataset.pid, 10);
+    let bestSentenceId = null;
+    let bestTop = Infinity;
+    for (const el of body.querySelectorAll(".ch-sentence")) {
+      if (getElementPage(el) !== page) continue;
+      const top = el.getBoundingClientRect().top;
+      if (top < bestTop) {
+        bestTop = top;
+        bestSentenceId = el.dataset.sentenceId;
       }
     }
 
+    if (bestSentenceId != null) {
+      const idx = fragments.findIndex((f) => f.sentenceId === bestSentenceId);
+      if (idx >= 0) return idx;
+    }
     return 0;
+  }
+
+  // Map a click on the text to a TTS fragment index — the tapped sentence, or
+  // the first sentence of the tapped paragraph. Returns -1 when neither is hit.
+  function ttsIndexFromEvent(e, fragments) {
+    const sentenceEl = e.target.closest(".ch-sentence");
+    if (sentenceEl) {
+      const idx = fragments.findIndex(
+        (f) => f.sentenceId === sentenceEl.dataset.sentenceId,
+      );
+      if (idx >= 0) return idx;
+    }
+    const pidEl = e.target.closest("[data-pid]");
+    const firstSentence = pidEl?.querySelector(".ch-sentence");
+    if (firstSentence) {
+      const idx = fragments.findIndex(
+        (f) => f.sentenceId === firstSentence.dataset.sentenceId,
+      );
+      if (idx >= 0) return idx;
+    }
+    return -1;
   }
 
   function startOriginalTts(fromSid = 0) {
@@ -1821,7 +1854,7 @@ export default function Reader({
       onSentence: (sid) => {
         activeSidRef.current = sid;
         setActiveSid(sid);
-        highlightCurrentSentence(sid);
+        highlightCurrentSentence(originalTtsFragments[sid]?.sentenceId);
       },
       onDone: () => {
         setOriginalTtsPlaying(false);
@@ -1894,9 +1927,9 @@ export default function Reader({
       fragments: polyTtsParagraphs,
       lang: book?.lang || "en",
       voice: findVoiceById(ttsVoices, ttsSourceVoice),
-      onSentence: (pid) => {
-        setActivePolyPid(pid);
-        highlightCurrentSentence(pid);
+      onSentence: (idx) => {
+        setActivePolyPid(idx);
+        highlightCurrentSentence(polyTtsParagraphs[idx]?.sentenceId);
       },
       onDone: () => {
         setTtsPlaying(false);
@@ -2095,19 +2128,21 @@ export default function Reader({
         }
         return;
       }
-      const pidEl = e.target.closest("[data-pid]");
-      if (pidEl && ttsPlaying && polyTtsParagraphs.length > 0) {
-        const pid = parseInt(pidEl.dataset.pid, 10);
-        if (pid !== activePolyPid) startHybridTts(pid);
-        return;
+      if (ttsPlaying && polyTtsParagraphs.length > 0) {
+        const idx = ttsIndexFromEvent(e, polyTtsParagraphs);
+        if (idx >= 0) {
+          if (idx !== activePolyPid) startHybridTts(idx);
+          return;
+        }
       }
     } else {
-      // In original mode: paragraph seek works only while TTS is already active
-      const pidEl = e.target.closest("[data-pid]");
-      if (pidEl && originalTtsPlaying && originalTtsFragments.length > 0) {
-        const pid = parseInt(pidEl.dataset.pid, 10);
-        if (pid !== activeSid) startOriginalTts(pid);
-        return;
+      // In original mode: sentence seek works only while TTS is already active
+      if (originalTtsPlaying && originalTtsFragments.length > 0) {
+        const idx = ttsIndexFromEvent(e, originalTtsFragments);
+        if (idx >= 0) {
+          if (idx !== activeSid) startOriginalTts(idx);
+          return;
+        }
       }
     }
 
