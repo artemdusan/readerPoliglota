@@ -433,9 +433,6 @@ export default function BatchGenModal({
               {genStep.batchTotal > 0 && (
                 <Progress value={(genStep.batchDone / genStep.batchTotal) * 100} />
               )}
-              <Progress
-                value={genStep.totalChapters > 0 ? (genStep.doneChapters / genStep.totalChapters) * 100 : 0}
-              />
               {rescueNote && <Text size="xs" c="dimmed">{rescueNote}</Text>}
             </Stack>
           )}
@@ -459,7 +456,7 @@ export default function BatchGenModal({
                 </Button>
               ) : (
                 <Button onClick={handleGenerate} loading={generating} disabled={toGenerate.length === 0}>
-                  {`Generuj ${toGenerate.length > 0 ? `(${toGenerate.length})` : ""}`}
+                  {`Przetłumacz ${toGenerate.length > 0 ? `(${toGenerate.length})` : ""}`}
                 </Button>
               )
             ) : (
