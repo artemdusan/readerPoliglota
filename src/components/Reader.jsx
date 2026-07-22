@@ -238,6 +238,10 @@ export default function Reader({
   const settingsMenuRef = useRef(null);
   const settingsToggleRef = useRef(null);
   const ttsPagePauseModeRef = useRef(null);
+  // Rozmiar kontenera przy ostatniej paginacji — pozwala pominąć zbędną
+  // re-paginację, gdy zdarzenie resize (chowanie/pokazywanie pasków przeglądarki
+  // na mobile) nie zmienia faktycznej wysokości obszaru czytania.
+  const lastPaginatedSizeRef = useRef({ w: 0, h: 0 });
   // Timery auto-przewracania strony w trakcie czytania jednego fragmentu przez
   // wiele stron; token unieważnia zaległe timery po zmianie fragmentu/pauzie.
   const ttsAutoTurnTimersRef = useRef([]);
@@ -638,6 +642,7 @@ export default function Reader({
       const pw = container.clientWidth;
       const ph = container.clientHeight;
       if (!pw || !ph) return;
+      lastPaginatedSizeRef.current = { w: pw, h: ph };
 
       // Snap height to whole lines to prevent partial-line clipping at column boundaries
       const chBodyEl = inner.querySelector(".ch-body");
@@ -887,6 +892,15 @@ export default function Reader({
     const container = chScrollRef.current;
     if (!container) return;
     const observer = new ResizeObserver(() => {
+      // Tylko gdy całkowity rozmiar naprawdę się zmienił — ignoruj sub-pikselowe
+      // drgania svh przy chowaniu/pokazywaniu pasków przeglądarki (brak reflow).
+      const last = lastPaginatedSizeRef.current;
+      if (
+        container.clientWidth === last.w &&
+        container.clientHeight === last.h
+      ) {
+        return;
+      }
       queuePaginationRelayout();
     });
     observer.observe(container);
@@ -899,6 +913,23 @@ export default function Reader({
     const viewport = window.visualViewport;
 
     const scheduleRelayout = (withSettlePass = false) => {
+      // Pomiń re-paginację, gdy faktyczny rozmiar obszaru czytania się nie
+      // zmienił — chowanie/pokazywanie pasków przeglądarki na mobile odpala
+      // resize, ale przy wysokości w svh kontener zostaje taki sam, więc
+      // ponowne łamanie kolumn (widoczny reflow) jest zbędne. Dla orientacji
+      // (settle pass) zawsze pozwalamy — rozmiar zmienia się chwilę później.
+      if (!withSettlePass) {
+        const container = chScrollRef.current;
+        const last = lastPaginatedSizeRef.current;
+        if (
+          container &&
+          container.clientWidth === last.w &&
+          container.clientHeight === last.h
+        ) {
+          return;
+        }
+      }
+
       if (!rafId) {
         rafId = window.requestAnimationFrame(() => {
           rafId = 0;
