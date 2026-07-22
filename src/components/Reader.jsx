@@ -176,6 +176,9 @@ export default function Reader({
   // Open clean: reader starts distraction-free (pure text). A center tap
   // reveals the top/bottom chrome; tapping again hides it.
   const [distractionFree, setDistractionFree] = useState(true);
+  // Wysokość obszaru czytania zablokowana w px (patrz efekt niżej). Piksele nie
+  // reagują na chowanie pasków przeglądarki, więc kontener nie zmienia rozmiaru.
+  const [lockedReaderHeight, setLockedReaderHeight] = useState(0);
   const [pageFlash, setPageFlash] = useState(null); // "next" | "prev" | null
   const [isFullscreen, setIsFullscreen] = useState(
     () => Boolean(document.fullscreenElement)
@@ -886,6 +889,29 @@ export default function Reader({
   useEffect(() => {
     chapterIdxRef.current = chapterIdx;
   }, [chapterIdx]);
+
+  /* ── Zablokuj wysokość obszaru czytania w px ──
+     CSS 100svh bywa na niektórych mobilnych przeglądarkach przeliczane na nowo
+     przy chowaniu/pokazywaniu pasków, co zmieniało wysokość kontenera i wywoływało
+     reflow. Mierzymy svh RAZ i zapisujemy jako stałe piksele — wartość px nie
+     reaguje już na paski. Ponowny pomiar tylko po obrocie ekranu. */
+  useEffect(() => {
+    const measure = () => {
+      const probe = document.createElement("div");
+      probe.style.cssText =
+        "position:fixed;top:0;left:0;width:0;height:100svh;visibility:hidden;pointer-events:none";
+      document.body.appendChild(probe);
+      const svhH = Math.round(probe.getBoundingClientRect().height);
+      probe.remove();
+      const h = svhH > 0 ? svhH : Math.round(window.innerHeight);
+      if (h > 0) setLockedReaderHeight(h);
+    };
+    measure();
+    const onOrientation = () => window.setTimeout(measure, 300);
+    window.addEventListener("orientationchange", onOrientation);
+    return () =>
+      window.removeEventListener("orientationchange", onOrientation);
+  }, []);
 
   /* ── Re-layout on container resize ── */
   useEffect(() => {
@@ -2535,7 +2561,11 @@ export default function Reader({
   return (
     <div
       className={`reader-layout${distractionFree ? " distraction-free" : ""}`}
-      style={{ "--fs": `${fs}px`, "--reader-font": readerFontStack }}
+      style={{
+        "--fs": `${fs}px`,
+        "--reader-font": readerFontStack,
+        ...(lockedReaderHeight ? { "--reader-h": `${lockedReaderHeight}px` } : null),
+      }}
     >
       <ReaderSidebar
         sidebarOpen={sidebarOpen}
