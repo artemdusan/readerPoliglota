@@ -462,7 +462,7 @@ html:root ::selection {
 
 .ch-body.tts-ready .pw:hover,
 .ch-body.audio-ready [data-pid]:hover,
-[data-pid].paragraph-active,
+.ch-sentence.sentence-active,
 .tts-active {
   background: var(--gold-dim) !important;
   border-radius: 2px;

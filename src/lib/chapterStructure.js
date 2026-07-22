@@ -442,6 +442,34 @@ function buildRenderedParagraphSpeechText(node) {
   return collapseWhitespace(clone.textContent || "");
 }
 
+/**
+ * Sentence-level speech fragments for a rendered paragraph node.
+ * TTS reads one sentence per utterance so pages can follow long paragraphs and
+ * pause/resume restarts at most the current sentence, not the whole paragraph.
+ * A single sentence can be split across several .ch-sentence spans (inline
+ * markup), so spans sharing a data-sentence-id are merged in document order.
+ */
+function buildRenderedSentenceFragments(node) {
+  const bySentence = new Map();
+  node.querySelectorAll(".ch-sentence").forEach((span) => {
+    const sentenceId = span.dataset.sentenceId;
+    if (!sentenceId) return;
+    const text = buildRenderedParagraphSpeechText(span);
+    if (!text) return;
+    const existing = bySentence.get(sentenceId);
+    if (existing) {
+      existing.text = `${existing.text} ${text}`.trim();
+    } else {
+      bySentence.set(sentenceId, {
+        sentenceId,
+        blockId: span.dataset.blockId || "",
+        text,
+      });
+    }
+  });
+  return [...bySentence.values()];
+}
+
 export function applySentencePatchPayloadToHtml(
   html,
   payload,
@@ -467,6 +495,7 @@ export function applySentencePatchPayloadToHtml(
   );
 
   const paragraphs = [];
+  const sentences = [];
   const words = [];
   let nextWordId = 0;
 
@@ -514,6 +543,10 @@ export function applySentencePatchPayloadToHtml(
         text: speechText,
       });
     }
+
+    buildRenderedSentenceFragments(node).forEach((fragment) => {
+      sentences.push({ id: sentences.length, ...fragment });
+    });
   });
 
   return {
@@ -521,6 +554,7 @@ export function applySentencePatchPayloadToHtml(
     textForAudio: paragraphs.map((paragraph) => paragraph.text).join("\n\n"),
     count: words.length,
     paragraphs,
+    sentences,
     words,
   };
 }
@@ -528,6 +562,7 @@ export function applySentencePatchPayloadToHtml(
 export function extractRenderedPolyglotData(polyHtml) {
   const doc = new DOMParser().parseFromString(polyHtml || "", "text/html");
   const paragraphs = [];
+  const sentences = [];
   const words = [];
 
   doc.body.querySelectorAll(".pw").forEach((node) => {
@@ -555,11 +590,16 @@ export function extractRenderedPolyglotData(polyHtml) {
       type: "paragraph",
       text,
     });
+
+    buildRenderedSentenceFragments(node).forEach((fragment) => {
+      sentences.push({ id: sentences.length, ...fragment });
+    });
   });
 
   return {
     html: doc.body.innerHTML,
     paragraphs,
+    sentences,
     words: words.sort((a, b) => a.id - b.id),
   };
 }
