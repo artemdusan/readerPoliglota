@@ -61,6 +61,62 @@ export function TtsTransportNav({ transport }) {
   );
 }
 
+/* Tryb bez rozproszeń podczas audio: jedna pigułka łącząca transport TTS
+   z ciasteczkiem (pozycja + „pokaż sterowanie”). Strzałki stron pomijamy —
+   podczas słuchania nawiguje transport, więc nie zaśmiecają ekranu. */
+export function TtsHomePill({ transport, pageLabel, onToggleChrome }) {
+  return (
+    <div className="fs-audio-pill">
+      <button
+        type="button"
+        className="fs-audio-btn"
+        onClick={transport.onPrev}
+        disabled={transport.prevDisabled}
+        title="Poprzedni fragment"
+        aria-label="Poprzedni fragment"
+      >
+        <UiIcon name="skipBack" />
+      </button>
+      <button
+        type="button"
+        className="fs-audio-btn"
+        onClick={transport.onToggle}
+        title={transport.paused ? "Wznów" : "Pauza"}
+        aria-label={transport.paused ? "Wznów" : "Pauza"}
+      >
+        <UiIcon name={transport.paused ? "play" : "pause"} />
+      </button>
+      <button
+        type="button"
+        className="fs-audio-btn"
+        onClick={transport.onStop}
+        title="Zakończ TTS"
+        aria-label="Zakończ TTS"
+      >
+        <UiIcon name="stop" />
+      </button>
+      <button
+        type="button"
+        className="fs-audio-btn"
+        onClick={transport.onNext}
+        disabled={transport.nextDisabled}
+        title="Następny fragment"
+        aria-label="Następny fragment"
+      >
+        <UiIcon name="skipForward" />
+      </button>
+      <button
+        type="button"
+        className="fs-audio-page"
+        onClick={onToggleChrome}
+        title="Pokaż sterowanie"
+      >
+        {pageLabel}
+      </button>
+    </div>
+  );
+}
+
 /* Dolne pływające sterowanie ujawniane ciasteczkiem: nawigacja stron ze
    sliderem (lub transport TTS podczas odtwarzania) + rząd narzędzi. */
 export default function ReaderBottomBar({
